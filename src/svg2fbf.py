@@ -2043,7 +2043,7 @@ of SVG files using SMIL animation.
     # File options
     parser.add_argument("-f", "--filename", dest="output_filename", help="📄 define output filename (default: animation.fbf.svg)", default="animation.fbf.svg", metavar="FILENAME")
     parser.add_argument("-o", "--output_path", dest="output_path", help="📁 output path for the resulting FBF animation file (default: ./)", default="./", metavar="PATH")
-    parser.add_argument("-i", "--input_folder", dest="input_folder", help="📂 input folder containing SVG frames (default: svg_frames/)", default="svg_frames/", metavar="FOLDER")
+    parser.add_argument("-i", "--input_folder", dest="input_folder", help="📂 input folder containing SVG frames (required unless using YAML config with explicit frames)", default=None, metavar="FOLDER")
     parser.add_argument("-s", "--speed", dest="fps", type=float, help="⏱️  frame rate in frames per second (default: 1.0)", default=1.0, metavar="FPS")
     parser.add_argument("-a", "--animation_type", choices=TYPE_CHOICES, dest="animation_type", default="once", help="🎞️  animation type: once, loop, pingpong_once, pingpong_loop, etc. (default: once)", metavar="TYPE")
     parser.add_argument("-m", "--max_frames", dest="max_frames", type=int, help="🔢 limit the maximum number of SVG files to load", default=None, metavar="N")
@@ -2214,7 +2214,7 @@ def merge_config_with_cli(yaml_config, cli_options):
         cli_options.output_path = gen_params["output_path"]
     if "filename" in gen_params and cli_options.output_filename == "animation.fbf.svg":
         cli_options.output_filename = gen_params["filename"]
-    if "input_folder" in gen_params and cli_options.input_folder == "svg_frames/":
+    if "input_folder" in gen_params and cli_options.input_folder is None:
         cli_options.input_folder = gen_params["input_folder"]
     if "speed" in gen_params and cli_options.fps == 1.0:
         cli_options.fps = float(gen_params["speed"])
