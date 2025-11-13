@@ -80,45 +80,52 @@ limitations under the License.
 # Version is dynamically loaded from pyproject.toml
 def _get_version():
     """
-    Read version from pyproject.toml using proper TOML parsing.
+    Read version from installed package metadata.
 
     Returns:
-        Version string from pyproject.toml, or fallback "0.1.0" if unavailable
+        Version string from installed package, or fallback "0.1.0" if unavailable
     """
     try:
-        pyproject_path = Path(__file__).parent / "pyproject.toml"
-        if not pyproject_path.exists():
-            return "0.1.0"
+        # Use importlib.metadata to get the installed package version
+        from importlib.metadata import version
 
-        # Use tomllib (Python 3.11+) or tomli (Python < 3.11) for proper TOML parsing
+        return version("svg2fbf")
+    except Exception:
+        # Fallback for development/uninstalled scenarios
         try:
-            import tomllib
-        except ImportError:
-            try:
-                import tomli as tomllib
-            except ImportError:
-                # Fallback to simple parsing if no TOML library available
-                with open(pyproject_path, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.startswith("version") and "=" in line:
-                            # Extract version from: version = "0.1.0"
-                            version = (
-                                line.split("=", 1)[1].strip().strip('"').strip("'")
-                            )
-                            if version:
-                                return version
+            pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+            if not pyproject_path.exists():
                 return "0.1.0"
 
-        # Proper TOML parsing
-        with open(pyproject_path, "rb") as f:
-            data = tomllib.load(f)
-            version = data.get("project", {}).get("version", "0.1.0")
-            return version
+            # Use tomllib (Python 3.11+) or tomli (Python < 3.11)
+            # for proper TOML parsing
+            try:
+                import tomllib
+            except ImportError:
+                try:
+                    import tomli as tomllib
+                except ImportError:
+                    # Fallback to simple parsing if no TOML library
+                    with open(pyproject_path, encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("version") and "=" in line:
+                                # Extract: version = "0.1.2a12"
+                                version_raw = line.split("=", 1)[1].strip()
+                                version = version_raw.strip('"').strip("'")
+                                if version:
+                                    return version
+                    return "0.1.0"
 
-    except Exception:
-        # Silent fallback - don't break execution if version reading fails
-        return "0.1.0"
+            # Proper TOML parsing
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                version_str = data.get("project", {}).get("version", "0.1.0")
+                return version_str
+
+        except Exception:
+            # Silent fallback - don't break execution if version reading fails
+            return "0.1.0"
 
 
 SEMVERSION = _get_version()
@@ -1953,8 +1960,7 @@ Override YAML settings with CLI options:
         dest="animation_type",
         default="once",
         help=(
-            "🎞️  animation type: once, loop, pingpong_once, pingpong_loop, "
-            "etc. (default: once)"
+            "🎞️  animation type: once, loop, pingpong_once, pingpong_loop, etc. (default: once)"
         ),
     )
     cl_parser.add_option(
@@ -1980,8 +1986,7 @@ Override YAML settings with CLI options:
         dest="no_keep_ratio",
         default=False,
         help=(
-            "don't add preserveAspectRatio attribute to the output SVG (useful "
-            "for animations with negative viewBox coordinates)"
+            "don't add preserveAspectRatio attribute to the output SVG (useful for animations with negative viewBox coordinates)"
         ),
     )
     cl_parser.add_option(
@@ -1992,8 +1997,7 @@ Override YAML settings with CLI options:
         dest="align_mode",
         default="center",
         help=(
-            "📐 alignment mode for fitting frames: 'center' (default, matches "
-            "preserveAspectRatio='xMidYMid meet') or 'top-left'"
+            "📐 alignment mode for fitting frames: 'center' (default, matches preserveAspectRatio='xMidYMid meet') or 'top-left'"
         ),
     )
     cl_parser.add_option(
@@ -2003,8 +2007,7 @@ Override YAML settings with CLI options:
         dest="play_on_click",
         default=False,
         help=(
-            "make the svg animation start on click (require the 'object' tag "
-            "instead of the 'img' tag in the html)"
+            "make the svg animation start on click (require the 'object' tag instead of the 'img' tag in the html)"
         ),
     )
     cl_parser.add_option(
@@ -2012,8 +2015,7 @@ Override YAML settings with CLI options:
         "--backdrop",
         dest="backdrop",
         help=(
-            "path to an image with the same w:h ratio to use as backdrop "
-            "(e.g.: -b sky.jpg)"
+            "path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)"
         ),
         default="None",
     )
@@ -2074,8 +2076,7 @@ Override YAML settings with CLI options:
         "--creators",
         dest="creators",
         help=(
-            "👥 current animation creators, comma-separated "
-            "(e.g., 'John Doe, Jane Smith')"
+            "👥 current animation creators, comma-separated (e.g., 'John Doe, Jane Smith')"
         ),
         default=None,
     )
@@ -2349,8 +2350,7 @@ def merge_config_with_cli(yaml_config, cli_options):
         align_mode_value = gen_params["align_mode"]
         if align_mode_value not in ["top-left", "center"]:
             add2log(
-                f"WARNING: Invalid align_mode '{align_mode_value}' in YAML "
-                f"config. Using default 'center'."
+                f"WARNING: Invalid align_mode '{align_mode_value}' in YAML config. Using default 'center'."
             )
         else:
             cli_options.align_mode = align_mode_value
@@ -3311,8 +3311,7 @@ def generate_fbfsvg_animation():
             # in folder
             if svginputpath is None:
                 raise ValueError(
-                    "No input folder specified and no explicit frames provided "
-                    "in YAML config"
+                    "No input folder specified and no explicit frames provided in YAML config"
                 )
             for entry in svginputpath.iterdir():
                 if entry.is_file():
@@ -3344,8 +3343,7 @@ def generate_fbfsvg_animation():
                                                 )
                                             )
                                             add2log(
-                                                f"Skipping frame with SMIL animation: "
-                                                f"{os.path.basename(filepath)}"
+                                                f"Skipping frame with SMIL animation: {os.path.basename(filepath)}"
                                             )
                                         # Check for JavaScript (with exceptions
                                         # for polyfills)
@@ -3359,8 +3357,7 @@ def generate_fbfsvg_animation():
                                                 )
                                             )
                                             add2log(
-                                                f"Skipping frame with JavaScript: "
-                                                f"{os.path.basename(filepath)}"
+                                                f"Skipping frame with JavaScript: {os.path.basename(filepath)}"
                                             )
                                         # Check for nested SVG elements
                                         elif contains_nested_svg(filepath):
@@ -3371,8 +3368,7 @@ def generate_fbfsvg_animation():
                                                 )
                                             )
                                             add2log(
-                                                f"Skipping frame with nested SVG: "
-                                                f"{os.path.basename(filepath)}"
+                                                f"Skipping frame with nested SVG: {os.path.basename(filepath)}"
                                             )
                                         # Check for multimedia elements
                                         elif contains_media_elements(filepath):
@@ -3383,9 +3379,7 @@ def generate_fbfsvg_animation():
                                                 )
                                             )
                                             add2log(
-                                                "Skipping frame with "
-                                                "multimedia elements: "
-                                                f"{os.path.basename(filepath)}"
+                                                f"Skipping frame with multimedia elements: {os.path.basename(filepath)}"
                                             )
                                         else:
                                             # File passed all filters
@@ -3396,8 +3390,7 @@ def generate_fbfsvg_animation():
                                         unsorted_input_svg_paths.append(str(entry))
                                 else:
                                     add2log(
-                                        f"WARNING: Skipping invalid SVG file: "
-                                        f"{filepath}"
+                                        f"WARNING: Skipping invalid SVG file: {filepath}"
                                     )
                         except OSError as e:
                             add2log(f"WARNING: Cannot read file {filepath}: {str(e)}")
@@ -3976,8 +3969,7 @@ def generate_fbfsvg_animation():
 
         if animElem is None:
             ppp(
-                "ERROR: cannot find the animation node of the proskenion "
-                "use element. Exiting."
+                "ERROR: cannot find the animation node of the proskenion use element. Exiting."
             )
             sys.exit(1)
 
@@ -4398,10 +4390,7 @@ def fix_svg_attribute(attr_name, attr_value, current_frame_group, add_warning=Tr
         attr_value = get_attribute_value_in_valid_units(attr_name, attr_value)
         if add_warning is True:
             add2log(
-                f"WARNING: the <svg> element of the file {current_filepath} "
-                f"has an invalid attribute ('{attr_name}'). The <svg> element "
-                f"doesn't accept fill=, stroke= etc.! Moving the attribute to "
-                f"the frame group as temporary fix."
+                f"WARNING: the <svg> element of the file {current_filepath} has an invalid attribute ('{attr_name}'). The <svg> element doesn't accept fill=, stroke= etc.! Moving the attribute to the frame group as temporary fix."
             )
         current_frame_group.setAttribute(attr_name, attr_value)
         # if it is 'fill' we need to add a rectangle background to
@@ -4473,8 +4462,7 @@ def maybe_gziped_file(filename, mode="rb"):
         import gzip
 
         add2log(
-            f"WARNING: input file {current_filepath} is in compressed "
-            f"format. Extracting."
+            f"WARNING: input file {current_filepath} is in compressed format. Extracting."
         )
         return gzip.GzipFile(filename, mode)
     return open(filename, mode)
@@ -5757,8 +5745,7 @@ def getViewBox(docElement, options):
         h.units != Unit.NONE and h.units != Unit.PX
     ):
         add2log(
-            f"WARNING: viewBox values of file {current_filepath} are not "
-            f"unitless or in px!"
+            f"WARNING: viewBox values of file {current_filepath} are not unitless or in px!"
         )
     # TODO: convert values to unitless
 
@@ -5773,8 +5760,7 @@ def getViewBox(docElement, options):
             vbY = float(vbSep[1])
             if vbX != 0 or vbY != 0:
                 add2log(
-                    f"WARNING: viewBox X and Y coordinates if file "
-                    f"{current_filepath} are not 0!"
+                    f"WARNING: viewBox X and Y coordinates if file {current_filepath} are not 0!"
                 )
 
             # if width or height are not equal to doc width/height then it
@@ -5783,9 +5769,7 @@ def getViewBox(docElement, options):
             vbHeight = float(vbSep[3])
             if vbWidth != w.value or vbHeight != h.value:
                 add2log(
-                    f"WARNING: viewBox width and height of file "
-                    f"{current_filepath} do not match document width and "
-                    f"height!"
+                    f"WARNING: viewBox width and height of file {current_filepath} do not match document width and height!"
                 )
 
         # if the viewBox did not parse properly it is invalid and ok to
@@ -7490,16 +7474,13 @@ def properlySizeDoc(docElement, options):
         # Why: Defaulting to arbitrary dimensions causes inconsistent
         # frame sizing
         print(
-            f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" '
-            f"is missing the viewBox attribute."
+            f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.'
         )
         print(
-            f'   Use the global command "svg-repair-viewbox '
-            f'{current_filepath}" to fix it.'
+            f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.'
         )
         print(
-            "   Or run: svg-repair-viewbox <input_folder>/ to fix all "
-            "SVG files in a directory.\n"
+            "   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.\n"
         )
         sys.exit(1)
 
@@ -8565,64 +8546,47 @@ def parseCssString(style_string):
         for crule in candidate_rules:
             if crule["selector"] == "svg":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'svg' element. Moving the "
-                    f"attribute to the frame group as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'svg' element. Moving the attribute to the frame group as temporary fix."
                 )
                 framerules.append(crule)
             elif crule["selector"] == "body":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'body' element. Ignoring."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'body' element. Ignoring."
                 )
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "text":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'text' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'text' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "circle":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'circle' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'circle' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "path":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'path' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'path' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "rect":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'rect' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'rect' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "polyline":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'polyline' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polyline' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             elif rule["selector"] == "polygon":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'polygon' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polygon' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "image":
                 add2log(
-                    f"WARNING: style section of the file {current_filepath} "
-                    f"contains CSS rules targeting 'image' elements. Adding the "
-                    f"attribute to those elements as temporary fix."
+                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'image' elements. Adding the attribute to those elements as temporary fix."
                 )
                 style_rules_for_elements.append(crule)
             else:
@@ -9031,10 +8995,7 @@ def determine_number_of_flowRoot_elements(doc, options, filepath):
     flowText_el = doc.getElementsByTagName("flowRoot")
     cnt_flowText_el = len(flowText_el)
     if cnt_flowText_el:
-        errmsg = (
-            f"SVG input document {filepath} uses {cnt_flowText_el} "
-            f"flow text element(s), which won't render on browsers. Removing."
-        )
+        errmsg = f"SVG input document {filepath} uses {cnt_flowText_el} flow text element(s), which won't render on browsers. Removing."
         for ftel in flowText_el:
             if ftel.parentNode is not None:
                 ftel.parentNode.removeChild(ftel)
@@ -10484,8 +10445,7 @@ def generate_fbf_metadata(metadata_dict):
             if isinstance(value, bool):
                 value = str(value).lower()
             lines.append(
-                f"        <{namespace_prefix}:{xml_tag}>{value}"
-                f"</{namespace_prefix}:{xml_tag}>"
+                f"        <{namespace_prefix}:{xml_tag}>{value}</{namespace_prefix}:{xml_tag}>"
             )
         else:
             # Why: Add empty element for missing/empty fields
@@ -10998,9 +10958,7 @@ def load_mesh_gradient_polyfill():
         return polyfill_content
     except FileNotFoundError as e:
         raise FileNotFoundError(
-            f"Mesh gradient polyfill not found at: {polyfill_path}\n"
-            f"The FBF format requires meshgradient_polyfill.txt for "
-            f"cross-browser compatibility."
+            f"Mesh gradient polyfill not found at: {polyfill_path}\nThe FBF format requires meshgradient_polyfill.txt for cross-browser compatibility."
         ) from e
 
 
@@ -11086,21 +11044,17 @@ def cli():
             # --config takes priority with a warning
             if options.config and options.config != args[0]:
                 add2log(
-                    f"⚠️  Both positional config '{args[0]}' and --config "
-                    f"'{options.config}' provided. Using --config value."
+                    f"⚠️  Both positional config '{args[0]}' and --config '{options.config}' provided. Using --config value."
                 )
             else:
                 options.config = args[0]
         else:
             cl_parser.error(
-                f"Unknown positional argument: {args[0]}\n"
-                f"Did you mean to specify a YAML config file? "
-                f"File should end with .yaml or .yml"
+                f"Unknown positional argument: {args[0]}\nDid you mean to specify a YAML config file? File should end with .yaml or .yml"
             )
     elif len(args) > 1:
         cl_parser.error(
-            f"Too many positional arguments: {args}\n"
-            f"Usage: svg2fbf [config.yaml] [options]"
+            f"Too many positional arguments: {args}\nUsage: svg2fbf [config.yaml] [options]"
         )
 
     # Load YAML configuration if provided - Merge with CLI options
@@ -11143,8 +11097,7 @@ def cli():
     if not hasattr(options, "explicit_frames") or options.explicit_frames is None:
         if not options.input_folder:
             cl_parser.error(
-                "Must specify input_folder (or provide explicit frames "
-                "list in YAML config)"
+                "Must specify input_folder (or provide explicit frames list in YAML config)"
             )
     if float(options.fps) <= 0.0:
         cl_parser.error("fps value cannot be 0 or negative")
@@ -11159,8 +11112,7 @@ def cli():
         )
     if options.cdigits > options.digits:
         cl_parser.error(
-            "WARNING: The value for '--cdigits' should be equal or "
-            "lower than the value for '--digits', see --help"
+            "WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help"
         )
 
     # Create output directory if it doesn't exist
@@ -11173,14 +11125,12 @@ def cli():
                 add2log(f"✓ Created output directory: {options.output_path}")
         except PermissionError:
             add2log(
-                f"❌ Error: Cannot create output directory "
-                f"'{options.output_path}' - Permission denied"
+                f"❌ Error: Cannot create output directory '{options.output_path}' - Permission denied"
             )
             sys.exit(1)
         except Exception as e:
             add2log(
-                f"❌ Error: Cannot create output directory "
-                f"'{options.output_path}' - {e}"
+                f"❌ Error: Cannot create output directory '{options.output_path}' - {e}"
             )
             sys.exit(1)
 
