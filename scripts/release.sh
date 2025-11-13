@@ -5,6 +5,21 @@
 # Make pipelines fail when any component fails, not just the last command in the pipeline.
 set -euo pipefail
 
+# Determine the directory where this script resides.
+# Use this to find the project root directory reliably regardless of where the script is invoked from.
+# Resolve symlinks to get the actual script location, not a symlink path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The project root is the parent directory of the scripts/ directory.
+# Change to the project root so all git and file operations happen in the correct location.
+# This ensures cleanup, builds, and git operations work correctly regardless of invocation path.
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+# Store the project root for cleanup to use later.
+# This ensures cleanup always operates on the correct directory even if something changes cwd.
+readonly PROJECT_ROOT
+
 # Start the definition of the print_help function that displays usage information.
 # Use this function to show detailed documentation when users request help.
 # Keep all descriptive text inside this function so it can be reused easily.
@@ -156,11 +171,12 @@ start_branch="$(git rev-parse --abbrev-ref HEAD)"
 # Use this function to handle both successful completions and error exits.
 # Make sure the final branch matches start_branch whenever possible.
 cleanup() {
-  # Remove any leftover temporary release notes files from the working directory.
+  # Remove any leftover temporary release notes files from the project root directory.
   # These files are created by git-cliff during the release process for GitHub releases.
   # Clean them up regardless of whether the script succeeds or fails.
-  # Use find with -delete for robust cleanup even if there are many files.
-  find . -maxdepth 1 -name '.release-notes-*.md' -type f -delete 2>/dev/null || true
+  # Use the stored PROJECT_ROOT to ensure cleanup happens in the correct location.
+  # This prevents accidentally deleting files in unrelated directories if cwd changed.
+  find "$PROJECT_ROOT" -maxdepth 1 -name '.release-notes-*.md' -type f -delete 2>/dev/null || true
 
   # Compare the current branch with the original start_branch to detect differences.
   # Only attempt to restore the original branch if a different branch is currently checked out.
@@ -821,9 +837,10 @@ release_channel() {
   # Remove the temporary notes file immediately after use.
   # This file was created by git-cliff and used for GitHub release notes.
   # Clean it up right after the release to avoid accumulation in the working directory.
+  # Use the full path from PROJECT_ROOT to ensure correct location.
   # Use -f to ignore "file not found" errors in case it was already removed.
-  if [[ -n "$notes_file" && -f "$notes_file" ]]; then
-    rm -f "$notes_file" 2>/dev/null || true
+  if [[ -n "$notes_file" && -f "$PROJECT_ROOT/$notes_file" ]]; then
+    rm -f "$PROJECT_ROOT/$notes_file" 2>/dev/null || true
     echo "✓ Cleaned up temporary release notes file: $notes_file" >&2
   fi
 
