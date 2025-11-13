@@ -5,7 +5,22 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.2] - 2025-11-13
+
+### Added
+
+- Add automated changelog generation with git-cliff
+- Add 4-branch release pipeline automation
+- Disable CI/CD on dev and testing branches
+- Add channel-specific install commands and remove version bumping
+- Track dist/ wheels in each branch for direct installation
+- Add development build versioning with PEP 440 local identifiers
+- Exclude large test data from releases
+
+### Fixed
+
+- Remove auto-version bumping from build commands
+- Skip pre-commit hooks in release script
 
 ### Other
 
@@ -366,6 +381,26 @@ uv tool install git+https://github.com/Emasoft/svg2fbf.git --python 3.10
 - Created comprehensive setup guide in scripts/SETUP.md
 
 Now hooks survive .git folder deletion and can be easily reinstalled.
+- Merge main into master - Add release pipeline automation
+- Merge main: Disable CI on dev/testing + add branch workflow docs
+- Merge main: Remove auto-version bumping from build commands
+- Merge main: Add channel-specific install commands and remove version bumping
+- Add built wheel for main branch (0.1.2a15)
+- Merge main: Track dist/ wheels in each branch
+- Merge branch 'main'
+- Merge branch 'main'
+
+### Documentation
+
+- Add comprehensive branch workflow table to DEVELOPMENT.md
+- Document test data exclusion from releases
+- Emphasize developers must clone repo, recommend gh CLI
+- Add branch checkout instructions for gh CLI
+- Add 'Clone & Checkout' column to branch workflow table
+- Document all gh repo clone syntax formats
+- Clarify git branch syntax and update installation commands
+- Remove all hardcoded version numbers
+- Remove all mentions of obsolete reinstall.sh script
 
 ---
 
