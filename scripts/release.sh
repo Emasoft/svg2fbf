@@ -707,6 +707,12 @@ release_channel() {
   # Use these artifacts later when creating GitHub releases and publishing to PyPI.
   uv build
 
+  # Commit the built wheel to the branch so each branch tracks its versioned artifact.
+  # This allows `just install` to work directly from the branch's committed wheel.
+  # Each branch shows only its own versioned wheel in dist/.
+  git add dist/
+  git commit -m "Add built wheel for ${channel} ${new_version}" || true
+
   # Create a git tag pointing to the newly created release commit.
   # Use the tag name constructed earlier (for example, v1.2.3).
   # Use this tag as the reference for GitHub releases and version identification.
