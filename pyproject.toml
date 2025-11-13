@@ -6,6 +6,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 sources = ["src"]
+# Exclude large test data from wheel packages (93MB+ test sessions)
+# These are only available when cloning the repo, not in PyPI/GitHub releases
+exclude = [
+    "tests/sessions/",
+    "tests/**/*.zip",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/svg2fbf.py" = "svg2fbf.py"
@@ -15,6 +21,13 @@ sources = ["src"]
 [tool.hatch.build.targets.wheel.shared-data]
 "tests/node_scripts" = "share/svg2fbf/node_scripts"
 "tests/package.json" = "share/svg2fbf/package.json"
+
+[tool.hatch.build.targets.sdist]
+# Also exclude from source distributions
+exclude = [
+    "tests/sessions/",
+    "tests/**/*.zip",
+]
 
 [project]
 name = "svg2fbf"
