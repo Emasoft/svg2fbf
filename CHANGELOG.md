@@ -389,6 +389,8 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 - Merge main: Track dist/ wheels in each branch
 - Merge branch 'main' into testing
 - Merge branch 'main' into testing
+- Release beta 0.1.3b1
+- Add built wheel for beta 0.1.3b1
 
 ### Documentation
 
@@ -405,6 +407,7 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 ### Miscellaneous
 
 - Update uv.lock
+- Update uv.lock for beta 0.1.3b1
 
 ---
 
