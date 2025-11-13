@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - Merge branch 'main' into dev
+- Release alpha 0.1.2a19
 
 ### Miscellaneous
 
 - Update uv.lock
+- Update uv.lock for alpha 0.1.2a19
 
 ## [0.1.2a18] - 2025-11-13
 
