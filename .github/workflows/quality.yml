@@ -3,7 +3,7 @@ name: Quality (Ruff + Secrets via UV)
 on:
   pull_request:
   push:
-    branches: [main, dev, testing, review, master]
+    branches: [main, review, master]  # Quality checks only on stable branches
 
 jobs:
   quality:
