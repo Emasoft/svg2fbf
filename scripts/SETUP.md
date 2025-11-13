@@ -1,0 +1,324 @@
+# Development Setup Guide
+
+Complete setup guide for svg2fbf development environment.
+
+## Quick Start
+
+```bash
+# Clone repository
+git clone https://github.com/Emasoft/svg2fbf.git
+cd svg2fbf
+
+# Install git hooks
+./scripts/install-hooks.sh
+# or: just install-hooks
+
+# Sync dependencies
+just sync
+
+# You're ready! Run tests:
+just test
+```
+
+## Detailed Setup
+
+### 1. Prerequisites
+
+**Required:**
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) - Fast Python package manager
+- [just](https://github.com/casey/just) - Task runner
+- Git
+
+**Optional:**
+- [pre-commit](https://pre-commit.com/) - Git hook framework
+- Node.js - For svg-repair-viewbox utility
+
+### 2. Install Tools
+
+#### Install uv (Python package manager)
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via pip
+pip install uv
+```
+
+#### Install just (task runner)
+```bash
+# macOS
+brew install just
+
+# Linux
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/bin
+
+# Windows
+winget install --id Casey.Just
+
+# Or via cargo
+cargo install just
+```
+
+### 3. Clone Repository
+
+```bash
+git clone https://github.com/Emasoft/svg2fbf.git
+cd svg2fbf
+```
+
+### 4. Setup Environment
+
+#### Install Git Hooks (Important!)
+```bash
+./scripts/install-hooks.sh
+```
+
+This installs:
+- Pre-commit hooks (ruff linting, formatting, secret scanning)
+- Pre-push hooks
+- Any custom hooks from `scripts/hooks/`
+
+**Why this matters:** Hooks ensure code quality before commits. They're preserved in `scripts/hooks/` so they survive `.git/` deletion.
+
+#### Sync Dependencies
+```bash
+just sync
+```
+
+This syncs all runtime and dev dependencies without installing svg2fbf in the venv (svg2fbf should only be installed as a uv tool).
+
+### 5. Verify Setup
+
+```bash
+just verify
+```
+
+Should show:
+- Project version
+- Installed tool version
+- Available commands
+
+## Daily Development Workflow
+
+### Make Changes
+
+```bash
+# 1. Create a branch
+git checkout -b feature/my-feature
+
+# 2. Make code changes...
+
+# 3. Run tests
+just test
+
+# 4. Check code quality
+just check
+
+# 5. Build and install for testing
+just install  # Smart: only builds if code changed
+```
+
+### Commit & Push
+
+```bash
+# Commit (hooks will run automatically)
+git add .
+git commit -m "feat: Add awesome feature"
+
+# Push
+git push origin feature/my-feature
+```
+
+## Common Tasks
+
+### Managing Dependencies
+
+```bash
+# Add runtime dependency
+just add numpy
+
+# Add dev dependency
+just add-dev pytest
+
+# Remove dependency
+just remove old-package
+
+# Sync after manual pyproject.toml edits
+just sync
+```
+
+### Testing
+
+```bash
+# Run all tests
+just test
+
+# Run with coverage
+just test-cov
+
+# Run specific test file
+just test-file tests/test_something.py
+
+# Run tests matching pattern
+just test-match "test_transform"
+```
+
+### Building & Installing
+
+```bash
+# Build wheel (auto-bumps version)
+just build
+
+# Smart install (only builds if needed)
+just install
+
+# Force full rebuild
+just reinstall
+
+# Bump specific version
+just reinstall beta
+```
+
+### Code Quality
+
+```bash
+# Format code
+just fmt
+
+# Lint code
+just lint
+
+# Fix linting issues
+just lint-fix
+
+# Run all checks
+just check
+```
+
+### Cleanup
+
+```bash
+# Clean temp directories
+just clean-temp
+
+# Clean build artifacts
+just clean-build
+
+# Clean Python cache
+just clean-cache
+
+# Clean everything
+just clean-all
+```
+
+## If .git/ Gets Deleted
+
+If you need to recreate `.git/` (e.g., moving to a new repo):
+
+```bash
+# 1. Reinitialize git
+git init
+
+# 2. Reinstall hooks (important!)
+./scripts/install-hooks.sh
+
+# 3. Add remote
+git remote add origin https://github.com/Emasoft/svg2fbf.git
+
+# 4. Pull history (if needed)
+git pull origin main
+```
+
+**All hooks are preserved** in `scripts/hooks/` and `.pre-commit-config.yaml`, so you can always reinstall them!
+
+## Troubleshooting
+
+### Hooks Not Running
+
+```bash
+# Reinstall hooks
+just install-hooks
+
+# Or manually
+./scripts/install-hooks.sh
+```
+
+### Dependencies Out of Sync
+
+```bash
+# Force sync
+just sync
+
+# Or manually
+uv sync --no-install-project
+```
+
+### svg2fbf in venv (wrong!)
+
+svg2fbf should NOT be in the venv. It should only be installed as a uv tool.
+
+```bash
+# Check
+just check-venv
+
+# If installed in venv, clean and resync
+rm -rf .venv
+uv sync --no-install-project
+```
+
+### Build Fails
+
+```bash
+# Clean and rebuild
+just clean-build
+just build
+```
+
+## Development Tips
+
+1. **Use `just --list`** to see all available commands
+2. **Use `just workflow`** to see the recommended workflow
+3. **Commit often** - hooks will catch issues early
+4. **Run tests before push** - `just test`
+5. **Use `just install`** for quick iteration - it's smart and only rebuilds when needed
+
+## Editor Setup
+
+### VS Code
+
+Recommended extensions:
+- Python
+- Ruff
+- GitLens
+- Just (syntax highlighting for justfile)
+
+Settings (`.vscode/settings.json`):
+```json
+{
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  }
+}
+```
+
+### PyCharm
+
+1. Install Python plugin
+2. Set Python interpreter to `.venv/bin/python`
+3. Enable ruff in Settings → Tools → External Tools
+
+## Next Steps
+
+- Read `justfile` for all available commands
+- Check `scripts/hooks/README.md` for custom hooks
+- Review `.pre-commit-config.yaml` for hook configuration
+- See project README for usage examples

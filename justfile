@@ -729,6 +729,15 @@ clean-all:
     @echo "✅ All cleaned!"
 
 # ============================================================================
+# Git Hooks
+# ============================================================================
+
+# Install git hooks (pre-commit + custom hooks from scripts/hooks/)
+install-hooks:
+    @echo "🔗 Installing git hooks..."
+    @./scripts/install-hooks.sh
+
+# ============================================================================
 # Development Helpers
 # ============================================================================
 
@@ -777,6 +786,9 @@ workflow:
     @echo "📚 svg2fbf Development Workflow"
     @echo "==============================="
     @echo ""
+    @echo "0. Setup (first time or after .git recreation):"
+    @echo "   just install-hooks           # Install git hooks"
+    @echo ""
     @echo "1. Add dependencies:"
     @echo "   just add <package>           # Add runtime dependency and sync"
     @echo "   just add-dev <package>       # Add dev dependency and sync"
@@ -786,8 +798,9 @@ workflow:
     @echo "   just check                   # Run quality checks"
     @echo ""
     @echo "3. Build and install:"
+    @echo "   just build                   # Build (auto-bump version)"
+    @echo "   just install                 # Smart install (builds if needed)"
     @echo "   just reinstall               # Full reinstall (alpha bump)"
-    @echo "   just reinstall beta          # Bump beta version"
     @echo ""
     @echo "4. Clean up:"
     @echo "   just clean-temp              # Clean temp directories"
