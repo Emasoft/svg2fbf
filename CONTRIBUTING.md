@@ -8,6 +8,39 @@ This document specifies contribution guidelines for the **svg2fbf tool and relat
 
 ---
 
+## Table of Contents
+
+- [Two Types of Contributions](#two-types-of-contributions)
+  - [🔧 Tool Development (This Document)](#-tool-development-this-document)
+  - [📐 Standard Development](#-standard-development-contributing_standardmd)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+- [Development Workflow](#development-workflow)
+  - [Code Style](#code-style)
+  - [Testing](#testing)
+- [Development Setup (UV-only)](#development-setup-uv-only)
+- [Security Practices](#security-practices)
+  - [Installing Pre-commit Hooks](#installing-pre-commit-hooks)
+  - [Never Commit Secrets](#never-commit-secrets)
+  - [TruffleHog Secret Scanning](#trufflehog-secret-scanning)
+  - [Allowed Public Information](#allowed-public-information)
+  - [Reporting Security Vulnerabilities](#reporting-security-vulnerabilities)
+  - [Security Checklist for Contributors](#security-checklist-for-contributors)
+- [Submitting Changes](#submitting-changes)
+  - [Pull Request Process](#pull-request-process)
+  - [Pull Request Guidelines](#pull-request-guidelines)
+  - [Commit Message Format](#commit-message-format)
+- [Reporting Issues](#reporting-issues)
+  - [Bug Reports](#bug-reports)
+  - [Feature Requests](#feature-requests)
+- [Code of Conduct](#code-of-conduct)
+  - [Expected Behavior](#expected-behavior)
+  - [Prohibited Conduct](#prohibited-conduct)
+- [License](#license)
+- [Questions and Support](#questions-and-support)
+
+---
+
 ## Two Types of Contributions
 
 This project maintains **two distinct contribution tracks**:
