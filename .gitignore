@@ -37,6 +37,9 @@ tmp/
 *.tmp
 *.temp
 
+# Release process temporary files
+.release-notes-*.md  # git-cliff temporary release notes
+
 # Temporary analysis files (hound-agent, etc.)
 hound_found_*.md
 /.json
