@@ -81,14 +81,13 @@ limitations under the License.
 def _get_version():
     """
     Read version from installed package metadata.
-
+    
     Returns:
         Version string from installed package, or fallback "0.1.0" if unavailable
     """
     try:
         # Use importlib.metadata to get the installed package version
         from importlib.metadata import version
-
         return version("svg2fbf")
     except Exception:
         # Fallback for development/uninstalled scenarios
@@ -112,9 +111,9 @@ def _get_version():
                             if line.startswith("version") and "=" in line:
                                 # Extract: version = "0.1.2a12"
                                 version_raw = line.split("=", 1)[1].strip()
-                                version = version_raw.strip('"').strip("'")
-                                if version:
-                                    return version
+                                version_val = version_raw.strip('"').strip("'")
+                                if version_val:
+                                    return version_val
                     return "0.1.0"
 
             # Proper TOML parsing

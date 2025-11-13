@@ -410,36 +410,46 @@ svg2fbf is installed as a **uv tool**, which makes it available globally on your
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Install svg2fbf
-
-Choose one of the following methods:
-
-#### Option 1: Install from GitHub Release (Recommended)
+### Install svg2fbf (Recommended: One Command)
 
 ```bash
-# Install latest release wheel (replace version number with actual release)
-uv tool install https://github.com/Emasoft/svg2fbf/releases/download/v0.1.2a1/svg2fbf-0.1.2a1-py3-none-any.whl --python 3.10
+# Install latest version from GitHub (always gets the most recent release)
+uv tool install git+https://github.com/Emasoft/svg2fbf.git --python 3.10
 ```
 
-#### Option 2: Install from Local Wheel File
+**That's it!** This single command always installs the latest version - no manual version typing needed.
+
+### Alternative Installation Methods
+
+<details>
+<summary>Click to expand alternative installation options</summary>
+
+#### Install Latest Release Wheel (Auto-Detected)
 
 ```bash
-# Install from local wheel (relative path)
-uv tool install dist/svg2fbf-0.1.2a1-py3-none-any.whl --python 3.10
+# This script automatically finds and installs the latest release
+LATEST_URL=$(curl -s https://api.github.com/repos/Emasoft/svg2fbf/releases/latest | grep "browser_download_url.*\.whl" | cut -d '"' -f 4)
+uv tool install "$LATEST_URL" --python 3.10
+```
+
+#### Install from Local Wheel File
+
+```bash
+# Install from local wheel in dist/ directory
+uv tool install dist/svg2fbf-*.whl --python 3.10
 
 # Or with absolute path
-uv tool install /path/to/svg2fbf-0.1.2a1-py3-none-any.whl --python 3.10
+uv tool install /path/to/svg2fbf-*.whl --python 3.10
 ```
 
-#### Option 3: Install from Git Repository
+#### Install Specific Version
 
 ```bash
-# Install from main branch
-uv tool install git+https://github.com/Emasoft/svg2fbf.git --python 3.10
-
-# Install from specific tag
+# Install specific tag/version
 uv tool install git+https://github.com/Emasoft/svg2fbf.git@v0.1.2a1 --python 3.10
 ```
+
+</details>
 
 ### Verify Installation
 
@@ -455,16 +465,20 @@ svg2fbf --help
 
 ### Updating
 
-To update to a new version, first uninstall the current version, then install the new one:
+To update to the latest version:
+
+```bash
+# Simple: reinstall from git (automatically gets latest)
+uv tool install --reinstall git+https://github.com/Emasoft/svg2fbf.git --python 3.10
+```
+
+Or uninstall first, then install:
 
 ```bash
 # 1. Uninstall current version
 uv tool uninstall svg2fbf
 
-# 2. Install new version from GitHub release
-uv tool install https://github.com/Emasoft/svg2fbf/releases/download/v0.1.2a1/svg2fbf-0.1.2a1-py3-none-any.whl --python 3.10
-
-# Or install from git main branch
+# 2. Install latest version
 uv tool install git+https://github.com/Emasoft/svg2fbf.git --python 3.10
 ```
 
