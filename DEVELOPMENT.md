@@ -173,6 +173,129 @@ just promote-to-stable    # review → master (approved)
 just sync-main            # master → main (manual sync)
 ```
 
+### Branch Equalization Command
+
+The `just equalize` command synchronizes ALL branches to match the current branch. This is different from promotion, which follows the sequential dev→testing→review→master pipeline.
+
+```bash
+# Equalize all branches from current branch
+just equalize
+```
+
+**What it does:**
+1. Detects which branch you're currently on
+2. Fetches latest from remote
+3. **Warns you** if any other branches have commits not in your current branch
+4. Shows you which commits would be lost
+5. Asks for confirmation ("yes" required, not just "y")
+6. Force-syncs all branches (dev, testing, review, master, main) to match current branch
+7. Pushes all branches to remote with `--force-with-lease`
+8. Returns you to your original branch
+
+**Example output when branches are ahead:**
+```
+⚠️  WARNING: Some branches have newer commits!
+════════════════════════════════════════════════════════════
+  ⚠️  dev has 3 commit(s) not in main
+      Latest: a1b2c3d feat: Add new feature
+
+If you continue, these commits will be LOST!
+
+💡 Consider switching to one of these branches first:
+   git checkout dev && just equalize
+```
+
+#### When to Use `just equalize` vs `just promote-*`
+
+**Use `just equalize` when:**
+- ✅ **Critical hotfix on master/main** that needs to go everywhere immediately
+- ✅ **Emergency security patch** that can't wait for the normal pipeline
+- ✅ **Windows CI fixes** or other infrastructure updates needed on all branches
+- ✅ **After manual hotfix** that bypassed the normal promotion flow
+- ✅ **Synchronizing after recovery** from divergent branch states
+- ✅ **When all branches should be at the SAME commit** (like after a release)
+
+**Use `just promote-*` when:**
+- ✅ **Normal feature development** - Let features flow through the pipeline
+- ✅ **Following the quality gates** - Testing catches bugs, review approves
+- ✅ **Different code on different branches is expected** - That's the point!
+- ✅ **Maintaining development workflow** - dev ahead of testing is normal
+- ✅ **Want to preserve branch-specific work** - Don't lose commits
+
+#### Key Differences
+
+| Aspect | `just equalize` | `just promote-*` |
+|--------|----------------|------------------|
+| **Direction** | Any branch → all others | Sequential: dev→testing→review→master |
+| **Merge type** | Force-sync (reset) | Merge (preserves history) |
+| **Branches affected** | ALL branches | Just the next branch in pipeline |
+| **Commit history** | Overwrites everything | Preserves commit history |
+| **Use case** | Emergency synchronization | Normal development flow |
+| **Risk** | ⚠️ HIGH - Can lose commits | ✅ LOW - Merges preserve work |
+| **Warnings** | Shows which commits will be lost | No warnings (safe merge) |
+
+#### Example Scenarios
+
+**Scenario 1: Critical Windows CI Fix** ✅ Use `just equalize`
+```bash
+# You fixed a critical Windows encoding bug on main
+git checkout main
+# ... fix the bug ...
+git commit -m "fix: Windows Unicode encoding in ppp()"
+
+# Now all branches need this fix immediately
+just equalize
+# All branches now have the fix
+```
+
+**Scenario 2: New Feature Development** ✅ Use `just promote-*`
+```bash
+# You developed a new feature on dev
+git checkout dev
+# ... implement feature ...
+git commit -m "feat: Add new export format"
+
+# Feature is complete, move to testing
+just promote-to-testing
+# dev stays ahead with new feature
+# testing now has the feature for QA
+```
+
+**Scenario 3: Emergency Security Patch** ✅ Use `just equalize`
+```bash
+# Critical security vulnerability discovered
+git checkout master
+# ... apply security patch ...
+git commit -m "security: Fix XSS vulnerability"
+
+# This needs to be on ALL branches NOW
+just equalize
+# All branches protected immediately
+```
+
+**Scenario 4: Bug Fix During Testing** ✅ Use `just promote-*`
+```bash
+# Bug found on testing branch
+git checkout testing
+# ... fix the bug ...
+git commit -m "fix: Handle null viewBox attribute"
+
+# Bug is fixed, ready for review
+just promote-to-review
+# testing stays at current state
+# review now has the bug fix
+```
+
+#### Safety Features
+
+The `just equalize` command includes several safety features:
+- 🔍 **Detects branch divergence** - Shows which branches have commits not in current
+- ⚠️ **Clear warnings** - Tells you exactly what will be lost
+- 💡 **Smart suggestions** - Recommends switching to the newer branch first
+- 📡 **Fetches before checking** - Ensures you have latest remote state
+- 🔒 **Force-with-lease** - Won't overwrite if remote changed since last fetch
+- ✋ **Requires "yes"** - Typing just "y" won't work, must type full "yes"
+
 ### Release Commands
 
 ```bash
