@@ -316,9 +316,37 @@ Settings (`.vscode/settings.json`):
 2. Set Python interpreter to `.venv/bin/python`
 3. Enable ruff in Settings → Tools → External Tools
 
+## Release Workflow
+
+svg2fbf uses a 4-stage branch promotion pipeline:
+
+```
+dev → testing → review → master
+ ↓       ↓        ↓        ↓
+alpha   beta     rc     stable (+ PyPI)
+```
+
+### Quick Commands
+
+```bash
+# Promote through pipeline
+just promote-to-testing   # dev → testing (feature complete)
+just promote-to-review    # testing → review (bugs fixed)
+just promote-to-stable    # review → master (ready for release)
+
+# Create releases
+./scripts/release.sh --alpha dev --beta testing --rc review --stable master
+```
+
+**For complete release documentation, see:**
+- 📘 [`docs/RELEASE_WORKFLOW.md`](../docs/RELEASE_WORKFLOW.md) - Complete release guide
+- 🔧 `./scripts/release.sh --help` - Release script help
+- 📋 `just --list` - All available commands
+
 ## Next Steps
 
 - Read `justfile` for all available commands
 - Check `scripts/hooks/README.md` for custom hooks
 - Review `.pre-commit-config.yaml` for hook configuration
+- **Read `docs/RELEASE_WORKFLOW.md` for release process** ⭐
 - See project README for usage examples

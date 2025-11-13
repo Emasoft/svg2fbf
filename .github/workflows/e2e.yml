@@ -4,7 +4,7 @@ on:
   workflow_dispatch:  # Manual trigger
   pull_request:
   push:
-    branches: [main]
+    branches: [main, dev, testing, review, master]
 
 jobs:
   e2e:
