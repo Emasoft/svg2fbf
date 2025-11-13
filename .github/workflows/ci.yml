@@ -58,7 +58,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Run MyPy type checker
-        run: uv run mypy src/svg2fbf.py --ignore-missing-imports
+        run: uv run mypy
         continue-on-error: true  # Don't fail on type errors yet
 
   # Run tests
