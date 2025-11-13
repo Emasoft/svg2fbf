@@ -12,9 +12,9 @@
 #   just add                     # Add and sync dependencies
 #   just add-dev                 # Add dev dependencies and sync
 #   just remove                  # Remove and sync dependencies
-#   just build                   # Build wheel (auto-bumps: alpha if alpha, patch if stable)
+#   just build                   # Build wheel (NO version bump)
 #   just install                 # Smart install (builds only if code changed)
-#   just reinstall               # Full rebuild and reinstall (default: alpha bump)
+#   just reinstall               # Full rebuild and reinstall (NO version bump)
 #   just promote-to-testing      # Merge dev → testing (feature complete)
 #   just promote-to-review       # Merge testing → review (bugs fixed)
 #   just promote-to-stable       # Merge review → master (ready for release)
@@ -102,39 +102,28 @@ remove pkg:
 # Build & Install
 # ============================================================================
 
-# Build wheel package (auto-bumps version: alpha if already alpha, patch otherwise)
+# Build wheel package (NO version bump - versions only bumped during releases)
 build:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "🔨 Building with auto version bump..."
+    echo "🔨 Building wheel package..."
 
     # Get current version
     CURRENT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
     echo "Current version: $CURRENT_VERSION"
-
-    # Determine bump type: if version contains 'a' (alpha), bump alpha; else bump patch
-    if [[ "$CURRENT_VERSION" == *"a"* ]]; then
-        BUMP_TYPE="alpha"
-        echo "⬆️  Auto-bumping alpha version..."
-    else
-        BUMP_TYPE="patch"
-        echo "⬆️  Auto-bumping patch version..."
-    fi
-
-    # Bump version
-    uv version --bump "$BUMP_TYPE" --no-sync
-    NEW_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-    echo "✅ Bumped to: $NEW_VERSION"
     echo ""
 
-    # Build wheel
+    # Build wheel without version bump
     echo "🔨 Building wheel..."
     uv build --wheel --quiet --out-dir dist
     echo "✅ Wheel built:"
     ls -t dist/svg2fbf-*.whl | head -1
     echo ""
-    echo "📦 Version: $NEW_VERSION"
+    echo "📦 Version: $CURRENT_VERSION"
+    echo ""
+    echo "Note: Version bumping is handled by the release pipeline."
+    echo "      Use 'just release' or 'just publish' to create versioned releases."
 
 # Bump version (alpha, beta, rc, patch, minor, major)
 bump type="alpha":
@@ -222,11 +211,13 @@ install python="3.10":
         echo "✅ Installed version: $INSTALLED_VERSION"
     fi
 
-# Full rebuild and reinstall (default: alpha bump)
-reinstall type="alpha" python="3.10":
-    @echo "🔄 Full reinstall ({{type}} bump)..."
+# Full rebuild and reinstall (cleans, builds, installs - NO version bump)
+reinstall python="3.10":
+    @echo "🔄 Full reinstall (clean build + install)..."
     @echo ""
-    just bump {{type}}
+    @echo "Note: This does NOT bump version. Use 'just publish' for releases."
+    @echo ""
+    just clean-build
     @echo ""
     just sync
     @echo ""
