@@ -18,7 +18,7 @@ Plus additional sections on JavaScript libraries, authoring tools, and full refe
 
 > **"Anything can play an FBF.SVG video. Anything! If it supports SVG 1.1, it can reproduce it!"**
 
-It opens in millions of applications: browsers, graphic editors, office software, video editors, design tools, and mobile apps.
+It opens in millions of applications: browsers, graphic editors, video editors, design tools, and mobile apps.
 
 **For tool developers:** A company that wants to create a graphic editor for FBF.SVG doesn't need to support the complexity of a CSS rendering engine or a JavaScript runtime — all it needs is to support the plain, bare SVG 1.1 or SVG 2.0 standard.
 
@@ -95,7 +95,8 @@ This eliminates the need for expensive programming teams, simplifies hiring, and
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Works in all modern web browsers?** | ✅ YES²⁴ (Chrome, Firefox, Safari, Edge - all support SVG 1.1) | ✅ YES (with lottie-web library) | ✅ YES (HTML5 video support universal) | ✅ YES (with Rive runtime) | ✅ YES (Canvas or video output) | ✅ YES, but Chrome deprecated SMIL (still works)²⁵ | ✅ YES (universal CSS animation support) | ✅ YES²⁶ (all modern browsers support Web Animations API) |
 | **Works on iOS and Android mobile devices?** | ✅ YES (using free SVG libraries) | ✅ YES (lottie-ios, lottie-android) | ✅ YES (native video players) | ✅ YES (rive-ios, rive-android) | ✅ YES (video or Canvas) | ✅ YES (but limited, Chrome deprecated SMIL) | ✅ YES (CSS animations supported) | ✅ YES (Web Animations API supported) |
-| **Works across all media (web, print, video editors, apps)?** | ✅ YES! (SVG works everywhere) | ❌ NO, web/mobile only²⁷ (JSON not printable, limited video editor support) | ✅ YES, exports as video (works in all video workflows) | ❌ NO, web/mobile/games only (not printable, limited offline use) | ✅ YES (exports to multiple formats: video, Canvas, static SVG) | ✅ YES (SVG works in all contexts) | ❌ NO, web only²⁸ (CSS requires browser, doesn't print animated, no video editor support) | ❌ NO, web only (JavaScript API requires browser environment) |
+| **Works in video games and console games?** | ✅ YES! (as texture/sprite sequence in Unity, Godot, Unreal, etc.) | ❌ NO (requires web runtime, not available on consoles) | ❌ NO (video format not suitable for games) | ❌ NO (runtime not available on consoles) | ❌ NO (proprietary format, limited console support) | ❌ NO (SMIL not supported in game engines) | ❌ NO (CSS requires browser, not available in games) | ❌ NO (WAAPI requires browser, not available in games) |
+| **Works across multiple platforms (web, video editors, apps)?** | ✅ YES! (SVG works everywhere) | ❌ NO, web/mobile only²⁷ (limited video editor support) | ✅ YES, exports as video (works in all video workflows) | ❌ NO, web/mobile/games only (limited offline use) | ✅ YES (exports to multiple formats: video, Canvas, static SVG) | ✅ YES (SVG works in all contexts) | ❌ NO, web only²⁸ (CSS requires browser, no video editor support) | ❌ NO, web only (JavaScript API requires browser environment) |
 | **Based on official W3C web standard (not proprietary)?** | ✅ YES! (SVG 1.1 and SVG 2.0 are W3C standards) | ❌ NO, open specification²⁹ (JSON spec is open but not W3C standardized) | ❌ NO (community-driven GPL-3.0 format, not official standard) | ❌ NO³⁰ (proprietary Rive format) | ❌ NO (proprietary Adobe formats: FLA, XFL) | ✅ YES (SMIL is part of SVG W3C standard) | ✅ YES (CSS Animations is W3C standard) | ✅ YES (Web Animations API is W3C standard) |
 | **Widely known and familiar to developers?** | 🆕 NEW format (emerging in 2024-2025) | ✅ YES (very popular since 2015) | ❌ NO (niche in animation industry) | ✅ YES, growing rapidly (launched 2020) | ✅ YES (Adobe standard since Flash era) | ✅ YES, but declining (deprecated by Chrome) | ✅ YES (standard web development skill) | ✅ YES, growing (modern API adoption) |
 | **Supported by many software tools and editors?** | 🆕 Growing³¹ (svg2fbf tool, standard SVG editors work) | ✅ YES³² (After Effects, LottieFiles, many exporters) | ✅ YES³³ (Krita, Blender, OpenToonz, After Effects support OCA) | ✅ YES³⁴ (Rive Editor, Figma plugin, growing ecosystem) | ✅ YES (Adobe Animate, many alternative tools) | ✅ YES (any SVG editor: Inkscape, Illustrator, etc.) | ✅ YES (any code editor, CSS authoring tools) | ✅ YES, growing (JavaScript IDEs, animation libraries) |
@@ -277,8 +278,8 @@ These are software applications or platforms for creating animations, not file f
 24. **FBF.SVG Browser Support**: SMIL supported in Chrome, Firefox, Safari, Edge (Chromium-based) - https://caniuse.com/svg-smil
 25. **SMIL Limited Support**: Not supported in Internet Explorer, Edge Legacy - https://caniuse.com/svg-smil (94% global support as of 2024)
 26. **WAAPI Browser Support**: https://caniuse.com/web-animation - 98% global support, polyfill available
-27. **Lottie Medium Limitations**: Requires JavaScript runtime, not usable in print or non-web contexts
-28. **CSS Animation Limitations**: CSS animations only work in browsers, not in print, video editors, or standalone SVG viewers
+27. **Lottie Medium Limitations**: Requires JavaScript runtime, limited to web/mobile contexts
+28. **CSS Animation Limitations**: CSS animations only work in browsers, not in video editors or standalone SVG viewers
 29. **Lottie Standard Status**: JSON format is open, but tightly coupled to After Effects proprietary workflow
 30. **Rive Proprietary**: .riv format is proprietary, though runtimes are open source (MIT)
 

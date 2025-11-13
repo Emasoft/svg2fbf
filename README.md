@@ -83,7 +83,6 @@ FBF.SVG files are **100% standard SVG images** — nothing more, nothing less:
 - Opens in **any web browser** (Chrome, Firefox, Safari, Edge)
 - Opens in **any SVG editor** (Inkscape, Illustrator, Affinity Designer, CorelDRAW)
 - Opens in **any image viewer** that supports SVG
-- Opens in **office software** (PowerPoint, Keynote, Google Slides, LibreOffice)
 - Opens in **video editors** (Premiere, Final Cut, DaVinci Resolve, Kdenlive)
 - Opens in **design tools** (Figma, Sketch, Canva)
 - Works in **mobile apps** (iOS, Android native SVG support)
@@ -100,12 +99,12 @@ This comparison highlights what makes FBF.SVG unique in the web animation ecosys
 
 ### 🏆 FBF.SVG vs. The Competition: Web & Mobile
 
-**One format. Zero code. Works everywhere.** This comparison cherry-picks the TOP competitors across web and mobile to show why FBF.SVG is the clear winner.
+**One format. Zero code. Works everywhere.** This comparison evaluates the most popular alternatives across web and mobile to show why FBF.SVG is superior.
 
 | **What Makes a Great Animation Format?** | **🎯 FBF.SVG** | **Lottie** (Bodymovin) | **OCA** (Open Cel) | **Rive** | **Spine** |
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Output is a standard SVG image file?** | ✅ **YES!** | ❌ NO, outputs JSON | ❌ NO, outputs JSON+PNG | ❌ NO, outputs .riv binary | ❌ NO, outputs binary+atlas |
-| **Compatible with millions of SVG tools?** | ✅ **YES!** (Inkscape, Illustrator, PowerPoint, etc.) | ❌ NO, proprietary format | ❌ NO, limited to animation tools | ❌ NO, proprietary format | ❌ NO, proprietary format |
+| **Compatible with millions of SVG tools?** | ✅ **YES!** (Inkscape, Illustrator, etc.) | ❌ NO, proprietary format | ❌ NO, limited to animation tools | ❌ NO, proprietary format | ❌ NO, proprietary format |
 | **Playable in any app that supports SVG 1.1?** | ✅ **YES!** | ❌ NO, requires JavaScript library | ❌ NO, must export to video first | ❌ NO, requires runtime library | ❌ NO, requires runtime library |
 | **Can artists create without coding?** | ✅ **YES!** | ✅ YES, but requires Adobe After Effects ($275/yr subscription) | ✅ **YES!** using Krita/Blender/OpenToonz | ✅ YES, but free version has feature limits | ✅ YES, but requires purchase ($70-330 one-time) |
 | **Can play without JavaScript?** | ✅ **YES!** | ❌ NO, requires lottie-web.js library | ✅ YES, if exported as video (loses interactivity) | ❌ NO, requires Rive runtime library | ❌ NO, requires Spine runtime library |
@@ -124,7 +123,7 @@ This comparison highlights what makes FBF.SVG unique in the web animation ecosys
 | **Works on web in all browsers?** | ✅ **YES!** natively (no libraries needed) | ✅ YES, requires adding lottie-web.js library (~160KB) | ✅ YES, if exported as video (HTML5 video tag) | ✅ YES, requires adding Rive runtime library | ✅ YES, requires adding Spine runtime library |
 | **Works in iOS mobile apps?** | ✅ **YES!** using free SVG libraries (SVGKit, Macaw, etc.) | ✅ YES, using lottie-ios library | ✅ YES, if exported as video (AVPlayer) | ✅ YES, using rive-ios library | ✅ YES, using spine-ios library |
 | **Works in Android mobile apps?** | ✅ **YES!** using free SVG libraries (AndroidSVG, etc.) | ✅ YES, using lottie-android library | ✅ YES, if exported as video (VideoView) | ✅ YES, using rive-android library | ✅ YES, using spine-android library |
-| **Opens in office software (PowerPoint, Keynote)?** | ✅ **YES!** | ❌ NO | ❌ NO | ❌ NO | ❌ NO |
+| **Works in video games and consoles?** | ✅ **YES!** as texture/sprite sequence (Unity, Godot, Unreal, etc.) | ❌ NO, requires web runtime (not available) | ❌ NO, video format not suitable for games | ❌ NO, runtime not available on consoles | ✅ YES, but Spine is designed for games (requires runtime) |
 | **Imports into video editors (Premiere, Final Cut)?** | ✅ **YES!** as image sequence or direct import | ❌ NO, must convert to video first | ✅ YES, exports as video natively | ❌ NO, must convert to video first | ❌ NO, must convert to video first |
 | **Self-contained single file?** | ✅ **YES!** everything embedded in one SVG | ✅ YES, single JSON file (images as base64) | ❌ NO, JSON + separate PNG frame files | ✅ YES, single .riv file | ❌ NO, binary + separate image atlas file |
 
@@ -134,8 +133,8 @@ This comparison highlights what makes FBF.SVG unique in the web animation ecosys
 - ✅ Is a standard SVG image (not code, not proprietary data)
 - ✅ Requires ZERO code at every stage (create, edit, play)
 - ✅ Costs $0 for everything (tools, runtime, per-app, exports)
-- ✅ Works EVERYWHERE (web, mobile, desktop, video, print)
-- ✅ Opens in millions of applications (Inkscape, Illustrator, PowerPoint, Final Cut, browsers, mobile apps, etc.)
+- ✅ Works EVERYWHERE (web, mobile, desktop, video editors, games)
+- ✅ Opens in millions of applications (Inkscape, Illustrator, Final Cut, browsers, mobile apps, game engines, etc.)
 - ✅ Eliminates need for programmers (artists-only workflow)
 
 **Table Legend:**
@@ -179,11 +178,11 @@ FBF.SVG output is a **perfectly standard SVG image file** — the same format us
 > **"Anything can play an FBF.SVG video. Anything! If it supports SVG 1.1, it can reproduce it!"**
 
 **This means:**
-- ✅ Open it in **Microsoft PowerPoint** — it works
 - ✅ Open it in **Adobe Illustrator** — it works
 - ✅ Open it in **Inkscape** — it works and you can edit it
 - ✅ Open it in **Google Chrome** — it works and animates
 - ✅ Open it in **Final Cut Pro** — it works
+- ✅ Use it in **game engines** (Unity, Godot, etc.) — it works as texture sequence
 - ✅ Send it in an **email** — recipient can open it, no special software
 - ✅ Upload to **any website** — it just works, no code deployment
 - ✅ Import into **any design tool** — Figma, Sketch, Canva, all work
