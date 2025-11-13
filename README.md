@@ -810,7 +810,7 @@ svg2fbf implements a multi-phase transformation pipeline that converts a tempora
 #### FBF File Structure
 
 <p align="center">
-  <img src="docs/fbf_schema.svg" alt="FBF File Structure Schema" width="900"/>
+  <img src="FBF.SVG/fbf_schema.svg" alt="FBF File Structure Schema" width="900"/>
 </p>
 
 **Complete FBF Structure Tree:**
