@@ -5,6 +5,16 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2025-11-13
+
+### Added
+
+- Add automatic browser opening and change default animation to loop
+
+### Fixed
+
+- Change default animation type from 'once' to 'loop'
+
 ## [0.1.5] - 2025-11-13
 
 ### Fixed
@@ -20,10 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - Merge main: Critical fix for input_folder default value
+- Release stable 0.1.5
 
 ### Miscellaneous
 
 - Format validation scripts with ruff
+- Update uv.lock for stable 0.1.5
 
 ## [0.1.4] - 2025-11-13
 
