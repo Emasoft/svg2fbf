@@ -960,6 +960,51 @@ sync_all:
     echo ""
     echo "Current branch: $CURRENT_BRANCH"
     echo ""
+
+    # Fetch latest from all remotes to get accurate commit counts
+    echo "📡 Fetching latest from remote..."
+    git fetch --all --quiet
+    echo ""
+
+    # Check if any branch has commits that current branch doesn't have
+    BRANCHES_AHEAD=()
+    AHEAD_DETAILS=""
+
+    for branch in "${ALL_BRANCHES[@]}"; do
+        if [ "$branch" != "$CURRENT_BRANCH" ]; then
+            # Check if branch exists
+            if git show-ref --verify --quiet "refs/heads/$branch"; then
+                # Count commits in branch that aren't in current branch
+                AHEAD_COUNT=$(git rev-list --count "$CURRENT_BRANCH..$branch" 2>/dev/null || echo "0")
+
+                if [ "$AHEAD_COUNT" -gt 0 ]; then
+                    BRANCHES_AHEAD+=("$branch")
+                    AHEAD_DETAILS+="  ⚠️  $branch has $AHEAD_COUNT commit(s) not in $CURRENT_BRANCH\n"
+
+                    # Show the most recent commit from that branch
+                    LATEST_COMMIT=$(git log --oneline -1 "$branch" 2>/dev/null || echo "unknown")
+                    AHEAD_DETAILS+="      Latest: $LATEST_COMMIT\n"
+                fi
+            fi
+        fi
+    done
+
+    # Display warning if branches are ahead
+    if [ ${#BRANCHES_AHEAD[@]} -gt 0 ]; then
+        echo "⚠️  WARNING: Some branches have newer commits!"
+        echo "════════════════════════════════════════════════════════════"
+        echo -e "$AHEAD_DETAILS"
+        echo "If you continue, these commits will be LOST!"
+        echo ""
+        echo "💡 Consider switching to one of these branches first:"
+        for ahead_branch in "${BRANCHES_AHEAD[@]}"; do
+            echo "   git checkout $ahead_branch && just sync_all"
+        done
+        echo ""
+        echo "════════════════════════════════════════════════════════════"
+        echo ""
+    fi
+
     echo "This will sync the following branches from $CURRENT_BRANCH:"
     echo ""
 
