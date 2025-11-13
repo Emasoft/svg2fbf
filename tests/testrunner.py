@@ -5145,6 +5145,7 @@ def execute_test_session(
         str(generation_card_path),
         "-o",
         str(fbf_output_dir.absolute()),  # Absolute path to run's fbf_output
+        "--no-browser",  # Don't open browser during automated tests
     ]
 
     # Run from project root to avoid uv creating .venv in tests/

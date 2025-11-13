@@ -944,8 +944,76 @@ sync-main:
     echo "   (main and master are identical)"
 
 # ============================================================================
-# Automated Releases
+# Branch Promotions & Releases
 # ============================================================================
+
+# Promote changes through all branches sequentially (dev → testing → review → master)
+# Ensures no branch is left behind - maintains consistent version across all branches
+promote:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔄 Promoting changes through all branches..."
+    echo ""
+    echo "Branch flow: dev → testing → review → master"
+    echo ""
+
+    # Save current branch
+    ORIGINAL_BRANCH=$(git branch --show-current)
+
+    # Function to safely merge
+    merge_branch() {
+        local from=$1
+        local to=$2
+
+        echo "📤 Promoting: $from → $to"
+        git checkout "$to"
+        git pull origin "$to"
+
+        if git merge "$from" --no-edit; then
+            git push origin "$to"
+            echo "  ✅ Successfully promoted to $to"
+        else
+            echo "  ❌ Merge conflict detected in $to"
+            echo "     Please resolve conflicts manually and run:"
+            echo "     git add . && git commit && git push origin $to"
+            exit 1
+        fi
+        echo ""
+    }
+
+    # Promote through all branches
+    echo "1️⃣  Promoting dev → testing..."
+    merge_branch "dev" "testing"
+
+    echo "2️⃣  Promoting testing → review..."
+    merge_branch "testing" "review"
+
+    echo "3️⃣  Promoting review → master..."
+    merge_branch "review" "master"
+
+    echo "4️⃣  Syncing master → main..."
+    git checkout main
+    git pull origin main
+    git reset --hard master
+    git push origin main --force-with-lease
+    echo "  ✅ main synced with master"
+    echo ""
+
+    # Restore original branch
+    echo "🔙 Returning to original branch: $ORIGINAL_BRANCH"
+    git checkout "$ORIGINAL_BRANCH"
+
+    echo ""
+    echo "✅ All branches promoted successfully!"
+    echo ""
+    echo "Branch status:"
+    echo "  dev      ← Development (alpha)"
+    echo "  testing  ← Beta testing"
+    echo "  review   ← Release candidate"
+    echo "  master   ← Stable (production)"
+    echo "  main     ← Mirror of master"
+
 # Run the multi-channel release script to create GitHub releases with auto-generated changelogs
 
 # Release all channels (alpha, beta, rc, stable) to GitHub
