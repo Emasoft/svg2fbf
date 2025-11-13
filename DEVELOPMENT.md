@@ -29,13 +29,18 @@ alpha   beta     rc     stable  (mirror)
 
 ### Branch Workflow Table
 
-| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Clone & Checkout                           | Promotion Command          | Install Command         | Release Type |
+| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Clone & Checkout (gh CLI)                  | Promotion Command          | Install Command         | Release Type |
 |-----------|--------------------------------|----------------|----------|-----------|----------------|--------------------------------------------|----------------------------|-------------------------|--------------|
 | `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `gh repo clone Emasoft/svg2fbf -- -b dev`  | `just promote-to-testing`  | `just install-alpha`    | alpha        |
 | `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `gh repo clone Emasoft/svg2fbf -- -b testing` | `just promote-to-review`   | `just install-beta`     | beta         |
 | `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf -- -b review` | `just promote-to-stable`   | `just install-rc`       | rc           |
 | `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf -- -b master` | (syncs to main)            | `just install-stable`   | stable       |
 | `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf` (default)  | `just sync-main`           | `just install-stable`   | (none)       |
+
+**Note:** `gh repo clone` accepts multiple formats:
+- **Owner/Repo**: `gh repo clone Emasoft/svg2fbf -- -b BRANCH` (shown above)
+- **HTTPS URL**: `gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b BRANCH`
+- **SSH URL**: `gh repo clone git@github.com:Emasoft/svg2fbf.git -- -b BRANCH`
 
 ### Detailed Branch Descriptions
 
@@ -284,17 +289,16 @@ PyPI and GitHub releases exclude large test data (93MB+ of test sessions). Devel
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone the repository (RECOMMENDED: use GitHub CLI)
+# Method 1: Owner/Repo format (shortest)
 gh repo clone Emasoft/svg2fbf
 cd svg2fbf
-
-# Checkout the branch you want to work on
 git checkout dev        # for alpha development (most common)
-# git checkout testing  # for beta testing/debugging
-# git checkout review   # for rc review
-# git checkout master   # for stable releases
 
-# Alternative: Clone and checkout in one command
+# Method 2: Clone and checkout in one command (recommended)
 # gh repo clone Emasoft/svg2fbf -- -b dev
+
+# Method 3: Using full URL
+# gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b dev
 
 # Alternative: standard git clone
 # git clone https://github.com/Emasoft/svg2fbf.git
