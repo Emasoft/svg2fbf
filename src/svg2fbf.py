@@ -33,6 +33,7 @@ import os
 import re
 import sys
 import time
+import traceback
 import urllib.parse
 import uuid
 import warnings
@@ -42,7 +43,8 @@ from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 from decimal import Context, Decimal, InvalidOperation, getcontext
 from functools import partial
-from optparse import OptionParser, Values
+import argparse
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from pstats import SortKey
 from xml.dom import Node
@@ -134,9 +136,7 @@ EPSILON = sys.float_info.epsilon
 FLOAT_RE = re.compile(r"[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?")
 COLOR_RE = re.compile("#?([0-9A-Fa-f]+)$")
 COLOR_RGB_RE = re.compile(r"\s*(rgba?|hsl)\(([^\)]+)\)\s*")
-TRANSFORM_RE = re.compile(
-    r"\s*(translate|scale|rotate|skewX|skewY|matrix)\s*\(([^\)]+)\)\s*"
-)
+TRANSFORM_RE = re.compile(r"\s*(translate|scale|rotate|skewX|skewY|matrix)\s*\(([^\)]+)\)\s*")
 BBox = tuple[float, float, float, float]
 
 
@@ -1562,9 +1562,7 @@ def string2svgtransformations(input):
         return None
 
     def args_err(name, args_len, needs):
-        raise ValueError(
-            f"`{name}` transform requires {args_len} arguments {needs} where given"
-        )
+        raise ValueError(f"`{name}` transform requires {args_len} arguments {needs} where given")
 
     tr = ConcatenatedSVGTransformations()
     input = input.strip().replace(",", " ")
@@ -1884,315 +1882,201 @@ def print_version_only():
     print(SEMVERSION)
 
 
-def setup_command_line_parser():
-    usage = """
-╔══════════════════════════════════════════════════════════════╗
-║                          USAGE                               ║
-╚══════════════════════════════════════════════════════════════╝
+class ColoredHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """
+    Custom help formatter that adds ANSI colors to argparse help output.
 
-  svg2fbf [config.yaml] [options...]
+    Color scheme:
+    - Section headers (USAGE, OPTIONS, etc.): Bright cyan, bold
+    - Option flags (-f, --filename): Bright green
+    - Option metavars (FILENAME, PATH): Yellow
+    - Descriptions: White (default terminal color)
+    - Example commands: Bright yellow
+    - URLs: Bright blue with underline
+    - Version numbers: Bright magenta
+    """
+
+    # ANSI color codes
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+
+    # Foreground colors
+    BLACK = "\033[30m"
+    RED = "\033[31m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[34m"
+    MAGENTA = "\033[35m"
+    CYAN = "\033[36m"
+    WHITE = "\033[37m"
+
+    # Bright foreground colors
+    BRIGHT_BLACK = "\033[90m"
+    BRIGHT_RED = "\033[91m"
+    BRIGHT_GREEN = "\033[92m"
+    BRIGHT_YELLOW = "\033[93m"
+    BRIGHT_BLUE = "\033[94m"
+    BRIGHT_MAGENTA = "\033[95m"
+    BRIGHT_CYAN = "\033[96m"
+    BRIGHT_WHITE = "\033[97m"
+
+    # Text decorations
+    UNDERLINE = "\033[4m"
+
+    def _format_usage(self, usage, actions, groups, prefix):
+        """Format the usage line with colors"""
+        if prefix is None:
+            prefix = f"{self.BOLD}{self.BRIGHT_CYAN}USAGE:{self.RESET} "
+        return super()._format_usage(usage, actions, groups, prefix)
+
+    def _format_action(self, action):
+        """Format each option/argument with colors"""
+        # Get the original formatted action
+        parts = super()._format_action(action).split("\n")
+
+        # Color the option strings (e.g., -f, --filename)
+        colored_parts = []
+        for i, part in enumerate(parts):
+            if i == 0 and part.strip():  # First line with option flags
+                # Color option flags (but only at word boundaries to avoid coloring mid-word hyphens)
+                part = re.sub(r"(?<!\w)(-{1,2}[\w-]+)(?=\s|,|$)", f"{self.BRIGHT_GREEN}\\1{self.RESET}", part)
+                # Color metavars (uppercase words in descriptions)
+                part = re.sub(r"\b([A-Z_]{2,})\b", f"{self.YELLOW}\\1{self.RESET}", part)
+            colored_parts.append(part)
+
+        return "\n".join(colored_parts)
+
+    def start_section(self, heading):
+        """Format section headings with colors"""
+        if heading:
+            heading = f"{self.BOLD}{self.BRIGHT_CYAN}{heading.upper()}{self.RESET}"
+        return super().start_section(heading)
+
+
+def setup_command_line_parser():
+    """
+    Set up the command-line argument parser with colored help output.
+
+    Returns:
+        ArgumentParser: Configured argument parser ready for parsing sys.argv
+    """
+    # Color helper for creating colored text
+    C = ColoredHelpFormatter
+
+    # Create description with colors
+    description = f"""
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+  {C.BOLD}SVG Frame-by-Frame Animation Generator{C.RESET}
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
 
 Creates frame-by-frame SVG animations (FBF format) from a sequence
 of SVG files using SMIL animation.
 
-Simple usage with YAML config:
-  svg2fbf scene_1.yaml
+{C.BOLD}Simplest usage - convert a folder:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf -i svg_frames -o output -f animation.fbf.svg -s 24{C.RESET}
 
-Override YAML settings with CLI options:
-  svg2fbf scene_1.yaml --speed 24.0 --title "My Animation"
+{C.BOLD}Or use a YAML config file:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf scene_1.yaml{C.RESET}
 """
-    cl_parser = OptionParser(usage=usage, add_help_option=False)
+
+    # Create epilog with examples and animation types
+    epilog = f"""
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+  {C.BOLD}{C.BRIGHT_CYAN}EXAMPLES{C.RESET}
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+
+{C.BOLD}Convert a folder of SVG frames:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf -i svg_frames -o output -f animation.fbf.svg -s 24{C.RESET}
+
+{C.BOLD}Loop animation:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf -i frames -o out -f loop.fbf.svg -a loop -s 12{C.RESET}
+
+{C.BOLD}With custom precision:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf -i frames -o out -f anim.fbf.svg -s 30 -d 5 -c 3{C.RESET}
+
+{C.BOLD}Play on click:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf -i frames -o out -f click.fbf.svg -p{C.RESET}
+
+{C.BOLD}Using YAML config file:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf scene_1.yaml{C.RESET}
+
+{C.BOLD}Override YAML settings with CLI options:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf scene_1.yaml --speed 24.0 --title "My Animation"{C.RESET}
+
+{C.BOLD}Traditional --config flag syntax:{C.RESET}
+  {C.BRIGHT_YELLOW}svg2fbf --config scene_1.yaml --speed 12.0{C.RESET}
+
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+  {C.BOLD}{C.BRIGHT_CYAN}ANIMATION TYPES{C.RESET}
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+
+  {C.BRIGHT_GREEN}once{C.RESET}                      → START to END, then STOP
+  {C.BRIGHT_GREEN}once_reversed{C.RESET}             → END to START, then STOP
+  {C.BRIGHT_GREEN}loop{C.RESET}                      → START to END, repeat FOREVER
+  {C.BRIGHT_GREEN}loop_reversed{C.RESET}             → END to START, repeat FOREVER
+  {C.BRIGHT_GREEN}pingpong_once{C.RESET}             → START to END to START, then STOP
+  {C.BRIGHT_GREEN}pingpong_loop{C.RESET}             → START to END to START, repeat FOREVER
+  {C.BRIGHT_GREEN}pingpong_once_reversed{C.RESET}    → END to START to END, then STOP
+  {C.BRIGHT_GREEN}pingpong_loop_reversed{C.RESET}    → END to START to END, repeat FOREVER
+
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+  For more information: {C.BRIGHT_BLUE}{C.UNDERLINE}https://github.com/Emasoft/svg2fbf{C.RESET}
+{C.BRIGHT_CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{C.RESET}
+"""
+
+    # Create parser with custom formatter
+    parser = ArgumentParser(
+        prog="svg2fbf",
+        description=description,
+        epilog=epilog,
+        formatter_class=ColoredHelpFormatter,
+        add_help=False,  # We'll add custom help option
+    )
+
+    # Positional argument for YAML config
+    parser.add_argument("config_file", nargs="?", help="YAML configuration file (optional)", metavar="CONFIG.YAML")
 
     # Version and help options
-    cl_parser.add_option(
-        "-v",
-        "--version",
-        action="store_true",
-        dest="show_version",
-        help="show version number and exit",
-        default=False,
-    )
-    cl_parser.add_option(
-        "-h",
-        "--help",
-        action="store_true",
-        dest="show_help",
-        help="show this help message and exit",
-        default=False,
-    )
+    parser.add_argument("-v", "--version", action="store_true", dest="show_version", help="show version number and exit", default=False)
+    parser.add_argument("-h", "--help", action="store_true", dest="show_help", help="show this help message and exit", default=False)
 
     # File options
-    cl_parser.add_option(
-        "-f",
-        "--filename",
-        dest="output_filename",
-        help="📄 define output filename (default: animation.fbf.svg)",
-        default="animation.fbf.svg",
-    )
-    cl_parser.add_option(
-        "-o",
-        "--output_path",
-        dest="output_path",
-        help="📁 output path for the resulting FBF animation file (default: ./)",
-        default="./",
-    )
-    cl_parser.add_option(
-        "-i",
-        "--input_folder",
-        dest="input_folder",
-        help="📂 input folder containing SVG frames (default: svg_frames/)",
-        default="svg_frames/",
-    )
-    cl_parser.add_option(
-        "-s",
-        "--speed",
-        dest="fps",
-        help="⏱️  frame rate in frames per second (default: 1.0)",
-        type="float",
-        default=1.0,
-    )
-    cl_parser.add_option(
-        "-a",
-        "--animation_type",
-        type="choice",
-        action="store",
-        choices=TYPE_CHOICES,
-        dest="animation_type",
-        default="once",
-        help=(
-            "🎞️  animation type: once, loop, pingpong_once, pingpong_loop, etc. (default: once)"
-        ),
-    )
-    cl_parser.add_option(
-        "-m",
-        "--max_frames",
-        dest="max_frames",
-        help="🔢 limit the maximum number of SVG files to load",
-        type="int",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--keep-xml-space",
-        action="store_true",
-        dest="keep_xml_space_attribute",
-        default=False,
-        help=(
-            'won\'t remove the xml:space="preserve" attribute from the root SVG element'
-        ),
-    )
-    cl_parser.add_option(
-        "--no-keep-ratio",
-        action="store_true",
-        dest="no_keep_ratio",
-        default=False,
-        help=(
-            "don't add preserveAspectRatio attribute to the output SVG (useful for animations with negative viewBox coordinates)"
-        ),
-    )
-    cl_parser.add_option(
-        "--align-mode",
-        type="choice",
-        action="store",
-        choices=["top-left", "center"],
-        dest="align_mode",
-        default="center",
-        help=(
-            "📐 alignment mode for fitting frames: 'center' (default, matches preserveAspectRatio='xMidYMid meet') or 'top-left'"
-        ),
-    )
-    cl_parser.add_option(
-        "-p",
-        "--play_on_click",
-        action="store_true",
-        dest="play_on_click",
-        default=False,
-        help=(
-            "make the svg animation start on click (require the 'object' tag instead of the 'img' tag in the html)"
-        ),
-    )
-    cl_parser.add_option(
-        "-b",
-        "--backdrop",
-        dest="backdrop",
-        help=(
-            "path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)"
-        ),
-        default="None",
-    )
-    cl_parser.add_option(
-        "-d",
-        "--digits",
-        dest="digits",
-        help="🔬 coordinate precision in significant digits (default: 28)",
-        type="int",
-        default=28,
-    )
-    cl_parser.add_option(
-        "-c",
-        "--cdigits",
-        dest="cdigits",
-        help="🔬 control point precision in significant digits (default: 28)",
-        type="int",
-        default=28,
-    )
-    cl_parser.add_option(
-        "-q",
-        "--quiet",
-        action="store_true",
-        dest="quiet_mode",
-        help="🔇 don't print status messages to stdout",
-        default=False,
-    )
-    cl_parser.add_option(
-        "-r",
-        "--copyright",
-        action="store_true",
-        dest="show_copyright_info",
-        help="⚖️  show legal information and exit",
-        default=False,
-    )
+    parser.add_argument("-f", "--filename", dest="output_filename", help="📄 define output filename (default: animation.fbf.svg)", default="animation.fbf.svg", metavar="FILENAME")
+    parser.add_argument("-o", "--output_path", dest="output_path", help="📁 output path for the resulting FBF animation file (default: ./)", default="./", metavar="PATH")
+    parser.add_argument("-i", "--input_folder", dest="input_folder", help="📂 input folder containing SVG frames (default: svg_frames/)", default="svg_frames/", metavar="FOLDER")
+    parser.add_argument("-s", "--speed", dest="fps", type=float, help="⏱️  frame rate in frames per second (default: 1.0)", default=1.0, metavar="FPS")
+    parser.add_argument("-a", "--animation_type", choices=TYPE_CHOICES, dest="animation_type", default="once", help="🎞️  animation type: once, loop, pingpong_once, pingpong_loop, etc. (default: once)", metavar="TYPE")
+    parser.add_argument("-m", "--max_frames", dest="max_frames", type=int, help="🔢 limit the maximum number of SVG files to load", default=None, metavar="N")
+    parser.add_argument("--keep-xml-space", action="store_true", dest="keep_xml_space_attribute", default=False, help='won\'t remove the xml:space="preserve" attribute from the root SVG element')
+    parser.add_argument("--no-keep-ratio", action="store_true", dest="no_keep_ratio", default=False, help="don't add preserveAspectRatio attribute to the output SVG (useful for animations with negative viewBox coordinates)")
+    parser.add_argument("--align-mode", choices=["top-left", "center"], dest="align_mode", default="center", help="📐 alignment mode for fitting frames: 'center' (default, matches preserveAspectRatio='xMidYMid meet') or 'top-left'", metavar="MODE")
+    parser.add_argument("-p", "--play_on_click", action="store_true", dest="play_on_click", default=False, help="make the svg animation start on click (require the 'object' tag instead of the 'img' tag in the html)")
+    parser.add_argument("-b", "--backdrop", dest="backdrop", help="path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)", default="None", metavar="IMAGE")
+    parser.add_argument("-d", "--digits", dest="digits", type=int, help="🔬 coordinate precision in significant digits (default: 28)", default=28, metavar="N")
+    parser.add_argument("-c", "--cdigits", dest="cdigits", type=int, help="🔬 control point precision in significant digits (default: 28)", default=28, metavar="N")
+    parser.add_argument("-q", "--quiet", action="store_true", dest="quiet_mode", help="🔇 don't print status messages to stdout", default=False)
+    parser.add_argument("-r", "--copyright", action="store_true", dest="show_copyright_info", help="⚖️  show legal information and exit", default=False)
 
     # Metadata options - Authoring & Provenance
-    cl_parser.add_option(
-        "--title",
-        dest="title",
-        help="📝 animation title",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--episode-number",
-        dest="episode_number",
-        help="🎬 episode number in series",
-        type="int",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--episode-title",
-        dest="episode_title",
-        help="🎬 episode-specific title",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--creators",
-        dest="creators",
-        help=(
-            "👥 current animation creators, comma-separated (e.g., 'John Doe, Jane Smith')"
-        ),
-        default=None,
-    )
-    cl_parser.add_option(
-        "--original-creators",
-        dest="original_creators",
-        help="👥 original content creators",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--copyrights",
-        dest="copyrights",
-        help="© copyright statement (e.g., '© 2025 Company Name')",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--website",
-        dest="website",
-        help="🌐 official website or info page URL",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--language",
-        dest="language",
-        help="🌍 content language code (e.g., 'en', 'it', 'fr')",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--original-language",
-        dest="original_language",
-        help="🌍 original production language (e.g., 'en-US', 'it-IT')",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--keywords",
-        dest="keywords",
-        help="🏷️  search keywords, comma-separated (e.g., 'animation, cartoon, comedy')",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--description",
-        dest="description",
-        help="📄 animation description or synopsis",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--rights",
-        dest="rights",
-        help="⚖️  license or usage rights (e.g., 'CC BY-SA 4.0', 'All Rights Reserved')",
-        default=None,
-    )
-    cl_parser.add_option(
-        "--source",
-        dest="source",
-        help="🎨 original source software or tool used to create the animation",
-        default=None,
-    )
+    metadata_group = parser.add_argument_group("metadata options")
+    metadata_group.add_argument("--title", dest="title", help="📝 animation title", default=None, metavar="TITLE")
+    metadata_group.add_argument("--episode-number", dest="episode_number", type=int, help="🎬 episode number in series", default=None, metavar="N")
+    metadata_group.add_argument("--episode-title", dest="episode_title", help="🎬 episode-specific title", default=None, metavar="TITLE")
+    metadata_group.add_argument("--creators", dest="creators", help="👥 current animation creators, comma-separated (e.g., 'John Doe, Jane Smith')", default=None, metavar="NAMES")
+    metadata_group.add_argument("--original-creators", dest="original_creators", help="👥 original content creators", default=None, metavar="NAMES")
+    metadata_group.add_argument("--copyrights", dest="copyrights", help="© copyright statement (e.g., '© 2025 Company Name')", default=None, metavar="TEXT")
+    metadata_group.add_argument("--website", dest="website", help="🌐 official website or info page URL", default=None, metavar="URL")
+    metadata_group.add_argument("--language", dest="language", help="🌍 content language code (e.g., 'en', 'it', 'fr')", default=None, metavar="CODE")
+    metadata_group.add_argument("--original-language", dest="original_language", help="🌍 original production language (e.g., 'en-US', 'it-IT')", default=None, metavar="CODE")
+    metadata_group.add_argument("--keywords", dest="keywords", help="🏷️  search keywords, comma-separated (e.g., 'animation, cartoon, comedy')", default=None, metavar="WORDS")
+    metadata_group.add_argument("--description", dest="description", help="📄 animation description or synopsis", default=None, metavar="TEXT")
+    metadata_group.add_argument("--rights", dest="rights", help="⚖️  license or usage rights (e.g., 'CC BY-SA 4.0', 'All Rights Reserved')", default=None, metavar="TEXT")
+    metadata_group.add_argument("--source", dest="source", help="🎨 original source software or tool used to create the animation", default=None, metavar="SOFTWARE")
 
     # Configuration file option
-    cl_parser.add_option(
-        "--config",
-        dest="config",
-        help="⚙️  path to YAML configuration file containing metadata and options",
-        default=None,
-    )
+    parser.add_argument("--config", dest="config", help="⚙️  path to YAML configuration file containing metadata and options", default=None, metavar="FILE")
 
-    cl_parser.epilog = """
-╔══════════════════════════════════════════════════════════════╗
-║                         EXAMPLES                             ║
-╚══════════════════════════════════════════════════════════════╝
-
-Simple usage with YAML config:
-  svg2fbf scene_1.yaml
-
-Override YAML settings with CLI options:
-  svg2fbf scene_1.yaml --speed 24.0 --title "My Animation"
-
-Traditional usage with --config flag:
-  svg2fbf --config scene_1.yaml --speed 12.0
-
-Basic usage without config:
-  svg2fbf -i svg_frames -o output -f animation.fbf.svg -s 24
-
-With custom precision:
-  svg2fbf -i frames -o out -f anim.fbf.svg -s 30 -d 5 -c 3
-
-Loop animation:
-  svg2fbf -i frames -o out -f loop.fbf.svg -a loop -s 12
-
-Play on click:
-  svg2fbf -i frames -o out -f click.fbf.svg -p
-
-╔══════════════════════════════════════════════════════════════╗
-║                   ANIMATION TYPES                            ║
-╚══════════════════════════════════════════════════════════════╝
-
-  once                      → START to END, then STOP
-  once_reversed             → END to START, then STOP
-  loop                      → START to END, repeat FOREVER
-  loop_reversed             → END to START, repeat FOREVER
-  pingpong_once             → START to END to START, then STOP
-  pingpong_loop             → START to END to START, repeat FOREVER
-  pingpong_once_reversed    → END to START to END, then STOP
-  pingpong_loop_reversed    → END to START to END, repeat FOREVER
-
-╔══════════════════════════════════════════════════════════════╗
-║  For more information: https://github.com/Emasoft/svg2fbf    ║
-╚══════════════════════════════════════════════════════════════╝
-"""
-
-    # TODO
-    # Add options for indenting. Example:
-    #    if options.indent_type not in ['tab', 'space', 'none']:
-    #    _options_parser.error("Invalid value for --indent, see --help")
-
-    return cl_parser
+    return parser
 
 
 ###################################################
@@ -2279,7 +2163,7 @@ def merge_config_with_cli(yaml_config, cli_options):
 
     Args:
         yaml_config: Dictionary loaded from YAML file (or None)
-        cli_options: Parsed CLI options object from optparse
+        cli_options: Parsed CLI options object from argparse (Namespace)
 
     Returns:
         Updated cli_options object with YAML values applied where CLI didn't specify
@@ -2349,9 +2233,7 @@ def merge_config_with_cli(yaml_config, cli_options):
     if "align_mode" in gen_params and cli_options.align_mode == "center":
         align_mode_value = gen_params["align_mode"]
         if align_mode_value not in ["top-left", "center"]:
-            add2log(
-                f"WARNING: Invalid align_mode '{align_mode_value}' in YAML config. Using default 'center'."
-            )
+            add2log(f"WARNING: Invalid align_mode '{align_mode_value}' in YAML config. Using default 'center'.")
         else:
             cli_options.align_mode = align_mode_value
     if "quiet" in gen_params and not cli_options.quiet_mode:
@@ -2527,6 +2409,14 @@ def add2log(txt=""):
     log += "\r" + txt + "\n\r"
 
 
+def print_log_and_exit(exit_code=1):
+    """Print the accumulated error log and exit with the given code."""
+    global log
+    if log is not None:
+        ppp(log)
+    sys.exit(exit_code)
+
+
 # simple function to remove prefixes
 # (TODO: check if python is > v3.9 and use standard
 # function remove_prefixes). Also if you know the number
@@ -2557,7 +2447,7 @@ def truncDec(dec: Decimal, digits: int) -> decimal.Decimal:
 # global variables
 log = None
 current_filepath = None
-options: Values | None = None
+options: Namespace | None = None
 scouringContext: Context | None = None
 scouringContextC: Context | None = None
 
@@ -2649,9 +2539,7 @@ def detect_mesh_gradients(svg_files):
                     return True
         except OSError as e:
             # WHY: Gracefully handle file read errors, continue with other files
-            add2log(
-                f"WARNING: Could not read {svg_file} for mesh gradient detection: {e}"
-            )
+            add2log(f"WARNING: Could not read {svg_file} for mesh gradient detection: {e}")
             continue
 
     return False
@@ -2680,9 +2568,7 @@ def detect_embedded_images(svg_files):
     # WHY: Pattern matches data URIs with base64-encoded images in image elements
     # Supports both xlink:href and href attributes (SVG 1.1 and SVG 2.0)
     # Also handles namespaced svg:image elements
-    embedded_image_pattern = re.compile(
-        r'<(?:svg:)?image[^>]*(?:xlink:)?href\s*=\s*["\']data:image/', re.IGNORECASE
-    )
+    embedded_image_pattern = re.compile(r'<(?:svg:)?image[^>]*(?:xlink:)?href\s*=\s*["\']data:image/', re.IGNORECASE)
 
     for svg_file in svg_files:
         try:
@@ -2694,9 +2580,7 @@ def detect_embedded_images(svg_files):
                 if embedded_image_pattern.search(content):
                     return True
         except OSError as e:
-            add2log(
-                f"WARNING: Could not read {svg_file} for embedded image detection: {e}"
-            )
+            add2log(f"WARNING: Could not read {svg_file} for embedded image detection: {e}")
             continue
 
     return False
@@ -2724,9 +2608,7 @@ def detect_css_classes(svg_files):
     # WHY: Pattern matches class attributes with non-empty, non-whitespace values
     # Avoids false positives from empty class="" or class="   " attributes
     # Must contain at least one non-whitespace character
-    css_class_pattern = re.compile(
-        r'\sclass\s*=\s*["\'][^"\'\s]+[^"\']*["\']', re.IGNORECASE
-    )
+    css_class_pattern = re.compile(r'\sclass\s*=\s*["\'][^"\'\s]+[^"\']*["\']', re.IGNORECASE)
 
     for svg_file in svg_files:
         try:
@@ -2786,9 +2668,7 @@ def detect_external_fonts(svg_files):
                     if pattern.search(content):
                         return True
         except OSError as e:
-            add2log(
-                f"WARNING: Could not read {svg_file} for external font detection: {e}"
-            )
+            add2log(f"WARNING: Could not read {svg_file} for external font detection: {e}")
             continue
 
     return False
@@ -2834,9 +2714,7 @@ def detect_external_media(svg_files):
                 if external_media_pattern.search(content):
                     return True
         except OSError as e:
-            add2log(
-                f"WARNING: Could not read {svg_file} for external media detection: {e}"
-            )
+            add2log(f"WARNING: Could not read {svg_file} for external media detection: {e}")
             continue
 
     return False
@@ -3178,9 +3056,7 @@ def applyStyleRuleToElementsByTag(rule, tag):
                 corr_propname = CSS_TO_SVG_DICT.get(propname.strip())
                 if corr_propname.isspace() is False:
                     if node.hasAttribute(corr_propname.strip()) is False:
-                        node.setAttribute(
-                            corr_propname.strip(), rule["properties"][propname].strip()
-                        )
+                        node.setAttribute(corr_propname.strip(), rule["properties"][propname].strip())
 
 
 def generate_fbfsvg_animation():
@@ -3310,9 +3186,7 @@ def generate_fbfsvg_animation():
             # Why: No explicit frames specified, discover all SVG files
             # in folder
             if svginputpath is None:
-                raise ValueError(
-                    "No input folder specified and no explicit frames provided in YAML config"
-                )
+                raise ValueError("No input folder specified and no explicit frames provided in YAML config")
             for entry in svginputpath.iterdir():
                 if entry.is_file():
                     filepath = str(entry)
@@ -3326,9 +3200,7 @@ def generate_fbfsvg_animation():
                             # Validate each SVG file
                             with open(filepath, "rb") as f:
                                 header = f.read(5)
-                                if header.startswith(b"<?xml") or header.startswith(
-                                    b"<svg "
-                                ):
+                                if header.startswith(b"<?xml") or header.startswith(b"<svg "):
                                     # Check for incompatible SVG content
                                     # Why: FBF.SVG is for static frame-by-frame
                                     # animations. SMIL animations, JavaScript,
@@ -3342,23 +3214,17 @@ def generate_fbfsvg_animation():
                                                     "SMIL animation",
                                                 )
                                             )
-                                            add2log(
-                                                f"Skipping frame with SMIL animation: {os.path.basename(filepath)}"
-                                            )
+                                            add2log(f"Skipping frame with SMIL animation: {os.path.basename(filepath)}")
                                         # Check for JavaScript (with exceptions
                                         # for polyfills)
-                                        elif contains_javascript(
-                                            filepath, exceptions=JAVASCRIPT_EXCEPTIONS
-                                        ):
+                                        elif contains_javascript(filepath, exceptions=JAVASCRIPT_EXCEPTIONS):
                                             skipped_animations.append(
                                                 (
                                                     os.path.basename(filepath),
                                                     "JavaScript/scripting",
                                                 )
                                             )
-                                            add2log(
-                                                f"Skipping frame with JavaScript: {os.path.basename(filepath)}"
-                                            )
+                                            add2log(f"Skipping frame with JavaScript: {os.path.basename(filepath)}")
                                         # Check for nested SVG elements
                                         elif contains_nested_svg(filepath):
                                             skipped_animations.append(
@@ -3367,9 +3233,7 @@ def generate_fbfsvg_animation():
                                                     "nested SVG",
                                                 )
                                             )
-                                            add2log(
-                                                f"Skipping frame with nested SVG: {os.path.basename(filepath)}"
-                                            )
+                                            add2log(f"Skipping frame with nested SVG: {os.path.basename(filepath)}")
                                         # Check for multimedia elements
                                         elif contains_media_elements(filepath):
                                             skipped_animations.append(
@@ -3378,9 +3242,7 @@ def generate_fbfsvg_animation():
                                                     "multimedia",
                                                 )
                                             )
-                                            add2log(
-                                                f"Skipping frame with multimedia elements: {os.path.basename(filepath)}"
-                                            )
+                                            add2log(f"Skipping frame with multimedia elements: {os.path.basename(filepath)}")
                                         else:
                                             # File passed all filters
                                             unsorted_input_svg_paths.append(str(entry))
@@ -3389,9 +3251,7 @@ def generate_fbfsvg_animation():
                                         # it anyway
                                         unsorted_input_svg_paths.append(str(entry))
                                 else:
-                                    add2log(
-                                        f"WARNING: Skipping invalid SVG file: {filepath}"
-                                    )
+                                    add2log(f"WARNING: Skipping invalid SVG file: {filepath}")
                         except OSError as e:
                             add2log(f"WARNING: Cannot read file {filepath}: {str(e)}")
 
@@ -3436,9 +3296,7 @@ def generate_fbfsvg_animation():
             # Calculate padding for version line (44 chars wide between borders)
             version_text = f"Version {SEMVERSION}"
             padding = (44 - len(version_text)) // 2
-            version_line = (
-                " " * padding + version_text + " " * (44 - padding - len(version_text))
-            )
+            version_line = " " * padding + version_text + " " * (44 - padding - len(version_text))
             ppp(" ║" + version_line + "║ ")
             ppp(" ║" + " " * 44 + "║ ")
             ppp(" ╚" + "═" * 44 + "╝ ")
@@ -3503,12 +3361,8 @@ def generate_fbfsvg_animation():
         # Why: Document animation characteristics for proper playback
         metadata_dict["frameCount"] = max_frame_num  # Number of frames to process
         metadata_dict["fps"] = options.fps  # Frames per second
-        metadata_dict["duration"] = round(
-            max_frame_num / options.fps, 3
-        )  # Total duration in seconds
-        metadata_dict["playbackMode"] = (
-            options.animation_type
-        )  # Animation mode (loop, once, pingpong, etc.)
+        metadata_dict["duration"] = round(max_frame_num / options.fps, 3)  # Total duration in seconds
+        metadata_dict["playbackMode"] = options.animation_type  # Animation mode (loop, once, pingpong, etc.)
 
         # Generator information
         # Why: Track tool version for compatibility and debugging
@@ -3533,17 +3387,11 @@ def generate_fbfsvg_animation():
         # Why: Document special FBF features and options used
         # hasBackdropImage: true only if user provided external backdrop image
         # file via --backdrop flag
-        metadata_dict["hasBackdropImage"] = (
-            options.backdrop is not None and options.backdrop != "None"
-        )
+        metadata_dict["hasBackdropImage"] = options.backdrop is not None and options.backdrop != "None"
         metadata_dict["hasInteractivity"] = options.play_on_click
-        metadata_dict["interactivityType"] = (
-            "click_to_start" if options.play_on_click else "none"
-        )
+        metadata_dict["interactivityType"] = "click_to_start" if options.play_on_click else "none"
         metadata_dict["keepXmlSpace"] = options.keep_xml_space_attribute
-        metadata_dict["sourceFramesPath"] = (
-            str(options.input_folder) if options.input_folder else None
-        )
+        metadata_dict["sourceFramesPath"] = str(options.input_folder) if options.input_folder else None
 
         # Note: Canvas dimensions (width, height, viewBox) will be added after
         # first frame is processed because they depend on the first frame's
@@ -3597,9 +3445,7 @@ def generate_fbfsvg_animation():
             # (the entire animation will use that)
             if index == 0:
                 # set the output viewBox values based on first frame
-                (vbXdoc, vbYdoc, vbWdoc, vbHdoc, wdoc, hdoc) = getViewBox(
-                    input_svg, options
-                )
+                (vbXdoc, vbYdoc, vbWdoc, vbHdoc, wdoc, hdoc) = getViewBox(input_svg, options)
                 # CRITICAL: Must preserve first frame's viewBox offset
                 # (X, Y coordinates)
                 # The first frame establishes the canonical coordinate system
@@ -3638,15 +3484,10 @@ def generate_fbfsvg_animation():
                 # we check if the namespace of the documentElement is right
                 # otherwise we exit the script
                 if xml_output_svg.namespaceURI != NS["SVG"]:
-                    ppp(
-                        "ERROR: namespaceURI of the default empty document is not SVG "
-                        + xml_output_svg.namespaceURI
-                    )
+                    ppp("ERROR: namespaceURI of the default empty document is not SVG " + xml_output_svg.namespaceURI)
                     sys.exit()
                 xml_output_defs = xml_output_doc.getElementsByTagName("defs")[0]
-                xml_output_shared = ElementByIdAndTag(
-                    "SHARED_DEFINITIONS", "g", xml_output_defs
-                )
+                xml_output_shared = ElementByIdAndTag("SHARED_DEFINITIONS", "g", xml_output_defs)
                 elementsInputHashDict = {}
                 elementsOutputHashDict = {}
 
@@ -3670,9 +3511,7 @@ def generate_fbfsvg_animation():
             # we rename all ids adding "_FBF" + current svg frame number
             #
             postfix = paddedNum(index + 1, number_of_digits)
-            renaming_all_ids_with_frame_number_postfix(
-                input_svg, "", options, "_FBF0" + postfix
-            )
+            renaming_all_ids_with_frame_number_postfix(input_svg, "", options, "_FBF0" + postfix)
 
             frame_num = postfix
 
@@ -3698,9 +3537,7 @@ def generate_fbfsvg_animation():
             inputReferencingElementsDict = findReferencedElements(input_svg)
 
             # remove duplicates from input (call this only after findReferencedElements)
-            remove_duplicates_elements(
-                input_svg, elementsInputHashDict, inputReferencingElementsDict
-            )
+            remove_duplicates_elements(input_svg, elementsInputHashDict, inputReferencingElementsDict)
 
             # Shallow reuse for non renderable elements.
             # Non renderable elements must not be replaced by use,
@@ -3756,9 +3593,7 @@ def generate_fbfsvg_animation():
             )
 
             # Get the frame group element
-            current_frame_group = ElementByIdAndTag(
-                "FRAME0" + frame_num, "g", xml_output_doc
-            )
+            current_frame_group = ElementByIdAndTag("FRAME0" + frame_num, "g", xml_output_doc)
 
             # SMART INHERITANCE: Apply presentation attributes from SVG root
             # to child elements that don't already have them
@@ -3797,16 +3632,11 @@ def generate_fbfsvg_animation():
 
             # Apply inherited attributes to children that lack them
             if inherited_attrs:
-                apply_inherited_attributes_to_children(
-                    current_frame_group, inherited_attrs
-                )
+                apply_inherited_attributes_to_children(current_frame_group, inherited_attrs)
             if framerules is not None:
                 for rule in framerules:
                     for propname in rule["properties"]:
-                        if (
-                            propname.isspace() is False
-                            and propname.strip() in CSS_TO_SVG_DICT
-                        ):
+                        if propname.isspace() is False and propname.strip() in CSS_TO_SVG_DICT:
                             corr_propname = CSS_TO_SVG_DICT.get(propname.strip())
                             if corr_propname.isspace() is False:
                                 fix_svg_attribute(
@@ -3815,9 +3645,7 @@ def generate_fbfsvg_animation():
                                     current_frame_group,
                                     add_warning=False,
                                 )
-            add_transform_to_match_input_frame_viewbox(
-                input_svg, output_vbstring, current_frame_group
-            )
+            add_transform_to_match_input_frame_viewbox(input_svg, output_vbstring, current_frame_group)
 
             # MEMORY CLEANUP
             # free the memory to make space for the next frame
@@ -3826,16 +3654,23 @@ def generate_fbfsvg_animation():
             framerules = None
             style_rules_for_elements = None
             input_svg = None
-            input_doc.unlink()
+            # Why: Wrap unlink() in try-except to handle Python DOM bug with namespaced attributes
+            # Bug: Python's xml.dom.minidom.unlink() fails with KeyError when unlinking elements
+            # with namespaced attributes like xlink:href because it tries to delete 'href'
+            # instead of the full namespaced name from _attrs dict
+            try:
+                input_doc.unlink()
+            except KeyError:
+                # If unlink() fails due to namespaced attribute bug, just skip it
+                # The memory will be freed by Python's garbage collector anyway
+                pass
 
         current_filepath = None
 
         # STEP 7
         # setup the 'animation_backdrop' group with a background rectangle
         # (or image) with the same size of the frames
-        animation_backdrop = ElementByIdAndTag(
-            "ANIMATION_BACKDROP", "g", xml_output_doc
-        )
+        animation_backdrop = ElementByIdAndTag("ANIMATION_BACKDROP", "g", xml_output_doc)
 
         # STEP 7.1: Add backdrop image/SVG to STAGE_BACKGROUND if provided
         if options.backdrop is not None and options.backdrop != "None":
@@ -3844,9 +3679,7 @@ def generate_fbfsvg_animation():
             if not backdrop_path.exists():
                 ppp(f"WARNING: Backdrop file not found: {backdrop_path}")
             else:
-                stage_background = ElementByIdAndTag(
-                    "STAGE_BACKGROUND", "g", xml_output_doc
-                )
+                stage_background = ElementByIdAndTag("STAGE_BACKGROUND", "g", xml_output_doc)
 
                 if stage_background is not None:
                     backdrop_ext = backdrop_path.suffix.lower()
@@ -3862,9 +3695,7 @@ def generate_fbfsvg_animation():
                             # Wrap backdrop content in transform group
                             # (modifies in-place)
                             target_viewbox = (vbXdoc, vbYdoc, vbWdoc, vbHdoc)
-                            create_scaled_group_for_svg(
-                                backdrop_root, target_viewbox, align_mode="center"
-                            )
+                            create_scaled_group_for_svg(backdrop_root, target_viewbox, align_mode="center")
 
                             # Now backdrop_root contains a wrapper group
                             # with transform
@@ -3874,12 +3705,8 @@ def generate_fbfsvg_animation():
                                 if child.nodeType == child.ELEMENT_NODE:
                                     # The wrapper group will be copied here
                                     if child.nodeName == "g":
-                                        imported_node = xml_output_doc.importNode(
-                                            child, deep=True
-                                        )
-                                        imported_node.setAttribute(
-                                            "id", "BACKDROP_CONTENT"
-                                        )
+                                        imported_node = xml_output_doc.importNode(child, deep=True)
+                                        imported_node.setAttribute("id", "BACKDROP_CONTENT")
                                         stage_background.appendChild(imported_node)
                                         break
 
@@ -3918,12 +3745,8 @@ def generate_fbfsvg_animation():
                             image_elem.setAttribute("y", str(vbYdoc))
                             image_elem.setAttribute("width", str(vbWdoc))
                             image_elem.setAttribute("height", str(vbHdoc))
-                            image_elem.setAttribute(
-                                "href", f"data:{mime_type};base64,{img_base64}"
-                            )
-                            image_elem.setAttribute(
-                                "preserveAspectRatio", "xMidYMid slice"
-                            )
+                            image_elem.setAttribute("href", f"data:{mime_type};base64,{img_base64}")
+                            image_elem.setAttribute("preserveAspectRatio", "xMidYMid slice")
 
                             stage_background.appendChild(image_elem)
                             ppp(f"✓ Added bitmap backdrop from {backdrop_path.name}")
@@ -3953,12 +3776,8 @@ def generate_fbfsvg_animation():
 
         frames = ";".join(frames_sequence_ids)
         framesReversed = ";".join(reversed(frames_sequence_ids))
-        framesPingPong = ";".join(
-            frames_sequence_ids + list(reversed(frames_sequence_ids))[1:]
-        )
-        framesPingPongReversed = ";".join(
-            list(reversed(frames_sequence_ids)) + frames_sequence_ids[1:]
-        )
+        framesPingPong = ";".join(frames_sequence_ids + list(reversed(frames_sequence_ids))[1:])
+        framesPingPongReversed = ";".join(list(reversed(frames_sequence_ids)) + frames_sequence_ids[1:])
 
         proskenion = ElementByIdAndTag("PROSKENION", "use", xml_output_doc)
         if proskenion is None:
@@ -3968,9 +3787,7 @@ def generate_fbfsvg_animation():
         animElem = proskenion.getElementsByTagName("animate")[0]
 
         if animElem is None:
-            ppp(
-                "ERROR: cannot find the animation node of the proskenion use element. Exiting."
-            )
+            ppp("ERROR: cannot find the animation node of the proskenion use element. Exiting.")
             sys.exit(1)
 
         # proskenion.setAttribute("width", str(vbWdoc) + "px")
@@ -4032,25 +3849,19 @@ def generate_fbfsvg_animation():
 
         outputReferencingElementsDict = findReferencedElements(xml_output_svg)
         elementsOutputHashDict = generateHashKeyDictionary(xml_output_svg)
-        remove_duplicates_elements(
-            xml_output_svg, elementsOutputHashDict, outputReferencingElementsDict
-        )
+        remove_duplicates_elements(xml_output_svg, elementsOutputHashDict, outputReferencingElementsDict)
         Minor_Optimize_SVG_Helper(xml_output_doc, options)
 
         # let's format the svg to make it prettier
         # TODO: add option to minify
-        pretty_serialized_output_xml = serialize_svg_doc_to_string(
-            xml_output_doc, options
-        )
+        pretty_serialized_output_xml = serialize_svg_doc_to_string(xml_output_doc, options)
 
         # Inject mesh gradient polyfill (conditional - only if meshgradient
         # elements are present)
         # Why: Ensures cross-browser mesh gradient support (only permitted
         # JavaScript in FBF)
         # Why: Saves ~16KB when no mesh gradients are used
-        pretty_serialized_output_xml = inject_mesh_gradient_polyfill(
-            pretty_serialized_output_xml
-        )
+        pretty_serialized_output_xml = inject_mesh_gradient_polyfill(pretty_serialized_output_xml)
 
         # prepare output file path
         output_filepath = os.path.join(options.output_path, options.output_filename)
@@ -4080,7 +3891,9 @@ def generate_fbfsvg_animation():
 
     except Exception as e:
         add2log(f"ERROR: {str(e)}")
-        sys.exit(1)
+        add2log("\nFull traceback:")
+        add2log(traceback.format_exc())
+        print_log_and_exit(1)
     finally:
         # Cleanup temporary files
         if "temp_output" in locals():
@@ -4218,15 +4031,9 @@ def isNon0Val(val):
         return False
 
 
-def add_transform_to_match_input_frame_viewbox(
-    docElement, output_vbstring, current_frame_group
-):
+def add_transform_to_match_input_frame_viewbox(docElement, output_vbstring, current_frame_group):
     global current_filepath
-    if (
-        output_vbstring is None
-        or output_vbstring == ""
-        or output_vbstring.isspace() is True
-    ):
+    if output_vbstring is None or output_vbstring == "" or output_vbstring.isspace() is True:
         return
     output_vbSep = RE_COMMA_WSP.split(output_vbstring)
 
@@ -4329,9 +4136,7 @@ def add_transform_to_match_input_frame_viewbox(
         # be set in older code
         # Validation: CLI parser enforces choices=["top-left", "center"],
         # YAML merge validates too
-        align_mode = (
-            getattr(options, "align_mode", "top-left") if options else "top-left"
-        )
+        align_mode = getattr(options, "align_mode", "top-left") if options else "top-left"
 
         if align_mode == "center":
             # Center alignment: align centers of both viewBoxes
@@ -4362,9 +4167,7 @@ def add_transform_to_match_input_frame_viewbox(
         # Result: matrix(s, 0, 0, s, translate_x - s*vbX, translate_y - s*vbY)
         tr = tr.translate(translate_x, translate_y)  # Added FIRST, applied LAST
         tr = tr.scale(scale_factor, scale_factor)  # Added SECOND, applied SECOND
-        tr = tr.translate(
-            0.0 - vbX_original, 0.0 - vbY_original
-        )  # Added LAST, applied FIRST
+        tr = tr.translate(0.0 - vbX_original, 0.0 - vbY_original)  # Added LAST, applied FIRST
         # scourLength
         # np.array(((values[0], values[2], values[4]),
         # (values[1], values[3], values[5]), (0, 0, 1)))
@@ -4389,9 +4192,7 @@ def fix_svg_attribute(attr_name, attr_value, current_frame_group, add_warning=Tr
     if attr_value != "":
         attr_value = get_attribute_value_in_valid_units(attr_name, attr_value)
         if add_warning is True:
-            add2log(
-                f"WARNING: the <svg> element of the file {current_filepath} has an invalid attribute ('{attr_name}'). The <svg> element doesn't accept fill=, stroke= etc.! Moving the attribute to the frame group as temporary fix."
-            )
+            add2log(f"WARNING: the <svg> element of the file {current_filepath} has an invalid attribute ('{attr_name}'). The <svg> element doesn't accept fill=, stroke= etc.! Moving the attribute to the frame group as temporary fix.")
         current_frame_group.setAttribute(attr_name, attr_value)
         # if it is 'fill' we need to add a rectangle background to
         # the frame group to simulate the svg background color.
@@ -4461,9 +4262,7 @@ def maybe_gziped_file(filename, mode="rb"):
     if os.path.splitext(filename)[1].lower() in (".svgz", ".gz"):
         import gzip
 
-        add2log(
-            f"WARNING: input file {current_filepath} is in compressed format. Extracting."
-        )
+        add2log(f"WARNING: input file {current_filepath} is in compressed format. Extracting.")
         return gzip.GzipFile(filename, mode)
     return open(filename, mode)
 
@@ -4495,9 +4294,7 @@ def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
         try:
             doc = xml.dom.minidom.parseString(in_string)
         except xml.parsers.expat.ExpatError as e:
-            raise xml.parsers.expat.ExpatError(
-                f"Invalid XML in {filepath}: {str(e)}"
-            ) from e
+            raise xml.parsers.expat.ExpatError(f"Invalid XML in {filepath}: {str(e)}") from e
         except Exception as e:
             raise Exception(f"Failed to parse XML in {filepath}: {str(e)}") from e
 
@@ -4509,7 +4306,7 @@ def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
 
     except Exception as e:
         add2log(f"ERROR: {str(e)}")
-        sys.exit(1)
+        print_log_and_exit(1)
 
 
 # progress bar
@@ -4691,11 +4488,7 @@ def renaming_all_ids_with_frame_number_postfix(input_svg, prefix, options, postf
     # descending, so the highest reference count is first.
     # First check that there's actually a defining element for the current ID name.
     # (Cyn: I've seen documents with #id references but no element with that ID!)
-    idList = [
-        (len(referencedIDs[rid]), rid)
-        for rid in referencedIDs
-        if rid in identifiedElements
-    ]
+    idList = [(len(referencedIDs[rid]), rid) for rid in referencedIDs if rid in identifiedElements]
     idList.sort(reverse=True)
     idList = [rid for count, rid in idList]
 
@@ -4733,9 +4526,7 @@ def renaming_all_ids_with_frame_number_postfix(input_svg, prefix, options, postf
     return num
 
 
-def move_all_non_defs_input_elements_as_frames_to_the_output_defs(
-    input_svg, options, frame_num, referencingElementsDict, elementsHashDict
-):
+def move_all_non_defs_input_elements_as_frames_to_the_output_defs(input_svg, options, frame_num, referencingElementsDict, elementsHashDict):
     global elementsOutputHashDict
     global ELEMENTS_TO_DISCARD
     global SVG_ELEMENTS_TO_ALWAYS_MOVE
@@ -4779,14 +4570,8 @@ def move_all_non_defs_input_elements_as_frames_to_the_output_defs(
     # check if any element in the nodesToMoveList needs to be
     # converted to an 'use' element because is redundant.
     for node in nodesToMoveList:
-        if (
-            node is not None
-            and node.nodeType not in NODE_TYPES_TO_IGNORE
-            and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-        ):
-            nodesInDict = check_if_element_already_exists_in_hash_dict(
-                node, xml_output_defs, elementsOutputHashDict
-            )
+        if node is not None and node.nodeType not in NODE_TYPES_TO_IGNORE and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
+            nodesInDict = check_if_element_already_exists_in_hash_dict(node, xml_output_defs, elementsOutputHashDict)
             if nodesInDict is not None and len(nodesInDict) > 0:
                 # an identical element is already present in the defs
                 # we need to preserve frame elements, so we convert it to 'use'
@@ -4799,19 +4584,12 @@ def move_all_non_defs_input_elements_as_frames_to_the_output_defs(
                     # This element cannot be converted to an USE element
                     # Just retarget all his referencing nodes to the master
                     # and add its ID to the list of input_nodes_to_discard
-                    retarget_redundant_element_referencing_nodes_to_master(
-                        node, master_node_id, new_element_id, referencingElementsDict
-                    )
-                    if (
-                        node.hasChildNodes() is False
-                        and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-                    ):
+                    retarget_redundant_element_referencing_nodes_to_master(node, master_node_id, new_element_id, referencingElementsDict)
+                    if node.hasChildNodes() is False and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
                         input_nodes_flagged_as_not_to_move.append(new_element_id)
                 else:
                     # This element can be converted to USE element
-                    convert_redundant_element_to_use_element(
-                        node, master_node_id, new_element_id, referencingElementsDict
-                    )
+                    convert_redundant_element_to_use_element(node, master_node_id, new_element_id, referencingElementsDict)
 
     # else we do nothing, because the element must be new.
 
@@ -4841,10 +4619,7 @@ def move_elem_to_output_svg_defs(node, elementsHashDict, frame_group=None):
     if node is not None and node.nodeType not in NODE_TYPES_TO_IGNORE:
         if node.hasAttribute("id") or node.getAttribute("id") != "":
             nodeid = node.getAttribute("id")
-            if (
-                nodeid in input_nodes_flagged_as_not_to_move
-                and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-            ):
+            if nodeid in input_nodes_flagged_as_not_to_move and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
                 return
             imported_node = xml_output_doc.importNode(node, True)
             if node.nodeName in RETARGETABLE_ELEMENTS:
@@ -4862,9 +4637,7 @@ def move_elem_to_output_svg_defs(node, elementsHashDict, frame_group=None):
 #
 # Move all new input defs elements to the output defs
 #
-def move_all_input_defs_elements_to_the_output_defs(
-    input_svg, options, frame_num, referencingElementsDict, elementsHashDict
-):
+def move_all_input_defs_elements_to_the_output_defs(input_svg, options, frame_num, referencingElementsDict, elementsHashDict):
     global elementsOutputHashDict
     global ELEMENTS_TO_DISCARD
     global RETARGETABLE_ELEMENTS
@@ -4900,9 +4673,7 @@ def move_all_input_defs_elements_to_the_output_defs(
     for node in xml_input_defs.childNodes:
         if node is not None and node.nodeType not in NODE_TYPES_TO_IGNORE:
             new_element_id = getElementId(node)
-            nodesInDict = check_if_element_already_exists_in_hash_dict(
-                node, xml_output_defs, elementsOutputHashDict
-            )
+            nodesInDict = check_if_element_already_exists_in_hash_dict(node, xml_output_defs, elementsOutputHashDict)
             if nodesInDict is not None and len(nodesInDict) > 0:
                 # an identical element is already present in the defs
                 # we don't need to move this element anymore, because is a
@@ -4912,9 +4683,7 @@ def move_all_input_defs_elements_to_the_output_defs(
                 if new_element_id == master_node_id:
                     input_nodes_flagged_as_not_to_move.append(new_element_id)
                     continue
-                retarget_redundant_element_referencing_nodes_to_master(
-                    node, master_node_id, new_element_id, referencingElementsDict
-                )
+                retarget_redundant_element_referencing_nodes_to_master(node, master_node_id, new_element_id, referencingElementsDict)
                 # even if its a path, since it is already present in
                 # the output defs, and since it was in the defs
                 # section of the input svg to begin with, now that
@@ -4938,9 +4707,7 @@ def move_all_input_defs_elements_to_the_output_defs(
     return
 
 
-def retarget_redundant_element_referencing_nodes_to_master(
-    node, master_id, new_node_id, referencingElementsDict
-):
+def retarget_redundant_element_referencing_nodes_to_master(node, master_id, new_node_id, referencingElementsDict):
     # we just need to change the reference target of the new elements
     # in the current input svg frame. No item in the output svg can
     # possibly target our element because it is from a new frame
@@ -4968,37 +4735,26 @@ def remove_duplicates_elements(xml_doc, elementsHashDict, referencingElementsDic
         masterId = None
         for index in range(len(nodesIdList)):
             (nodeId, node) = nodesIdList[index]
-            if (
-                node.nodeName not in ["g", "use", "stop", "meshrow", "meshpatch"]
-                and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-            ):
+            if node.nodeName not in ["g", "use", "stop", "meshrow", "meshpatch"] and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
                 if index == 0:
                     masterId = nodeId
                 if index > 0:
                     if node.nodeName in NON_REUSABLE_ELEMENTS:
-                        retarget_redundant_element_referencing_nodes_to_master(
-                            node, masterId, nodeId, referencingElementsDict
-                        )
+                        retarget_redundant_element_referencing_nodes_to_master(node, masterId, nodeId, referencingElementsDict)
                         if node.nodeName in RETARGETABLE_ELEMENTS:
                             if node.parentNode is not None:
                                 node.parentNode.removeChild(node)
                     else:
                         if nodeId.endswith("_SMN"):
-                            retarget_redundant_element_referencing_nodes_to_master(
-                                node, masterId, nodeId, referencingElementsDict
-                            )
+                            retarget_redundant_element_referencing_nodes_to_master(node, masterId, nodeId, referencingElementsDict)
                             if node.parentNode is not None:
                                 node.parentNode.removeChild(node)
                         else:
                             if node.nodeName in REUSABLE_SVG_ELEMENTS:
-                                convert_redundant_element_to_use_element(
-                                    node, masterId, nodeId, referencingElementsDict
-                                )
+                                convert_redundant_element_to_use_element(node, masterId, nodeId, referencingElementsDict)
 
 
-def convert_redundant_element_to_use_element(
-    node, master_id, new_node_id, referencingElementsDict
-):
+def convert_redundant_element_to_use_element(node, master_id, new_node_id, referencingElementsDict):
     global elementsOutputHashDict
     global ELEMENTS_TO_DISCARD
     global RETARGETABLE_ELEMENTS
@@ -5024,10 +4780,7 @@ def convert_redundant_element_to_use_element(
     # output defs. We don't need to delete them since we will discard
     # the entire input svg document after we process each frame.
     if node is not None and node.nodeType not in NODE_TYPES_TO_IGNORE:
-        if (
-            node.nodeName in REUSABLE_SVG_ELEMENTS
-            and new_node_id.endswith("_SMN") is False
-        ):
+        if node.nodeName in REUSABLE_SVG_ELEMENTS and new_node_id.endswith("_SMN") is False:
             # strip element of attributes and convert it to 'use'
             # element
             attribs_to_remove = list(node.attributes.keys())
@@ -5045,10 +4798,7 @@ def convert_redundant_element_to_use_element(
             # be identical but if we used deep reuse functions we may
             # have some differences since they only check the node
             # and not its children).
-            if (
-                node.hasChildNodes()
-                and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-            ):
+            if node.hasChildNodes() and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
                 for nodeChild in node.childNodes:
                     node.removeChild(nodeChild)
 
@@ -5066,9 +4816,7 @@ def convert_redundant_element_to_use_element(
         if referencingElementsDict is not None:
             refNodes = referencingElementsDict.get(new_node_id)
             if refNodes is not None:
-                replace_all_element_references_with_new_id(
-                    new_node_id, master_id, refNodes
-                )
+                replace_all_element_references_with_new_id(new_node_id, master_id, refNodes)
 
     return
 
@@ -5174,18 +4922,11 @@ def check_if_element_already_exists_in_hash_dict(node, xml_doc, elementsHashDict
 # add an element to hash dict and return the list of duplicates id
 def addElementToHashDict(elementsHashDict, node):
     # simple hash dictionary to avoid making too comparisons
-    if (
-        node is not None
-        and (node.nodeType not in NODE_TYPES_TO_IGNORE)
-        and (node.nodeName not in ELEMENTS_NOT_TO_HASH)
-    ):
+    if node is not None and (node.nodeType not in NODE_TYPES_TO_IGNORE) and (node.nodeName not in ELEMENTS_NOT_TO_HASH):
         tag = findTag(node)
         if tag not in ELEMENTS_TO_DISCARD and tag != "g":
             if node.hasAttribute("id") is False or node.getAttribute("id") == "":
-                ppp(
-                    "ERROR ADDING NODE TO HASH DICTIONARY - node has no id: "
-                    + node.toprettyxml()
-                )
+                ppp("ERROR ADDING NODE TO HASH DICTIONARY - node has no id: " + node.toprettyxml())
                 sys.exit(1)
             else:
                 nodeId = node.getAttribute("id")
@@ -5214,9 +4955,7 @@ def addNodeToHashDictHelper(elementsHashDict, node, nodeId):
 
 
 # reuse elements if they are already in output defs
-def reuse_elements_if_they_are_already_in_output_defs(
-    input_svg, element_tag_name, referencingElementsDict, elementsHashDict
-):
+def reuse_elements_if_they_are_already_in_output_defs(input_svg, element_tag_name, referencingElementsDict, elementsHashDict):
     global ELEMENTS_TO_DISCARD
     global RETARGETABLE_ELEMENTS
     global xml_output_doc
@@ -5234,9 +4973,7 @@ def reuse_elements_if_they_are_already_in_output_defs(
     for node in input_elements_nodes:
         if node.hasAttribute("id") and (node.getAttribute("id") != ""):
             new_element_id = node.getAttribute("id")
-            nodesInDict = check_if_element_already_exists_in_hash_dict(
-                node, xml_output_defs, elementsOutputHashDict
-            )
+            nodesInDict = check_if_element_already_exists_in_hash_dict(node, xml_output_defs, elementsOutputHashDict)
             if nodesInDict is not None and len(nodesInDict) > 0:
                 # an identical element is already present in the defs
                 # we don't need to move this element anymore, because is a
@@ -5246,9 +4983,7 @@ def reuse_elements_if_they_are_already_in_output_defs(
                 if new_element_id == master_node_id:
                     input_nodes_flagged_as_not_to_move.append(new_element_id)
                     continue
-                convert_redundant_element_to_use_element(
-                    node, master_node_id, new_element_id, referencingElementsDict
-                )
+                convert_redundant_element_to_use_element(node, master_node_id, new_element_id, referencingElementsDict)
             else:
                 # element does not exist in the output xml def.
                 # we can leave it intact. In the future it will
@@ -5338,9 +5073,7 @@ def removeElementMainData(node, main_attr):
             node.removeAttribute(main_attr)
 
 
-def deep_reuse_elem_if_they_are_already_in_output_defs(
-    input_svg, options, frame_num, referencingElementsDict, element_tag_name
-):
+def deep_reuse_elem_if_they_are_already_in_output_defs(input_svg, options, frame_num, referencingElementsDict, element_tag_name):
     global ELEMENTS_TO_DISCARD
     global RETARGETABLE_ELEMENTS
     global xml_output_doc
@@ -5409,10 +5142,7 @@ def deep_reuse_elem_if_they_are_already_in_output_defs(
         matching_ids_in_output_doc = outputElementsKeyDict.get(key)
 
         matching_ids_in_input_doc = inputElementsKeyDict.get(key)
-        if (
-            matching_ids_in_output_doc is not None
-            and len(matching_ids_in_output_doc) > 0
-        ):
+        if matching_ids_in_output_doc is not None and len(matching_ids_in_output_doc) > 0:
             # since there are matching elements already in the output svg
             # we need to convert this to use element and referencing it
             # to a SMN or a master
@@ -5443,9 +5173,7 @@ def deep_reuse_elem_if_they_are_already_in_output_defs(
                 # node to use in the usual way
                 for node_id in list(matching_ids_in_input_doc):
                     duplicate_node = input_elements_id_dict[node_id]
-                    convert_redundant_element_to_use_element(
-                        duplicate_node, master_id, node_id, inputReferencingElementsDict
-                    )
+                    convert_redundant_element_to_use_element(duplicate_node, master_id, node_id, inputReferencingElementsDict)
 
     return
 
@@ -5461,10 +5189,7 @@ def create_shared_master_elem(master_id, master_node):
     global elementsOutputHashDict
     global SVG_ELEMENTS_TO_ALWAYS_MOVE
 
-    if (
-        master_node.nodeName in NON_REUSABLE_ELEMENTS
-        or master_node.nodeName in SVG_ELEMENTS_TO_ALWAYS_MOVE
-    ):
+    if master_node.nodeName in NON_REUSABLE_ELEMENTS or master_node.nodeName in SVG_ELEMENTS_TO_ALWAYS_MOVE:
         return None
 
     # avoid creating shared master node twice for the same master id
@@ -5504,9 +5229,7 @@ def create_shared_master_elem(master_id, master_node):
     return shared_master_node
 
 
-def deep_convert_redundant_element_to_use_element(
-    node, master_id, new_node_id, referencingElementsDict
-):
+def deep_convert_redundant_element_to_use_element(node, master_id, new_node_id, referencingElementsDict):
     global elementsOutputHashDict
     global ELEMENTS_TO_DISCARD
     global RETARGETABLE_ELEMENTS
@@ -5528,11 +5251,7 @@ def deep_convert_redundant_element_to_use_element(
     # and leave those alone, since they are not going to be moved to
     # the output defs. We don't need to delete them since we will discard
     # the entire input svg document after we process each frame.
-    if (
-        node is not None
-        and node.nodeType not in NODE_TYPES_TO_IGNORE
-        and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-    ):
+    if node is not None and node.nodeType not in NODE_TYPES_TO_IGNORE and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
         # check if node is a Shared Master Node, if true leave it
         if new_node_id.endswith("_SMN"):
             return
@@ -5559,10 +5278,7 @@ def deep_convert_redundant_element_to_use_element(
             # the node is not reusable, so being a duplicate we just flag it
             # to be ignored when we move the nodes. We are redirecting
             # the referencing nodes to his master id, so it is useless.
-            if (
-                node.hasChildNodes() is False
-                and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE
-            ):
+            if node.hasChildNodes() is False and node.nodeName not in SVG_ELEMENTS_TO_ALWAYS_MOVE:
                 input_nodes_flagged_as_not_to_move.append(node)
 
         # PHASE 2 : REDIRECTION OF REFERENCES
@@ -5575,9 +5291,7 @@ def deep_convert_redundant_element_to_use_element(
         if referencingElementsDict is not None:
             refNodes = referencingElementsDict.get(new_node_id)
             if refNodes is not None:
-                replace_all_element_references_with_new_id(
-                    new_node_id, master_id, refNodes
-                )
+                replace_all_element_references_with_new_id(new_node_id, master_id, refNodes)
     return
 
 
@@ -5741,12 +5455,8 @@ def getViewBox(docElement, options):
     # them into a viewBox.
     # well, it may be OK for Web browsers and vector editors, but not for
     # librsvg.
-    if (w.units != Unit.NONE and w.units != Unit.PX) or (
-        h.units != Unit.NONE and h.units != Unit.PX
-    ):
-        add2log(
-            f"WARNING: viewBox values of file {current_filepath} are not unitless or in px!"
-        )
+    if (w.units != Unit.NONE and w.units != Unit.PX) or (h.units != Unit.NONE and h.units != Unit.PX):
+        add2log(f"WARNING: viewBox values of file {current_filepath} are not unitless or in px!")
     # TODO: convert values to unitless
 
     # parse viewBox attribute
@@ -5759,18 +5469,14 @@ def getViewBox(docElement, options):
             vbX = float(vbSep[0])
             vbY = float(vbSep[1])
             if vbX != 0 or vbY != 0:
-                add2log(
-                    f"WARNING: viewBox X and Y coordinates if file {current_filepath} are not 0!"
-                )
+                add2log(f"WARNING: viewBox X and Y coordinates if file {current_filepath} are not 0!")
 
             # if width or height are not equal to doc width/height then it
             # is not ok to overwrite it
             vbWidth = float(vbSep[2])
             vbHeight = float(vbSep[3])
             if vbWidth != w.value or vbHeight != h.value:
-                add2log(
-                    f"WARNING: viewBox width and height of file {current_filepath} do not match document width and height!"
-                )
+                add2log(f"WARNING: viewBox width and height of file {current_filepath} do not match document width and height!")
 
         # if the viewBox did not parse properly it is invalid and ok to
         # overwrite it
@@ -5823,9 +5529,7 @@ def preprocess_svg_file(doc, options, filepath):
     remove_comments(doc)
 
     # remove xml space attributes
-    if options.keep_xml_space_attribute is False and doc.documentElement.hasAttribute(
-        "xml:space"
-    ):
+    if options.keep_xml_space_attribute is False and doc.documentElement.hasAttribute("xml:space"):
         doc.documentElement.removeAttribute("xml:space")
 
     # repair style (remove unnecessary style properties and change them
@@ -6037,15 +5741,10 @@ def convert_all_nodes_with_class_to_style(xml_doc, cssClassesDict):
                     rule = cssClassesDict[node_class]
                     r_properties = []
                     for propname in rule["properties"]:
-                        if (
-                            propname.isspace() is False
-                            and propname.strip() in CSS_TO_SVG_DICT
-                        ):
+                        if propname.isspace() is False and propname.strip() in CSS_TO_SVG_DICT:
                             corr_propname = CSS_TO_SVG_DICT[propname.strip()]
                             if corr_propname.isspace() is False:
-                                r_properties.append(
-                                    corr_propname + ":" + rule["properties"][propname]
-                                )
+                                r_properties.append(corr_propname + ":" + rule["properties"][propname])
                     s_properties = ";".join(str(c) for c in r_properties)
                     if node.hasAttribute("style"):
                         style_attribute = node.getAttribute("style")
@@ -6178,9 +5877,7 @@ KNOWN_ATTRS = (
     + ["style"]
 )
 
-KNOWN_ATTRS_ORDER_BY_NAME = defaultdict(
-    lambda: len(KNOWN_ATTRS), {name: order for order, name in enumerate(KNOWN_ATTRS)}
-)
+KNOWN_ATTRS_ORDER_BY_NAME = defaultdict(lambda: len(KNOWN_ATTRS), {name: order for order, name in enumerate(KNOWN_ATTRS)})
 
 
 # use custom order for known attributes and alphabetical order for the rest
@@ -6208,9 +5905,7 @@ def attributes_ordered_for_output(element):
 # - pretty printing
 # - somewhat judicious use of whitespace
 # - ensure id attributes are first
-def serializeXML(
-    element, options, indent_depth: int = 0, preserveWhitespace: bool = False
-) -> str:
+def serializeXML(element, options, indent_depth: int = 0, preserveWhitespace: bool = False) -> str:
     """Serialize XML element to string with formatting.
 
     Args:
@@ -6247,10 +5942,7 @@ def serializeXML(
         if attr.prefix is not None:
             outParts.extend([attr.prefix, ":"])
         elif attr.namespaceURI is not None:
-            if (
-                attr.namespaceURI == "http://www.w3.org/2000/xmlns/"
-                and attr.nodeName.find("xmlns") == -1
-            ):
+            if attr.namespaceURI == "http://www.w3.org/2000/xmlns/" and attr.nodeName.find("xmlns") == -1:
                 outParts.append("xmlns:")
             elif attr.namespaceURI == "http://www.w3.org/1999/xlink":
                 outParts.append("xlink:")
@@ -6281,9 +5973,7 @@ def serializeXML(
                 outParts.extend(
                     [
                         newline,
-                        serializeXML(
-                            child, options, indent_depth + 1, preserveWhitespace
-                        ),
+                        serializeXML(child, options, indent_depth + 1, preserveWhitespace),
                     ]
                 )
                 onNewLine = True
@@ -6355,9 +6045,7 @@ def serializeXML(
 # 	 https://www.w3.org/TR/SVGTiny12/attributeTable.html (not yet implemented)
 # 	 https://www.w3.org/TR/SVG2/attindex.html			(not yet implemented)
 #
-DefaultAttribute = namedtuple(
-    "DefaultAttribute", ["name", "value", "units", "elements", "conditions"]
-)
+DefaultAttribute = namedtuple("DefaultAttribute", ["name", "value", "units", "elements", "conditions"])
 DefaultAttribute.__new__.__defaults__ = (None,) * len(DefaultAttribute._fields)
 default_attributes = [
     # unit systems
@@ -6475,9 +6163,7 @@ default_attributes = [
     DefaultAttribute("markerWidth", 3, elements=["marker"]),
     DefaultAttribute("orient", 0, elements=["marker"]),
     # text / textPath / tspan / tref
-    DefaultAttribute(
-        "lengthAdjust", "spacing", elements=["text", "textPath", "tref", "tspan"]
-    ),
+    DefaultAttribute("lengthAdjust", "spacing", elements=["text", "textPath", "tref", "tspan"]),
     DefaultAttribute("startOffset", 0, elements=["textPath"]),
     DefaultAttribute("method", "align", elements=["textPath"]),
     DefaultAttribute("spacing", "exact", elements=["textPath"]),
@@ -6524,9 +6210,7 @@ default_attributes = [
         1,
         Unit.NONE,
         elements=["linearGradient"],
-        conditions=(
-            lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"
-        ),
+        conditions=(lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"),
     ),
     # remove fx/fy before cx/cy to catch the case where fx = cx = 50%
     # or fy = cy = 50% respectively
@@ -6546,9 +6230,7 @@ default_attributes = [
         0.5,
         Unit.NONE,
         elements=["radialGradient"],
-        conditions=(
-            lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"
-        ),
+        conditions=(lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"),
     ),
     DefaultAttribute("cx", 50, Unit.PCT, elements=["radialGradient"]),
     DefaultAttribute(
@@ -6556,9 +6238,7 @@ default_attributes = [
         0.5,
         Unit.NONE,
         elements=["radialGradient"],
-        conditions=(
-            lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"
-        ),
+        conditions=(lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"),
     ),
     DefaultAttribute("cy", 50, Unit.PCT, elements=["radialGradient"]),
     DefaultAttribute(
@@ -6566,45 +6246,31 @@ default_attributes = [
         0.5,
         Unit.NONE,
         elements=["radialGradient"],
-        conditions=(
-            lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"
-        ),
+        conditions=(lambda node: node.getAttribute("gradientUnits") != "userSpaceOnUse"),
     ),
-    DefaultAttribute(
-        "spreadMethod", "pad", elements=["linearGradient", "radialGradient"]
-    ),
+    DefaultAttribute("spreadMethod", "pad", elements=["linearGradient", "radialGradient"]),
     # filter effects
     # TODO: Some numerical attributes allow an optional second value
     # ("number-optional-number")
     # and are currently handled as strings to avoid an exception in
     # 'SVGLength', see
     # https://github.com/scour-project/scour/pull/192
-    DefaultAttribute(
-        "amplitude", 1, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]
-    ),
+    DefaultAttribute("amplitude", 1, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]),
     DefaultAttribute("azimuth", 0, elements=["feDistantLight"]),
-    DefaultAttribute(
-        "baseFrequency", "0", elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]
-    ),
+    DefaultAttribute("baseFrequency", "0", elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]),
     DefaultAttribute("bias", 1, elements=["feConvolveMatrix"]),
     DefaultAttribute("diffuseConstant", 1, elements=["feDiffuseLighting"]),
     DefaultAttribute("edgeMode", "duplicate", elements=["feConvolveMatrix"]),
     DefaultAttribute("elevation", 0, elements=["feDistantLight"]),
-    DefaultAttribute(
-        "exponent", 1, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]
-    ),
-    DefaultAttribute(
-        "intercept", 0, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]
-    ),
+    DefaultAttribute("exponent", 1, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]),
+    DefaultAttribute("intercept", 0, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]),
     DefaultAttribute("k1", 0, elements=["feComposite"]),
     DefaultAttribute("k2", 0, elements=["feComposite"]),
     DefaultAttribute("k3", 0, elements=["feComposite"]),
     DefaultAttribute("k4", 0, elements=["feComposite"]),
     DefaultAttribute("mode", "normal", elements=["feBlend"]),
     DefaultAttribute("numOctaves", 1, elements=["feTurbulence"]),
-    DefaultAttribute(
-        "offset", 0, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]
-    ),
+    DefaultAttribute("offset", 0, elements=["feFuncA", "feFuncB", "feFuncG", "feFuncR"]),
     DefaultAttribute("operator", "over", elements=["feComposite"]),
     DefaultAttribute("operator", "erode", elements=["feMorphology"]),
     DefaultAttribute("order", "3", elements=["feConvolveMatrix"]),
@@ -6616,14 +6282,10 @@ default_attributes = [
     DefaultAttribute("scale", 0, elements=["feDisplacementMap"]),
     DefaultAttribute("seed", 0, elements=["feTurbulence"]),
     DefaultAttribute("specularConstant", 1, elements=["feSpecularLighting"]),
-    DefaultAttribute(
-        "specularExponent", 1, elements=["feSpecularLighting", "feSpotLight"]
-    ),
+    DefaultAttribute("specularExponent", 1, elements=["feSpecularLighting", "feSpotLight"]),
     DefaultAttribute("stdDeviation", "0", elements=["feGaussianBlur"]),
     DefaultAttribute("stitchTiles", "noStitch", elements=["feTurbulence"]),
-    DefaultAttribute(
-        "surfaceScale", 1, elements=["feDiffuseLighting", "feSpecularLighting"]
-    ),
+    DefaultAttribute("surfaceScale", 1, elements=["feDiffuseLighting", "feSpecularLighting"]),
     DefaultAttribute("type", "matrix", elements=["feColorMatrix"]),
     DefaultAttribute("type", "turbulence", elements=["feTurbulence"]),
     DefaultAttribute("xChannelSelector", "A", elements=["feDisplacementMap"]),
@@ -6745,9 +6407,7 @@ def removeDefaultAttributeValues(node, options, tainted=None):
             num += removeDefaultAttributeValue(node, attribute)
 
     # Summarily get rid of default properties
-    attributes = [
-        node.attributes.item(i).nodeName for i in range(node.attributes.length)
-    ]
+    attributes = [node.attributes.item(i).nodeName for i in range(node.attributes.length)]
     for attribute in attributes:
         if attribute not in tainted:
             if attribute in default_properties:
@@ -6794,18 +6454,8 @@ def removeDefaultAttributeValue(node, attribute):
                 return 1
     else:
         nodeValue = SVGLength(node.getAttribute(attribute.name))
-        if (attribute.value is None) or (
-            (nodeValue.value == attribute.value)
-            and not (nodeValue.units == Unit.INVALID)
-        ):
-            if (
-                (attribute.units is None)
-                or (nodeValue.units == attribute.units)
-                or (
-                    isinstance(attribute.units, list)
-                    and nodeValue.units in attribute.units
-                )
-            ):
+        if (attribute.value is None) or ((nodeValue.value == attribute.value) and not (nodeValue.units == Unit.INVALID)):
+            if (attribute.units is None) or (nodeValue.units == attribute.units) or (isinstance(attribute.units, list) and nodeValue.units in attribute.units):
                 if (attribute.conditions is None) or attribute.conditions(node):
                     node.removeAttribute(attribute.name)
                     return 1
@@ -7008,9 +6658,7 @@ def removeUnusedDefs(doc, defElem, elemsToRemove=None, referencedIDs=None):
             # we only inspect the children of a group in a defs if the group
             # is not referenced anywhere else
             if elem.nodeName == "g" and elem.namespaceURI == NS["SVG"]:
-                elemsToRemove = removeUnusedDefs(
-                    doc, elem, elemsToRemove, referencedIDs=referencedIDs
-                )
+                elemsToRemove = removeUnusedDefs(doc, elem, elemsToRemove, referencedIDs=referencedIDs)
             # we only remove if it is not one of our tags we always keep (see above)
             elif elem.nodeName not in keepTags:
                 elemsToRemove.append(elem)
@@ -7045,13 +6693,7 @@ def remove_unreferenced_elements(doc, keepDefs):
     for id in identifiedElements:
         if id not in referencedIDs:
             goner = identifiedElements[id]
-            if (
-                goner is not None
-                and goner.nodeName in removeTags
-                and goner.parentNode is not None
-                and goner.parentNode.tagName != "defs"
-                and goner.parentNode.nodeName != "defs"
-            ):
+            if goner is not None and goner.nodeName in removeTags and goner.parentNode is not None and goner.parentNode.tagName != "defs" and goner.parentNode.nodeName != "defs":
                 goner.parentNode.removeChild(goner)
                 num += 1
 
@@ -7085,11 +6727,7 @@ def remove_duplicate_gradient_stops(doc, options):
                 style = stop.getAttribute("style")
                 if offset in stops:
                     oldStop = stops[offset]
-                    if (
-                        oldStop[0] == color
-                        and oldStop[1] == opacity
-                        and oldStop[2] == style
-                    ):
+                    if oldStop[0] == color and oldStop[1] == opacity and oldStop[2] == style:
                         stopsToRemove.append(stop)
                 stops[offset] = [color, opacity, style]
 
@@ -7111,19 +6749,10 @@ def collapse_singly_referenced_gradients(doc, options):
         # (Cyn: I've seen documents with #id references but no element with that ID!)
         if len(nodes) == 1 and rid in identifiedElements:
             elem = identifiedElements[rid]
-            if (
-                elem is not None
-                and elem.nodeType == Node.ELEMENT_NODE
-                and elem.nodeName in ["linearGradient", "radialGradient"]
-                and elem.namespaceURI == NS["SVG"]
-            ):
+            if elem is not None and elem.nodeType == Node.ELEMENT_NODE and elem.nodeName in ["linearGradient", "radialGradient"] and elem.namespaceURI == NS["SVG"]:
                 # found a gradient that is referenced by only 1 other element
                 refElem = nodes.pop()
-                if (
-                    refElem.nodeType == Node.ELEMENT_NODE
-                    and refElem.nodeName in ["linearGradient", "radialGradient"]
-                    and refElem.namespaceURI == NS["SVG"]
-                ):
+                if refElem.nodeType == Node.ELEMENT_NODE and refElem.nodeName in ["linearGradient", "radialGradient"] and refElem.namespaceURI == NS["SVG"]:
                     # elem is a gradient referenced by only one other
                     # gradient (refElem)
 
@@ -7137,41 +6766,22 @@ def collapse_singly_referenced_gradients(doc, options):
                     # adopt the gradientUnits, spreadMethod,
                     # gradientTransform attributes if unspecified on refElem
                     for attr in ["gradientUnits", "spreadMethod", "gradientTransform"]:
-                        if (
-                            refElem.getAttribute(attr) == ""
-                            and not elem.getAttribute(attr) == ""
-                        ):
+                        if refElem.getAttribute(attr) == "" and not elem.getAttribute(attr) == "":
                             refElem.setAttributeNS(None, attr, elem.getAttribute(attr))
 
                     # if both are radialGradients, adopt elem's
                     # fx,fy,cx,cy,r attributes if unspecified on refElem
-                    if (
-                        elem.nodeName == "radialGradient"
-                        and refElem.nodeName == "radialGradient"
-                    ):
+                    if elem.nodeName == "radialGradient" and refElem.nodeName == "radialGradient":
                         for attr in ["fx", "fy", "cx", "cy", "r"]:
-                            if (
-                                refElem.getAttribute(attr) == ""
-                                and not elem.getAttribute(attr) == ""
-                            ):
-                                refElem.setAttributeNS(
-                                    None, attr, elem.getAttribute(attr)
-                                )
+                            if refElem.getAttribute(attr) == "" and not elem.getAttribute(attr) == "":
+                                refElem.setAttributeNS(None, attr, elem.getAttribute(attr))
 
                     # if both are linearGradients, adopt elem's
                     # x1,y1,x2,y2 attributes if unspecified on refElem
-                    if (
-                        elem.nodeName == "linearGradient"
-                        and refElem.nodeName == "linearGradient"
-                    ):
+                    if elem.nodeName == "linearGradient" and refElem.nodeName == "linearGradient":
                         for attr in ["x1", "y1", "x2", "y2"]:
-                            if (
-                                refElem.getAttribute(attr) == ""
-                                and not elem.getAttribute(attr) == ""
-                            ):
-                                refElem.setAttributeNS(
-                                    None, attr, elem.getAttribute(attr)
-                                )
+                            if refElem.getAttribute(attr) == "" and not elem.getAttribute(attr) == "":
+                                refElem.setAttributeNS(None, attr, elem.getAttribute(attr))
 
                     target_href = elem.getAttributeNS(NS["XLINK"], "href")
                     if target_href:
@@ -7351,9 +6961,7 @@ def removeDuplicateGradients(doc):
         linear_gradients = doc.getElementsByTagName("linearGradient")
         radial_gradients = doc.getElementsByTagName("radialGradient")
 
-        for master_id, duplicates_ids, duplicates in detect_duplicate_gradients(
-            linear_gradients, radial_gradients
-        ):
+        for master_id, duplicates_ids, duplicates in detect_duplicate_gradients(linear_gradients, radial_gradients):
             dedup_gradient(master_id, duplicates_ids, duplicates, referenced_ids)
             num += len(duplicates)
 
@@ -7397,9 +7005,7 @@ def embed_rasters(element, options):
             if parsed_href.scheme == "file" and parsed_href.path[0] != "/":
                 if options.infilename:
                     working_dir_old = os.getcwd()
-                    working_dir_new = os.path.abspath(
-                        os.path.dirname(options.infilename)
-                    )
+                    working_dir_new = os.path.abspath(os.path.dirname(options.infilename))
                     os.chdir(working_dir_new)
 
             # open/download the file
@@ -7408,16 +7014,7 @@ def embed_rasters(element, options):
                 rasterdata = file.read()
                 file.close()
             except Exception as e:
-                add2log(
-                    "WARNING: could not open file '"
-                    + href
-                    + "' for embedding. The raster image will be kept as "
-                    + "a reference but might be invalid. File: "
-                    + f"{current_filepath}"
-                    + "(Exception details: "
-                    + str(e)
-                    + ")"
-                )
+                add2log("WARNING: could not open file '" + href + "' for embedding. The raster image will be kept as " + "a reference but might be invalid. File: " + f"{current_filepath}" + "(Exception details: " + str(e) + ")")
                 rasterdata = ""
             finally:
                 # always restore initial working directory if we changed it above
@@ -7473,15 +7070,9 @@ def properlySizeDoc(docElement, options):
         # animations
         # Why: Defaulting to arbitrary dimensions causes inconsistent
         # frame sizing
-        print(
-            f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.'
-        )
-        print(
-            f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.'
-        )
-        print(
-            "   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.\n"
-        )
+        print(f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.')
+        print(f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.')
+        print("   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.\n")
         sys.exit(1)
 
     # parse viewBox attribute
@@ -7532,9 +7123,7 @@ def get_viewbox_from_svg(svg_root):
         h = SVGLength(height_str).value
         return 0.0, 0.0, w, h
 
-    raise Exception(
-        "Cannot determine viewBox: missing both viewBox and usable width/height"
-    )
+    raise Exception("Cannot determine viewBox: missing both viewBox and usable width/height")
 
 
 def create_scaled_group_for_svg(svg_root, target_viewbox, align_mode="center"):
@@ -7684,15 +7273,7 @@ def repairStyle(node, options):
         for prop in ["fill", "stroke"]:
             if prop in styleMap:
                 chunk = styleMap[prop].split(") ")
-                if (
-                    len(chunk) == 2
-                    and (
-                        chunk[0][:5] == "url(#"
-                        or chunk[0][:6] == 'url("#'
-                        or chunk[0][:6] == "url('#"
-                    )
-                    and chunk[1] == "rgb(0, 0, 0)"
-                ):
+                if len(chunk) == 2 and (chunk[0][:5] == "url(#" or chunk[0][:6] == 'url("#' or chunk[0][:6] == "url('#") and chunk[1] == "rgb(0, 0, 0)":
                     styleMap[prop] = chunk[0] + ")"
                     num += 1
 
@@ -7719,9 +7300,7 @@ def repairStyle(node, options):
                     "stroke-dashoffset",
                     "stroke-opacity",
                 ]:
-                    if uselessStyle in styleMap and not styleInheritedByChild(
-                        node, uselessStyle
-                    ):
+                    if uselessStyle in styleMap and not styleInheritedByChild(node, uselessStyle):
                         del styleMap[uselessStyle]
                         num += 1
 
@@ -7739,9 +7318,7 @@ def repairStyle(node, options):
                 "stroke-dashoffset",
                 "stroke-opacity",
             ]:
-                if strokestyle in styleMap and not styleInheritedByChild(
-                    node, strokestyle
-                ):
+                if strokestyle in styleMap and not styleInheritedByChild(node, strokestyle):
                     del styleMap[strokestyle]
                     num += 1
             # we need to properly calculate computed values
@@ -7762,9 +7339,7 @@ def repairStyle(node, options):
             fillOpacity = float(styleMap["fill-opacity"])
             if fillOpacity == 0.0:
                 for uselessFillStyle in ["fill", "fill-rule"]:
-                    if uselessFillStyle in styleMap and not styleInheritedByChild(
-                        node, uselessFillStyle
-                    ):
+                    if uselessFillStyle in styleMap and not styleInheritedByChild(node, uselessFillStyle):
                         del styleMap[uselessFillStyle]
                         num += 1
 
@@ -7780,9 +7355,7 @@ def repairStyle(node, options):
                     "stroke-dasharray",
                     "stroke-dashoffset",
                 ]:
-                    if uselessStrokeStyle in styleMap and not styleInheritedByChild(
-                        node, uselessStrokeStyle
-                    ):
+                    if uselessStrokeStyle in styleMap and not styleInheritedByChild(node, uselessStrokeStyle):
                         del styleMap[uselessStrokeStyle]
                         num += 1
 
@@ -7798,9 +7371,7 @@ def repairStyle(node, options):
                     "stroke-dashoffset",
                     "stroke-opacity",
                 ]:
-                    if uselessStrokeStyle in styleMap and not styleInheritedByChild(
-                        node, uselessStrokeStyle
-                    ):
+                    if uselessStrokeStyle in styleMap and not styleInheritedByChild(node, uselessStrokeStyle):
                         del styleMap[uselessStrokeStyle]
                         num += 1
 
@@ -8077,11 +7648,7 @@ def shortenIDs(doc, options):
     # descending, so the highest reference count is first.
     # First check that there's actually a defining element for the current ID name.
     # (Cyn: I've seen documents with #id references but no element with that ID!)
-    idList = [
-        (len(referencedIDs[rid]), rid)
-        for rid in referencedIDs
-        if rid in identifiedElements
-    ]
+    idList = [(len(referencedIDs[rid]), rid) for rid in referencedIDs if rid in identifiedElements]
     idList.sort(reverse=True)
     idList = [rid for count, rid in idList]
 
@@ -8236,15 +7803,9 @@ def renameID(idFrom, idTo, identifiedElements, referringNodes):
                     # (node.normalize() will NOT work here, it only acts on Text nodes)
                     oldValue = "".join(child.nodeValue for child in node.childNodes)
                     # not going to reparse the whole thing
-                    newValue = oldValue.replace(
-                        "url(#" + idFrom + ")", "url(#" + idTo + ")"
-                    )
-                    newValue = newValue.replace(
-                        "url('#" + idFrom + "')", "url(#" + idTo + ")"
-                    )
-                    newValue = newValue.replace(
-                        'url("#' + idFrom + '")', "url(#" + idTo + ")"
-                    )
+                    newValue = oldValue.replace("url(#" + idFrom + ")", "url(#" + idTo + ")")
+                    newValue = newValue.replace("url('#" + idFrom + "')", "url(#" + idTo + ")")
+                    newValue = newValue.replace('url("#' + idFrom + '")', "url(#" + idTo + ")")
                     # and now replace all the children with this new stylesheet.
                     # again, this is in case the stylesheet was a CDATASection
                     node.childNodes[:] = [node.ownerDocument.createTextNode(newValue)]
@@ -8258,27 +7819,17 @@ def renameID(idFrom, idTo, identifiedElements, referringNodes):
             styles = node.getAttribute("style")
             if styles != "":
                 newValue = styles.replace("url(#" + idFrom + ")", "url(#" + idTo + ")")
-                newValue = newValue.replace(
-                    "url('#" + idFrom + "')", "url(#" + idTo + ")"
-                )
-                newValue = newValue.replace(
-                    'url("#' + idFrom + '")', "url(#" + idTo + ")"
-                )
+                newValue = newValue.replace("url('#" + idFrom + "')", "url(#" + idTo + ")")
+                newValue = newValue.replace('url("#' + idFrom + '")', "url(#" + idTo + ")")
                 node.setAttribute("style", newValue)
 
             # now try the fill, stroke, filter attributes
             for attr in referencingProps:
                 oldValue = node.getAttribute(attr)
                 if oldValue != "":
-                    newValue = oldValue.replace(
-                        "url(#" + idFrom + ")", "url(#" + idTo + ")"
-                    )
-                    newValue = newValue.replace(
-                        "url('#" + idFrom + "')", "url(#" + idTo + ")"
-                    )
-                    newValue = newValue.replace(
-                        'url("#' + idFrom + '")', "url(#" + idTo + ")"
-                    )
+                    newValue = oldValue.replace("url(#" + idFrom + ")", "url(#" + idTo + ")")
+                    newValue = newValue.replace("url('#" + idFrom + "')", "url(#" + idTo + ")")
+                    newValue = newValue.replace('url("#' + idFrom + '")', "url(#" + idTo + ")")
                     node.setAttribute(attr, newValue)
 
     return num
@@ -8297,11 +7848,7 @@ def remove_nested_groups(node):
     # (partial fix for bug 594930, required by the SVG spec however)
     if not (node.nodeType == Node.ELEMENT_NODE and node.nodeName == "switch"):
         for child in node.childNodes:
-            if (
-                child.nodeName == "g"
-                and child.namespaceURI == NS["SVG"]
-                and len(child.attributes) == 0
-            ):
+            if child.nodeName == "g" and child.namespaceURI == NS["SVG"] and len(child.attributes) == 0:
                 # only collapse group if it does not have a title or desc as a
                 # direct descendant,
                 if g_tag_is_mergeable(child):
@@ -8532,9 +8079,7 @@ def parseCssString(style_string):
         rule["properties"] = props
 
         candidate_rules = []
-        subselectors = [
-            x.strip() for x in rule["selector"].split(",") if not x.isspace()
-        ]
+        subselectors = [x.strip() for x in rule["selector"].split(",") if not x.isspace()]
         if len(subselectors) > 0:
             for sub in subselectors:
                 newrule = {}
@@ -8545,49 +8090,31 @@ def parseCssString(style_string):
         # candidate_rules.append(rule)
         for crule in candidate_rules:
             if crule["selector"] == "svg":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'svg' element. Moving the attribute to the frame group as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'svg' element. Moving the attribute to the frame group as temporary fix.")
                 framerules.append(crule)
             elif crule["selector"] == "body":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'body' element. Ignoring."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'body' element. Ignoring.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "text":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'text' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'text' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "circle":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'circle' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'circle' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "path":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'path' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'path' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "rect":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'rect' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'rect' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "polyline":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polyline' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polyline' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif rule["selector"] == "polygon":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polygon' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polygon' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "image":
-                add2log(
-                    f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'image' elements. Adding the attribute to those elements as temporary fix."
-                )
+                add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'image' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             else:
                 rules.append(crule)
@@ -8739,10 +8266,7 @@ def create_groups_for_common_attributes(elem):
                 if runElements >= 3:
                     # Include whitespace/comment/etc. nodes in the run.
                     while runEnd < elem.childNodes.length - 1:
-                        if (
-                            elem.childNodes.item(runEnd + 1).nodeType
-                            == Node.ELEMENT_NODE
-                        ):
+                        if elem.childNodes.item(runEnd + 1).nodeType == Node.ELEMENT_NODE:
                             break
                         else:
                             runEnd += 1
@@ -8799,11 +8323,7 @@ def mergeSiblingGroupsWithCommonAttributes(elem):
     i = elem.childNodes.length - 1
     while i >= 0:
         currentNode = elem.childNodes.item(i)
-        if (
-            currentNode.nodeType != Node.ELEMENT_NODE
-            or currentNode.nodeName != "g"
-            or currentNode.namespaceURI != NS["SVG"]
-        ):
+        if currentNode.nodeType != Node.ELEMENT_NODE or currentNode.nodeName != "g" or currentNode.namespaceURI != NS["SVG"]:
             i -= 1
             continue
         attributes = {a.nodeName: a.nodeValue for a in currentNode.attributes.values()}
@@ -8817,9 +8337,7 @@ def mergeSiblingGroupsWithCommonAttributes(elem):
             if nextNode.nodeType == Node.ELEMENT_NODE:
                 if nextNode.nodeName != "g" or nextNode.namespaceURI != NS["SVG"]:
                     break
-                nextAttributes = {
-                    a.nodeName: a.nodeValue for a in nextNode.attributes.values()
-                }
+                nextAttributes = {a.nodeName: a.nodeValue for a in nextNode.attributes.values()}
                 if attributes != nextAttributes or not g_tag_is_mergeable(nextNode):
                     break
                 else:
@@ -8838,22 +8356,14 @@ def mergeSiblingGroupsWithCommonAttributes(elem):
         # past it into a text node or a comment node.
         while True:
             node = elem.childNodes.item(runStart)
-            if (
-                node.nodeType == Node.ELEMENT_NODE
-                and node.nodeName == "g"
-                and node.namespaceURI == NS["SVG"]
-            ):
+            if node.nodeType == Node.ELEMENT_NODE and node.nodeName == "g" and node.namespaceURI == NS["SVG"]:
                 break
             runStart += 1
         primaryGroup = elem.childNodes.item(runStart)
         runStart += 1
         nodes = elem.childNodes[runStart : runEnd + 1]
         for node in nodes:
-            if (
-                node.nodeType == Node.ELEMENT_NODE
-                and node.nodeName == "g"
-                and node.namespaceURI == NS["SVG"]
-            ):
+            if node.nodeType == Node.ELEMENT_NODE and node.nodeName == "g" and node.namespaceURI == NS["SVG"]:
                 # Merge
                 for child in node.childNodes[:]:
                     primaryGroup.appendChild(child)
@@ -8884,10 +8394,7 @@ def remove_empty_elements(doc, options):
                         Node.DOCUMENT_NODE,
                     ]:
                         break
-                    elif (
-                        child.nodeType == Node.TEXT_NODE
-                        and not child.nodeValue.isspace()
-                    ):
+                    elif child.nodeType == Node.TEXT_NODE and not child.nodeValue.isspace():
                         break
             else:
                 removeElem = True
@@ -8898,9 +8405,7 @@ def remove_empty_elements(doc, options):
 
 
 rgb = re.compile(r"\s*rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)\s*")
-rgbp = re.compile(
-    r"\s*rgb\(\s*(\d*\.?\d+)%\s*,\s*(\d*\.?\d+)%\s*,\s*(\d*\.?\d+)%\s*\)\s*"
-)
+rgbp = re.compile(r"\s*rgb\(\s*(\d*\.?\d+)%\s*,\s*(\d*\.?\d+)%\s*,\s*(\d*\.?\d+)%\s*\)\s*")
 
 
 def convertColor(value):
@@ -9196,22 +8701,13 @@ def clean_path(element, options):
     # If it does, we do not want to collapse empty segments, as they
     # are actually rendered (as circles or squares with
     # diameter/dimension matching the path-width).
-    has_round_or_square_linecaps = (
-        element.getAttribute("stroke-linecap") in ["round", "square"]
-        or "stroke-linecap" in style
-        and style["stroke-linecap"] in ["round", "square"]
-    )
+    has_round_or_square_linecaps = element.getAttribute("stroke-linecap") in ["round", "square"] or "stroke-linecap" in style and style["stroke-linecap"] in ["round", "square"]
 
     # This determines whether the stroke has intermediate markers.
     # If it does, we do not want to collapse straight segments running
     # in the same direction, as markers are rendered on the
     # intermediate nodes.
-    has_intermediate_markers = (
-        element.hasAttribute("marker")
-        or element.hasAttribute("marker-mid")
-        or "marker" in style
-        or "marker-mid" in style
-    )
+    has_intermediate_markers = element.hasAttribute("marker") or element.hasAttribute("marker-mid") or "marker" in style or "marker-mid" in style
 
     # The first command must be a moveto, and whether it's relative (m)
     # or absolute (M), the first set of coordinates *is* absolute. So
@@ -9349,15 +8845,7 @@ def clean_path(element, options):
                         i += 2
             elif cmd == "c":
                 while i < len(data):
-                    if (
-                        data[i]
-                        == data[i + 1]
-                        == data[i + 2]
-                        == data[i + 3]
-                        == data[i + 4]
-                        == data[i + 5]
-                        == 0
-                    ):
+                    if data[i] == data[i + 1] == data[i + 2] == data[i + 3] == data[i + 4] == data[i + 5] == 0:
                         del data[i : i + 6]
                         num_path_segments_removed += 1
                     else:
@@ -9774,9 +9262,7 @@ def parseListOfPoints(s):
         try:
             nums[i] = getcontext().create_decimal(nums[i])
             nums[i + 1] = getcontext().create_decimal(nums[i + 1])
-        except (
-            InvalidOperation
-        ):  # one of the lengths had a unit or is an invalid number
+        except InvalidOperation:  # one of the lengths had a unit or is an invalid number
             return []
 
         i += 2
@@ -9862,18 +9348,10 @@ def serializeTransform(transformObj):
     """
     Reserializes the transform data with some cleanups.
     """
-    return " ".join(
-        command
-        + "("
-        + " ".join(scourUnitlessLength(number) for number in numbers)
-        + ")"
-        for command, numbers in transformObj
-    )
+    return " ".join(command + "(" + " ".join(scourUnitlessLength(number) for number in numbers) + ")" for command, numbers in transformObj)
 
 
-def scourCoordinates(
-    data, options, force_whitespace=False, control_points=None, flags=None
-):
+def scourCoordinates(data, options, force_whitespace=False, control_points=None, flags=None):
     """
     Serializes coordinate data with some cleanups:
        - removes all trailing zeros after the decimal
@@ -9907,18 +9385,7 @@ def scourCoordinates(
             #   - 'force_whitespace' is explicitly set to 'True'
             # we never need a space after flags (occurring in elliptical arcs),
             # but librsvg struggles without it
-            if (
-                c > 0
-                and (
-                    force_whitespace
-                    or scouredCoord[0].isdigit()
-                    or (
-                        scouredCoord[0] == "."
-                        and not ("." in previousCoord or "e" in previousCoord)
-                    )
-                )
-                and ((c - 1 not in flags) or options.renderer_workaround)
-            ):
+            if c > 0 and (force_whitespace or scouredCoord[0].isdigit() or (scouredCoord[0] == "." and not ("." in previousCoord or "e" in previousCoord))) and ((c - 1 not in flags) or options.renderer_workaround):
                 newData.append(" ")
 
             # add the scoured coordinate to the path string
@@ -9938,9 +9405,7 @@ def scourLength(length):
     return scourUnitlessLength(length.value) + Unit.str(length.units)
 
 
-def scourUnitlessLength(
-    length, renderer_workaround=False, is_control_point=False
-):  # length is of a numeric type
+def scourUnitlessLength(length, renderer_workaround=False, is_control_point=False):  # length is of a numeric type
     """
     Scours the numeric part of a length only. Does not accept units.
 
@@ -9986,9 +9451,7 @@ def scourUnitlessLength(
         # and 'to_sci_string()' don't handle negative exponents in a
         # reasonable way (e.g. 0.000001 remains unchanged)
         exponent = length.adjusted()  # how far do we have to shift the dot?
-        length = length.scaleb(
-            -exponent
-        ).normalize()  # shift the dot and remove potential trailing zeroes
+        length = length.scaleb(-exponent).normalize()  # shift the dot and remove potential trailing zeroes
 
         sci = str(length) + "e" + str(exponent)
 
@@ -10031,9 +9494,7 @@ def reducePrecision(element):
         val = element.getAttribute(lengthAttr)
         if val != "":
             valLen = SVGLength(val)
-            if (
-                valLen.units != Unit.INVALID
-            ):  # not an absolute/relative size or inherit, can be % though
+            if valLen.units != Unit.INVALID:  # not an absolute/relative size or inherit, can be % though
                 newVal = scourLength(val)
                 if len(newVal) < len(val):
                     num += len(val) - len(newVal)
@@ -10240,11 +9701,7 @@ def optimizeTransform(transform):
     i = 0
     while i < len(transform):
         currType, currArgs = transform[i]
-        if (
-            (currType == "skewX" or currType == "skewY")
-            and len(currArgs) == 1
-            and currArgs[0] == 0
-        ):
+        if (currType == "skewX" or currType == "skewY") and len(currArgs) == 1 and currArgs[0] == 0:
             # Identity skew!
             del transform[i]
         elif (currType == "rotate") and len(currArgs) == 1 and currArgs[0] == 0:
@@ -10315,11 +9772,7 @@ def get_empty_document(
         SVG document string
     """
     doc_parts = []
-    doc_parts.append(
-        get_document_begin(
-            vbwidth, vbheight, docWeight, docHeight, no_keep_ratio, metadata_dict
-        )
-    )
+    doc_parts.append(get_document_begin(vbwidth, vbheight, docWeight, docHeight, no_keep_ratio, metadata_dict))
     doc_parts.append(get_document_desc())
     doc_parts.append(get_animation_scene(vbwidth, vbheight))
     doc_parts.append(get_document_defs(vbwidth, vbheight))
@@ -10412,9 +9865,7 @@ def generate_fbf_metadata(metadata_dict):
 
     # Why: Add mandatory format and type fields as per SVG/RDF spec
     lines.append("        <dc:format>image/svg+xml</dc:format>")
-    lines.append(
-        '        <dc:type rdf:resource="http://purl.org/dc/dcmitype/MovingImage" />'
-    )
+    lines.append('        <dc:type rdf:resource="http://purl.org/dc/dcmitype/MovingImage" />')
 
     # Why: Helper function to add metadata field - ALWAYS adds field
     # even if empty (strict validation requirement)
@@ -10432,11 +9883,7 @@ def generate_fbf_metadata(metadata_dict):
             must be present. Empty/missing optional fields are
             represented as empty XML elements.
         """
-        if (
-            key in metadata_dict
-            and metadata_dict[key] is not None
-            and metadata_dict[key] != ""
-        ):
+        if key in metadata_dict and metadata_dict[key] is not None and metadata_dict[key] != "":
             value = metadata_dict[key]
             # Why: Apply custom formatter if provided
             if value_formatter:
@@ -10444,9 +9891,7 @@ def generate_fbf_metadata(metadata_dict):
             # Why: Format boolean values as lowercase strings
             if isinstance(value, bool):
                 value = str(value).lower()
-            lines.append(
-                f"        <{namespace_prefix}:{xml_tag}>{value}</{namespace_prefix}:{xml_tag}>"
-            )
+            lines.append(f"        <{namespace_prefix}:{xml_tag}>{value}</{namespace_prefix}:{xml_tag}>")
         else:
             # Why: Add empty element for missing/empty fields
             # (strict validation requirement)
@@ -10517,9 +9962,7 @@ def generate_fbf_metadata(metadata_dict):
     return "\n".join(lines)
 
 
-def get_document_begin(
-    vbwidth, vbheight, docWidth, docHeight, no_keep_ratio=False, metadata_dict=None
-):
+def get_document_begin(vbwidth, vbheight, docWidth, docHeight, no_keep_ratio=False, metadata_dict=None):
     """Generate SVG document beginning with optional comprehensive metadata.
 
     Args:
@@ -10540,9 +9983,7 @@ def get_document_begin(
     # --no-keep-ratio flag
     # Why: Some animations with negative viewBox coordinates need
     # preserveAspectRatio="none" or omitted
-    preserve_aspect_ratio_attr = (
-        "" if no_keep_ratio else '\n    preserveAspectRatio="xMidYMid meet"'
-    )
+    preserve_aspect_ratio_attr = "" if no_keep_ratio else '\n    preserveAspectRatio="xMidYMid meet"'
 
     # Why: Generate comprehensive or minimal metadata based on
     # parameter
@@ -10575,11 +10016,7 @@ def get_document_begin(
     xmlns:dc="http://purl.org/dc/elements/1.1/"
     xmlns:cc="http://creativecommons.org/ns#"
     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'''
-        + (
-            '\n    xmlns:fbf="http://opentoonz.github.io/fbf/1.0#"'
-            if metadata_dict is not None
-            else ""
-        )
+        + ('\n    xmlns:fbf="http://opentoonz.github.io/fbf/1.0#"' if metadata_dict is not None else "")
         + '''
     image-rendering="optimizeSpeed"'''
         + preserve_aspect_ratio_attr
@@ -10957,9 +10394,7 @@ def load_mesh_gradient_polyfill():
             polyfill_content = f.read().strip()
         return polyfill_content
     except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"Mesh gradient polyfill not found at: {polyfill_path}\nThe FBF format requires meshgradient_polyfill.txt for cross-browser compatibility."
-        ) from e
+        raise FileNotFoundError(f"Mesh gradient polyfill not found at: {polyfill_path}\nThe FBF format requires meshgradient_polyfill.txt for cross-browser compatibility.") from e
 
 
 def inject_mesh_gradient_polyfill(svg_string):
@@ -11001,13 +10436,7 @@ def inject_mesh_gradient_polyfill(svg_string):
     if match:
         # Insert polyfill before </svg>
         injection_point = match.start()
-        svg_with_polyfill = (
-            svg_string[:injection_point]
-            + "\n"
-            + polyfill_element
-            + "\n"
-            + svg_string[injection_point:]
-        )
+        svg_with_polyfill = svg_string[:injection_point] + "\n" + polyfill_element + "\n" + svg_string[injection_point:]
         return svg_with_polyfill
     else:
         # Fallback: append at end if </svg> not found
@@ -11033,29 +10462,21 @@ def cli():
     global options
 
     cl_parser = setup_command_line_parser()
-    (options, args) = cl_parser.parse_args()
+    options = cl_parser.parse_args()
 
     # Handle positional YAML config file argument
     # Why: Enable simple usage like `svg2fbf scene_1.yaml` instead of
     # requiring --config flag
-    if len(args) == 1:
-        if args[0].endswith((".yaml", ".yml")):
+    if options.config_file:
+        if options.config_file.endswith((".yaml", ".yml")):
             # If both positional config and --config are provided,
             # --config takes priority with a warning
-            if options.config and options.config != args[0]:
-                add2log(
-                    f"⚠️  Both positional config '{args[0]}' and --config '{options.config}' provided. Using --config value."
-                )
+            if options.config and options.config != options.config_file:
+                add2log(f"⚠️  Both positional config '{options.config_file}' and --config '{options.config}' provided. Using --config value.")
             else:
-                options.config = args[0]
+                options.config = options.config_file
         else:
-            cl_parser.error(
-                f"Unknown positional argument: {args[0]}\nDid you mean to specify a YAML config file? File should end with .yaml or .yml"
-            )
-    elif len(args) > 1:
-        cl_parser.error(
-            f"Too many positional arguments: {args}\nUsage: svg2fbf [config.yaml] [options]"
-        )
+            cl_parser.error(f"Unknown positional argument: {options.config_file}\nDid you mean to specify a YAML config file? File should end with .yaml or .yml")
 
     # Load YAML configuration if provided - Merge with CLI options
     # Why: Allow batch processing with config files, CLI args take priority
@@ -11090,15 +10511,11 @@ def cli():
     # Why: input_folder is optional when explicit frames are provided
     # via generation card
     if not all((options.output_path, options.output_filename)):
-        cl_parser.error(
-            "Incorrect number of arguments - must specify output_path, output_filename"
-        )
+        cl_parser.error("Incorrect number of arguments - must specify output_path, output_filename")
     # Check input_folder only if no explicit frames provided
     if not hasattr(options, "explicit_frames") or options.explicit_frames is None:
         if not options.input_folder:
-            cl_parser.error(
-                "Must specify input_folder (or provide explicit frames list in YAML config)"
-            )
+            cl_parser.error("Must specify input_folder (or provide explicit frames list in YAML config)")
     if float(options.fps) <= 0.0:
         cl_parser.error("fps value cannot be 0 or negative")
     if options.max_frames is not None and (int(options.max_frames) <= 1):
@@ -11107,13 +10524,9 @@ def cli():
         cl_parser.error("incorrect animation type name")
 
     if options.digits < 1:
-        cl_parser.error(
-            "Number of significant digits has to be larger than zero, see --help"
-        )
+        cl_parser.error("Number of significant digits has to be larger than zero, see --help")
     if options.cdigits > options.digits:
-        cl_parser.error(
-            "WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help"
-        )
+        cl_parser.error("WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help")
 
     # Create output directory if it doesn't exist
     # Why: User convenience - don't force manual directory creation
@@ -11124,15 +10537,11 @@ def cli():
                 output_dir.mkdir(parents=True, exist_ok=True)
                 add2log(f"✓ Created output directory: {options.output_path}")
         except PermissionError:
-            add2log(
-                f"❌ Error: Cannot create output directory '{options.output_path}' - Permission denied"
-            )
-            sys.exit(1)
+            add2log(f"❌ Error: Cannot create output directory '{options.output_path}' - Permission denied")
+            print_log_and_exit(1)
         except Exception as e:
-            add2log(
-                f"❌ Error: Cannot create output directory '{options.output_path}' - {e}"
-            )
-            sys.exit(1)
+            add2log(f"❌ Error: Cannot create output directory '{options.output_path}' - {e}")
+            print_log_and_exit(1)
 
     main()
 

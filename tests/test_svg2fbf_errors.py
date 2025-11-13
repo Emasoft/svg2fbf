@@ -59,10 +59,7 @@ class TestMissingViewBoxError:
         )
 
         # Verify exit code
-        assert result.returncode == 1, (
-            f"Expected exit code 1 (error), got {result.returncode}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
+        assert result.returncode == 1, f"Expected exit code 1 (error), got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
     def test_missing_viewbox_error_message_content(self, tmp_path):
         """Error message contains correct guidance for missing viewBox"""
@@ -96,15 +93,9 @@ class TestMissingViewBoxError:
         combined_output = result.stdout + result.stderr
 
         # Check for key phrases in error message
-        assert "ERROR IMPORTING FRAMES" in combined_output, (
-            "Missing 'ERROR IMPORTING FRAMES' in output"
-        )
-        assert "missing the viewBox attribute" in combined_output, (
-            "Missing 'missing the viewBox attribute' in output"
-        )
-        assert "svg-repair-viewbox" in combined_output, (
-            "Missing 'svg-repair-viewbox' command reference in output"
-        )
+        assert "ERROR IMPORTING FRAMES" in combined_output, "Missing 'ERROR IMPORTING FRAMES' in output"
+        assert "missing the viewBox attribute" in combined_output, "Missing 'missing the viewBox attribute' in output"
+        assert "svg-repair-viewbox" in combined_output, "Missing 'svg-repair-viewbox' command reference in output"
 
     def test_svg_with_viewbox_does_not_error(self, tmp_path):
         """svg2fbf succeeds when input SVG has proper viewBox"""
@@ -145,10 +136,7 @@ class TestMissingViewBoxError:
         )
 
         # Verify success
-        assert result.returncode == 0, (
-            f"Expected exit code 0 (success), got {result.returncode}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        )
+        assert result.returncode == 0, f"Expected exit code 0 (success), got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
         # Verify FBF file was created
         fbf_file = output_dir / "test.fbf.svg"
@@ -185,9 +173,7 @@ class TestMissingViewBoxError:
         combined_output = result.stdout + result.stderr
 
         # Verify file path is mentioned in error
-        assert "frame_00001.svg" in combined_output, (
-            "Error message should include the problematic filename"
-        )
+        assert "frame_00001.svg" in combined_output, "Error message should include the problematic filename"
 
 
 class TestViewBoxErrorGuidance:
@@ -196,12 +182,7 @@ class TestViewBoxErrorGuidance:
     def test_error_mentions_global_command(self, tmp_path):
         """Error message mentions svg-repair-viewbox as a global command"""
         svg_file = tmp_path / "frame_00001.svg"
-        svg_file.write_text(
-            (
-                '<svg xmlns="http://www.w3.org/2000/svg" '
-                'width="100" height="100"><rect/></svg>'
-            )
-        )
+        svg_file.write_text(('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect/></svg>'))
 
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -222,22 +203,13 @@ class TestViewBoxErrorGuidance:
         combined_output = result.stdout + result.stderr
 
         # Check for global command mention
-        assert "global command" in combined_output.lower(), (
-            "Error should mention 'global command'"
-        )
-        assert "svg-repair-viewbox" in combined_output, (
-            "Error should reference svg-repair-viewbox tool"
-        )
+        assert "global command" in combined_output.lower(), "Error should mention 'global command'"
+        assert "svg-repair-viewbox" in combined_output, "Error should reference svg-repair-viewbox tool"
 
     def test_error_provides_directory_option(self, tmp_path):
         """Error message shows how to repair entire directory"""
         svg_file = tmp_path / "frame_00001.svg"
-        svg_file.write_text(
-            (
-                '<svg xmlns="http://www.w3.org/2000/svg" '
-                'width="100" height="100"><ellipse/></svg>'
-            )
-        )
+        svg_file.write_text(('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><ellipse/></svg>'))
 
         output_dir = tmp_path / "output"
         output_dir.mkdir()
@@ -258,7 +230,4 @@ class TestViewBoxErrorGuidance:
         combined_output = result.stdout + result.stderr
 
         # Check for directory repair option
-        assert (
-            "<input_folder>" in combined_output
-            or "directory" in combined_output.lower()
-        ), "Error should show how to repair a directory of SVG files"
+        assert "<input_folder>" in combined_output or "directory" in combined_output.lower(), "Error should show how to repair a directory of SVG files"

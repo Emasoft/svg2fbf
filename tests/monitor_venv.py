@@ -45,10 +45,7 @@ class VenvWatcher(FileSystemEventHandler):
         print("=" * 80)
         print(f"\n📂 Location: {venv_path}")
         print(f"⏰ Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(
-            "\n🔴 This is INCORRECT! The project should have only ONE venv "
-            "at project root:"
-        )
+        print("\n🔴 This is INCORRECT! The project should have only ONE venv at project root:")
         print("   svg2fbf/.venv/  ← THE ONLY VENV")
         print("\n❌ NEVER create: svg2fbf/tests/.venv/")
         print("\n📋 Action Required:")

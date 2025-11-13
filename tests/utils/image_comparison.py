@@ -121,9 +121,7 @@ class ImageComparator:
 
         # Calculate difference as percentage (0.0 to 100.0)
         # Why: Direct percentage comparison with tolerance parameter
-        diff_percentage = (
-            ((diff_pixels / total_pixels) * 100) if total_pixels > 0 else 0.0
-        )
+        diff_percentage = ((diff_pixels / total_pixels) * 100) if total_pixels > 0 else 0.0
 
         # Find first difference location
         # Why: Helps identify where rendering diverged
@@ -221,9 +219,7 @@ class ImageComparator:
             # Why: Diff image is optional debugging aid
 
     @staticmethod
-    def generate_grayscale_diff_map(
-        img1_path: Path, img2_path: Path, output_path: Path
-    ) -> None:
+    def generate_grayscale_diff_map(img1_path: Path, img2_path: Path, output_path: Path) -> None:
         """
         Generate grayscale diff map showing magnitude of differences
 
@@ -275,9 +271,7 @@ class ImageComparator:
             # Why: Diff map is optional debugging aid
 
     @staticmethod
-    def calculate_perceptual_difference(
-        img1_path: Path, img2_path: Path
-    ) -> float | None:
+    def calculate_perceptual_difference(img1_path: Path, img2_path: Path) -> float | None:
         """
         Calculate perceptual difference between images
 
@@ -315,9 +309,7 @@ class ImageComparator:
             return None
 
     @staticmethod
-    def detect_empty_or_truncated_content(
-        img_path: Path, empty_threshold: float = 0.95, truncated_threshold: float = 0.50
-    ) -> tuple[bool, dict[str, Any]]:
+    def detect_empty_or_truncated_content(img_path: Path, empty_threshold: float = 0.95, truncated_threshold: float = 0.50) -> tuple[bool, dict[str, Any]]:
         """
         Detect if image has empty or truncated content
 
@@ -417,30 +409,17 @@ class ImageComparator:
                 return background_count
 
             # Calculate emptiness ratios
-            edge_pixels = (
-                top_edge.size + bottom_edge.size + left_edge.size + right_edge.size
-            )
-            edge_background_count = (
-                count_background_pixels(top_edge)
-                + count_background_pixels(bottom_edge)
-                + count_background_pixels(left_edge)
-                + count_background_pixels(right_edge)
-            )
-            edge_emptiness = (
-                edge_background_count / edge_pixels if edge_pixels > 0 else 0.0
-            )
+            edge_pixels = top_edge.size + bottom_edge.size + left_edge.size + right_edge.size
+            edge_background_count = count_background_pixels(top_edge) + count_background_pixels(bottom_edge) + count_background_pixels(left_edge) + count_background_pixels(right_edge)
+            edge_emptiness = edge_background_count / edge_pixels if edge_pixels > 0 else 0.0
 
             center_pixels = center.size
             center_background_count = count_background_pixels(center)
-            center_fullness = 1.0 - (
-                center_background_count / center_pixels if center_pixels > 0 else 0.0
-            )
+            center_fullness = 1.0 - (center_background_count / center_pixels if center_pixels > 0 else 0.0)
 
             # Is image truncated?
             # If edges are >50% empty AND center has <50% content, likely truncated
-            is_truncated = (edge_emptiness >= truncated_threshold) and (
-                center_fullness < 0.5
-            )
+            is_truncated = (edge_emptiness >= truncated_threshold) and (center_fullness < 0.5)
 
             # Build result
             has_issue = is_empty or is_truncated

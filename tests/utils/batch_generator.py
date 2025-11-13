@@ -50,10 +50,7 @@ class BatchGenerator:
         self.svg_pool = self._collect_valid_svgs()
 
         if not self.svg_pool:
-            raise RuntimeError(
-                f"No valid SVG files found in {examples_dir}. "
-                "Check that examples/ folder exists and contains SVG files."
-            )
+            raise RuntimeError(f"No valid SVG files found in {examples_dir}. Check that examples/ folder exists and contains SVG files.")
 
     def _collect_valid_svgs(self) -> list[Path]:
         """

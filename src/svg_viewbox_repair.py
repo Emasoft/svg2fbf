@@ -75,14 +75,8 @@ def get_node_scripts_dir() -> Path:
         return editable_scripts
 
     # Build error message with path information
-    data_dir_path = (
-        data_dir / "share" / "svg2fbf" / "node_scripts"
-        if "data_dir" in locals()
-        else "N/A"
-    )
-    search_path_path = (
-        search_path / "tests" / "node_scripts" if "search_path" in locals() else "N/A"
-    )
+    data_dir_path = data_dir / "share" / "svg2fbf" / "node_scripts" if "data_dir" in locals() else "N/A"
+    search_path_path = search_path / "tests" / "node_scripts" if "search_path" in locals() else "N/A"
 
     raise RuntimeError(
         "❌ Cannot find node_scripts directory\n\n"
@@ -126,8 +120,7 @@ def validate_svg_has_viewbox(svg_path: Path) -> tuple[bool, str]:
         if len(parts) != VIEWBOX_COMPONENT_COUNT:
             return (
                 False,
-                f"Invalid viewBox format: '{viewbox}' "
-                f"(expected {VIEWBOX_COMPONENT_COUNT} values)",
+                f"Invalid viewBox format: '{viewbox}' (expected {VIEWBOX_COMPONENT_COUNT} values)",
             )
 
         # Validate values are numeric
@@ -169,14 +162,7 @@ def calculate_svg_bbox(svg_path: Path) -> dict[str, float]:
     script_path = scripts_dir / "calculate_bbox.js"
 
     if not script_path.exists():
-        raise RuntimeError(
-            f"❌ calculate_bbox.js not found at {script_path}\n\n"
-            "This script is required for calculating bounding boxes.\n"
-            f"Scripts directory found at: {scripts_dir}\n\n"
-            "Try reinstalling svg2fbf:\n"
-            "  uv tool uninstall svg2fbf\n"
-            "  uv tool install svg2fbf"
-        )
+        raise RuntimeError(f"❌ calculate_bbox.js not found at {script_path}\n\nThis script is required for calculating bounding boxes.\nScripts directory found at: {scripts_dir}\n\nTry reinstalling svg2fbf:\n  uv tool uninstall svg2fbf\n  uv tool install svg2fbf")
 
     # Run Node.js script to calculate bbox
     try:
@@ -192,10 +178,7 @@ def calculate_svg_bbox(svg_path: Path) -> dict[str, float]:
             error_msg = result.stderr.strip() or result.stdout.strip()
 
             # Check if error is due to missing puppeteer
-            if (
-                "Cannot find module 'puppeteer'" in error_msg
-                or "MODULE_NOT_FOUND" in error_msg
-            ):
+            if "Cannot find module 'puppeteer'" in error_msg or "MODULE_NOT_FOUND" in error_msg:
                 raise RuntimeError(
                     "❌ Puppeteer not found\n\n"
                     "The viewBox repair utility requires Puppeteer to be installed.\n\n"
@@ -216,9 +199,7 @@ def calculate_svg_bbox(svg_path: Path) -> dict[str, float]:
 
         # Validate bbox structure and type
         required_keys = {"x", "y", "width", "height"}
-        if not isinstance(bbox_raw, dict) or not all(
-            k in bbox_raw for k in required_keys
-        ):
+        if not isinstance(bbox_raw, dict) or not all(k in bbox_raw for k in required_keys):
             raise RuntimeError(f"Invalid bbox JSON: {bbox_raw}")
 
         # Type-safe bbox construction
@@ -232,9 +213,7 @@ def calculate_svg_bbox(svg_path: Path) -> dict[str, float]:
         return bbox
 
     except subprocess.TimeoutExpired as e:
-        raise RuntimeError(
-            f"Bbox calculation timed out after {TIMEOUT_BBOX_CALCULATION} seconds"
-        ) from e
+        raise RuntimeError(f"Bbox calculation timed out after {TIMEOUT_BBOX_CALCULATION} seconds") from e
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse bbox JSON: {e}") from e
     except FileNotFoundError as e:
@@ -282,9 +261,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         viewbox_str = f"{bbox['x']} {bbox['y']} {bbox['width']} {bbox['height']}"
 
         # Check if viewBox already exists
-        existing_viewbox = root.get("viewBox") or root.get(
-            "{http://www.w3.org/2000/svg}viewBox"
-        )
+        existing_viewbox = root.get("viewBox") or root.get("{http://www.w3.org/2000/svg}viewBox")
 
         if existing_viewbox:
             # Update existing viewBox
@@ -304,11 +281,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
                 raise RuntimeError("Malformed <svg> tag")
 
             # Build new tag with viewBox
-            new_svg_tag = (
-                svg_tag[:insert_pos]
-                + f' viewBox="{viewbox_str}"'
-                + svg_tag[insert_pos:]
-            )
+            new_svg_tag = svg_tag[:insert_pos] + f' viewBox="{viewbox_str}"' + svg_tag[insert_pos:]
 
             # Replace in content
             content = content.replace(svg_tag, new_svg_tag, 1)
@@ -326,9 +299,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         raise RuntimeError(f"Failed to update SVG file: {e}") from e
 
 
-def calculate_union_bbox(
-    svg_files: list[Path], verbose: bool = True
-) -> dict[str, float]:
+def calculate_union_bbox(svg_files: list[Path], verbose: bool = True) -> dict[str, float]:
     """
     Calculate union bounding box across multiple SVG frames.
 
@@ -358,15 +329,10 @@ def calculate_union_bbox(
             bboxes.append(bbox)
 
             if verbose:
-                print(
-                    f"      Frame {i:02d}: x={bbox['x']:7.2f}, y={bbox['y']:7.2f}, "
-                    f"w={bbox['width']:7.2f}, h={bbox['height']:7.2f}"
-                )
+                print(f"      Frame {i:02d}: x={bbox['x']:7.2f}, y={bbox['y']:7.2f}, w={bbox['width']:7.2f}, h={bbox['height']:7.2f}")
 
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to calculate bbox for {svg_file.name}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to calculate bbox for {svg_file.name}: {e}") from e
 
     # Calculate union bbox
     min_x = min(b["x"] for b in bboxes)
@@ -380,19 +346,13 @@ def calculate_union_bbox(
     union_bbox = {"x": min_x, "y": min_y, "width": union_width, "height": union_height}
 
     if verbose:
-        print(
-            f"\n   ✅ Union bbox: x={union_bbox['x']:.2f}, "
-            f"y={union_bbox['y']:.2f}, width={union_bbox['width']:.2f}, "
-            f"height={union_bbox['height']:.2f}"
-        )
+        print(f"\n   ✅ Union bbox: x={union_bbox['x']:.2f}, y={union_bbox['y']:.2f}, width={union_bbox['width']:.2f}, height={union_bbox['height']:.2f}")
         print(f"      This viewBox will be applied to ALL {len(svg_files)} frames\n")
 
     return union_bbox
 
 
-def repair_animation_sequence_viewbox(
-    svg_files: list[Path], verbose: bool = True
-) -> int:
+def repair_animation_sequence_viewbox(svg_files: list[Path], verbose: bool = True) -> int:
     """
     Repair viewBox for animation sequence using union bbox strategy.
 
@@ -526,11 +486,7 @@ def cli() -> None:
 
     # Detect if run with "uv run" which creates unwanted .venv directories
     # (and potentially pyproject.toml, .git/)
-    if (
-        Path.cwd() != Path.home()
-        and (Path.cwd() / ".venv").exists()
-        and "UV_PROJECT_ENVIRONMENT" in os.environ
-    ):
+    if Path.cwd() != Path.home() and (Path.cwd() / ".venv").exists() and "UV_PROJECT_ENVIRONMENT" in os.environ:
         print("\n⚠️  WARNING: Detected 'uv run' usage which creates unwanted artifacts!")
         print("    UV may have created: .venv/, pyproject.toml, .git/, hello.py")
         print("    This is NOT the recommended way to use svg-repair-viewbox.\n")
@@ -542,10 +498,7 @@ def cli() -> None:
         print("    Continuing anyway...\n")
 
     parser = argparse.ArgumentParser(
-        description=(
-            "Repair SVG viewBox attributes using Puppeteer/headless Chrome "
-            "for accurate bbox calculation"
-        ),
+        description=("Repair SVG viewBox attributes using Puppeteer/headless Chrome for accurate bbox calculation"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -568,17 +521,14 @@ Notes:
         """,
     )
 
-    parser.add_argument(
-        "paths", nargs="+", help="SVG file(s) or directory containing SVG files"
-    )
+    parser.add_argument("paths", nargs="+", help="SVG file(s) or directory containing SVG files")
 
-    parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Suppress progress output"
-    )
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
 
     # Get version from package metadata
     try:
         from importlib.metadata import version as get_version
+
         pkg_version = get_version("svg2fbf")
     except Exception:
         pkg_version = "0.1.0"
@@ -625,9 +575,7 @@ Notes:
 
         elif path.is_file():
             if path.suffix.lower() != ".svg":
-                print(
-                    f"⚠️  Warning: {path} is not an SVG file, skipping", file=sys.stderr
-                )
+                print(f"⚠️  Warning: {path} is not an SVG file, skipping", file=sys.stderr)
             else:
                 svg_files.append(path)
         else:

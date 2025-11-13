@@ -62,10 +62,7 @@ class HTMLReportGenerator:
             "<html lang='en'>",
             "<head>",
             "    <meta charset='UTF-8'>",
-            (
-                "    <meta name='viewport' "
-                "content='width=device-width, initial-scale=1.0'>"
-            ),
+            ("    <meta name='viewport' content='width=device-width, initial-scale=1.0'>"),
             "    <title>svg2fbf Frame Comparison Report</title>",
             "    <style>",
             HTMLReportGenerator._get_css(),
@@ -88,9 +85,7 @@ class HTMLReportGenerator:
         # Frame comparisons
         # Why: Side-by-side visual comparison for each frame
         for comparison in frame_comparisons:
-            html_parts.append(
-                HTMLReportGenerator._generate_frame_comparison(comparison)
-            )
+            html_parts.append(HTMLReportGenerator._generate_frame_comparison(comparison))
 
         # Close main container
         html_parts.append("    </div>")
@@ -111,12 +106,8 @@ class HTMLReportGenerator:
             next_index = (current_index + 1) % total_reports  # Circular
 
             # Build navigation buttons with proper styling
-            first_btn_style = (
-                "opacity: 0.5; cursor: not-allowed;" if is_first else "cursor: pointer;"
-            )
-            last_btn_style = (
-                "opacity: 0.5; cursor: not-allowed;" if is_last else "cursor: pointer;"
-            )
+            first_btn_style = "opacity: 0.5; cursor: not-allowed;" if is_first else "cursor: pointer;"
+            last_btn_style = "opacity: 0.5; cursor: not-allowed;" if is_last else "cursor: pointer;"
 
             html_parts.extend(
                 [
@@ -133,10 +124,7 @@ class HTMLReportGenerator:
                     "",
                     "        // Create navigation bar on page load",
                     "        window.addEventListener('DOMContentLoaded', function() {",
-                    (
-                        "            const navBar = "
-                        "document.getElementById('batch-navigation');"
-                    ),
+                    ("            const navBar = document.getElementById('batch-navigation');"),
                     "            const navDiv = document.createElement('div');",
                     (
                         "            navDiv.style.cssText = 'position: fixed; "
@@ -153,73 +141,36 @@ class HTMLReportGenerator:
                     "            const firstBtn = document.createElement('button');",
                     "            firstBtn.textContent = '⏮ First';",
                     f"            firstBtn.disabled = {str(is_first).lower()};",
-                    (
-                        f"            firstBtn.style.cssText = "
-                        f"'padding: 8px 16px; font-size: 14px; "
-                        f"border: 1px solid #3498db; background: #fff; "
-                        f"border-radius: 4px; {first_btn_style}';"
-                    ),
+                    (f"            firstBtn.style.cssText = 'padding: 8px 16px; font-size: 14px; border: 1px solid #3498db; background: #fff; border-radius: 4px; {first_btn_style}';"),
                     "            firstBtn.onclick = () => navigateToReport(0);",
                     "            navDiv.appendChild(firstBtn);",
                     "",
                     "            // Previous button",
                     "            const prevBtn = document.createElement('button');",
                     "            prevBtn.textContent = '◀ Previous';",
-                    (
-                        "            prevBtn.style.cssText = "
-                        "'padding: 8px 16px; font-size: 14px; "
-                        "border: 1px solid #3498db; background: #fff; "
-                        "border-radius: 4px; cursor: pointer;';"
-                    ),
-                    (
-                        f"            prevBtn.onclick = () => "
-                        f"navigateToReport({prev_index});"
-                    ),
+                    ("            prevBtn.style.cssText = 'padding: 8px 16px; font-size: 14px; border: 1px solid #3498db; background: #fff; border-radius: 4px; cursor: pointer;';"),
+                    (f"            prevBtn.onclick = () => navigateToReport({prev_index});"),
                     "            navDiv.appendChild(prevBtn);",
                     "",
                     "            // Counter",
                     "            const counter = document.createElement('span');",
-                    (
-                        f"            counter.textContent = "
-                        f"'{current_index + 1} / {total_reports}';"
-                    ),
-                    (
-                        "            counter.style.cssText = "
-                        "'font-weight: bold; color: #333; "
-                        "padding: 0 10px; min-width: 80px; "
-                        "text-align: center;';"
-                    ),
+                    (f"            counter.textContent = '{current_index + 1} / {total_reports}';"),
+                    ("            counter.style.cssText = 'font-weight: bold; color: #333; padding: 0 10px; min-width: 80px; text-align: center;';"),
                     "            navDiv.appendChild(counter);",
                     "",
                     "            // Next button",
                     "            const nextBtn = document.createElement('button');",
                     "            nextBtn.textContent = 'Next ▶';",
-                    (
-                        "            nextBtn.style.cssText = "
-                        "'padding: 8px 16px; font-size: 14px; "
-                        "border: 1px solid #3498db; background: #fff; "
-                        "border-radius: 4px; cursor: pointer;';"
-                    ),
-                    (
-                        f"            nextBtn.onclick = () => "
-                        f"navigateToReport({next_index});"
-                    ),
+                    ("            nextBtn.style.cssText = 'padding: 8px 16px; font-size: 14px; border: 1px solid #3498db; background: #fff; border-radius: 4px; cursor: pointer;';"),
+                    (f"            nextBtn.onclick = () => navigateToReport({next_index});"),
                     "            navDiv.appendChild(nextBtn);",
                     "",
                     "            // Last button",
                     "            const lastBtn = document.createElement('button');",
                     "            lastBtn.textContent = 'Last ⏭';",
                     f"            lastBtn.disabled = {str(is_last).lower()};",
-                    (
-                        f"            lastBtn.style.cssText = "
-                        f"'padding: 8px 16px; font-size: 14px; "
-                        f"border: 1px solid #3498db; background: #fff; "
-                        f"border-radius: 4px; {last_btn_style}';"
-                    ),
-                    (
-                        f"            lastBtn.onclick = () => "
-                        f"navigateToReport({total_reports - 1});"
-                    ),
+                    (f"            lastBtn.style.cssText = 'padding: 8px 16px; font-size: 14px; border: 1px solid #3498db; background: #fff; border-radius: 4px; {last_btn_style}';"),
+                    (f"            lastBtn.onclick = () => navigateToReport({total_reports - 1});"),
                     "            navDiv.appendChild(lastBtn);",
                     "",
                     "            navBar.appendChild(navDiv);",
@@ -584,9 +535,7 @@ class HTMLReportGenerator:
         """
 
     @staticmethod
-    def _generate_header(
-        test_config: dict[str, Any], batch_info: dict[str, Any]
-    ) -> str:
+    def _generate_header(test_config: dict[str, Any], batch_info: dict[str, Any]) -> str:
         """Generate report header with test configuration"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         session_id = test_config.get("session_id", "N/A")
@@ -611,12 +560,8 @@ class HTMLReportGenerator:
 
         # Output frames directory (run-level, may not exist if test failed)
         output_frames_dir = test_config.get("output_frames_dir", "N/A")
-        output_frames_url = (
-            f"file://{output_frames_dir}" if output_frames_dir != "N/A" else "#"
-        )
-        output_frames_display = (
-            str(output_frames_dir) if output_frames_dir != "N/A" else "n.a."
-        )
+        output_frames_url = f"file://{output_frames_dir}" if output_frames_dir != "N/A" else "#"
+        output_frames_display = str(output_frames_dir) if output_frames_dir != "N/A" else "n.a."
 
         # FBF animation file (may not exist if generation failed)
         fbf_file = test_config.get("fbf_file", "N/A")
@@ -720,22 +665,12 @@ class HTMLReportGenerator:
                 <div class='config-item'
                     title='Original SVG resolution from first frame viewBox'>
                     <label>SVG Resolution (First Frame)</label>
-                    <value>{
-            int(test_config.get("svg_width", 0))
-            if test_config.get("svg_width") != "N/A"
-            else "N/A"
-        }×{
-            int(test_config.get("svg_height", 0))
-            if test_config.get("svg_height") != "N/A"
-            else "N/A"
-        }</value>
+                    <value>{int(test_config.get("svg_width", 0)) if test_config.get("svg_width") != "N/A" else "N/A"}×{int(test_config.get("svg_height", 0)) if test_config.get("svg_height") != "N/A" else "N/A"}</value>
                 </div>
                 <div class='config-item'
                     title='Browser viewport size used for rendering'>
                     <label>Rendering Viewport</label>
-                    <value>{test_config.get("width", "N/A")}×{
-            test_config.get("height", "N/A")
-        }</value>
+                    <value>{test_config.get("width", "N/A")}×{test_config.get("height", "N/A")}</value>
                 </div>
                 <div class='config-item'
                     title='Percentage of pixels allowed to differ'>
@@ -767,18 +702,12 @@ class HTMLReportGenerator:
         total_frames = len(frame_comparisons)
         # Use is_identical (respects tolerance) instead of checking diff_percentage
         # Why: Frames may pass with tolerance, summary should reflect that
-        failed_frames = sum(
-            1
-            for fc in frame_comparisons
-            if not fc.get("is_identical", fc["diff_percentage"] == 0)
-        )
+        failed_frames = sum(1 for fc in frame_comparisons if not fc.get("is_identical", fc["diff_percentage"] == 0))
         passed_frames = total_frames - failed_frames
 
         total_diff_pixels = sum(fc["diff_pixels"] for fc in frame_comparisons)
         total_pixels = sum(fc["total_pixels"] for fc in frame_comparisons)
-        avg_diff_percentage = (
-            (total_diff_pixels / total_pixels * 100) if total_pixels > 0 else 0.0
-        )
+        avg_diff_percentage = (total_diff_pixels / total_pixels * 100) if total_pixels > 0 else 0.0
 
         max_diff = max((fc["diff_percentage"] for fc in frame_comparisons), default=0.0)
 
@@ -868,28 +797,16 @@ class HTMLReportGenerator:
         # Why: Self-contained HTML, no external dependencies
         input_img_b64 = HTMLReportGenerator._image_to_base64(comparison["input_png"])
         output_img_b64 = HTMLReportGenerator._image_to_base64(comparison["output_png"])
-        diff_gray_b64 = HTMLReportGenerator._image_to_base64(
-            comparison.get("diff_gray", Path())
-        )
+        diff_gray_b64 = HTMLReportGenerator._image_to_base64(comparison.get("diff_gray", Path()))
 
         # Get image dimensions for tooltips
-        input_width, input_height = HTMLReportGenerator._get_image_dimensions(
-            comparison["input_png"]
-        )
-        output_width, output_height = HTMLReportGenerator._get_image_dimensions(
-            comparison["output_png"]
-        )
-        diff_width, diff_height = HTMLReportGenerator._get_image_dimensions(
-            comparison.get("diff_gray", Path())
-        )
+        input_width, input_height = HTMLReportGenerator._get_image_dimensions(comparison["input_png"])
+        output_width, output_height = HTMLReportGenerator._get_image_dimensions(comparison["output_png"])
+        diff_width, diff_height = HTMLReportGenerator._get_image_dimensions(comparison.get("diff_gray", Path()))
 
         source_svg_path = comparison.get("source_svg", "N/A")
-        source_svg_name = (
-            Path(source_svg_path).name if source_svg_path != "N/A" else "Unknown"
-        )
-        source_svg_url = (
-            f"file://{source_svg_path}" if source_svg_path != "N/A" else "#"
-        )
+        source_svg_name = Path(source_svg_path).name if source_svg_path != "N/A" else "Unknown"
+        source_svg_url = f"file://{source_svg_path}" if source_svg_path != "N/A" else "#"
 
         return f"""
         <div class='frame-comparison'>
@@ -958,11 +875,7 @@ class HTMLReportGenerator:
                         onclick='window.open("file://{comparison.get("diff_gray", "")}",
                         "_blank")'
                         style='cursor: pointer;'>
-                    <div class='diff-percentage {status}'>{
-            "✔︎ PASS (within tolerance)"
-            if is_identical
-            else f"✖︎ FAIL ({diff_percentage:.4f}% different)"
-        }</div>
+                    <div class='diff-percentage {status}'>{"✔︎ PASS (within tolerance)" if is_identical else f"✖︎ FAIL ({diff_percentage:.4f}% different)"}</div>
                     <div class='diff-stats'>
                         <div style='font-weight: bold; margin-bottom: 10px;
                             color: #555;'>
@@ -1030,10 +943,7 @@ class HTMLReportGenerator:
         if not image_path or not Path(image_path).exists():
             # Return 1x1 transparent pixel as fallback
             # Why: Prevent broken images in HTML
-            return (
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
-                "AAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-            )
+            return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
         try:
             with open(image_path, "rb") as f:
@@ -1041,7 +951,4 @@ class HTMLReportGenerator:
                 return base64.b64encode(image_data).decode("utf-8")
         except Exception:
             # Return 1x1 transparent pixel as fallback
-            return (
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
-                "AAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-            )
+            return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="

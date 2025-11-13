@@ -189,12 +189,8 @@ class SessionConfig:
         test_config = config.get("tool", {}).get("svg2fbf", {}).get("test", {})
 
         # Test tolerances (configurable, using defaults from CONSTANTS.py)
-        self.image_tolerance: float = test_config.get(
-            "image_tolerance", DEFAULT_IMAGE_TOLERANCE
-        )
-        self.pixel_tolerance: float = test_config.get(
-            "pixel_tolerance", DEFAULT_PIXEL_TOLERANCE
-        )
+        self.image_tolerance: float = test_config.get("image_tolerance", DEFAULT_IMAGE_TOLERANCE)
+        self.pixel_tolerance: float = test_config.get("pixel_tolerance", DEFAULT_PIXEL_TOLERANCE)
         self.max_frames: int = test_config.get("max_frames", DEFAULT_MAX_FRAMES)
 
         # Animation settings (NON-CONFIGURABLE in tests, using constants from
@@ -205,21 +201,13 @@ class SessionConfig:
         self.animation_type: str = test_config.get("animation_type", ANIMATION_TYPE)
 
         # Precision settings (configurable, using defaults from CONSTANTS.py)
-        self.precision_digits: int = test_config.get(
-            "precision_digits", DEFAULT_PRECISION_DIGITS
-        )
-        self.precision_cdigits: int = test_config.get(
-            "precision_cdigits", DEFAULT_PRECISION_CDIGITS
-        )
+        self.precision_digits: int = test_config.get("precision_digits", DEFAULT_PRECISION_DIGITS)
+        self.precision_cdigits: int = test_config.get("precision_cdigits", DEFAULT_PRECISION_CDIGITS)
 
         # E2E test session creation settings (configurable, using defaults
         # from CONSTANTS.py)
-        self.frame_number_format: str = test_config.get(
-            "frame_number_format", DEFAULT_FRAME_NUMBER_FORMAT
-        )
-        self.create_session_encoding: str = test_config.get(
-            "create_session_encoding", DEFAULT_CREATE_SESSION_ENCODING
-        )
+        self.frame_number_format: str = test_config.get("frame_number_format", DEFAULT_FRAME_NUMBER_FORMAT)
+        self.create_session_encoding: str = test_config.get("create_session_encoding", DEFAULT_CREATE_SESSION_ENCODING)
 
     def format_frame_filename(self, frame_number: int) -> str:
         """
@@ -313,44 +301,25 @@ def find_project_pyproject_toml() -> Path:
         # Check if pyproject.toml is DIRECTLY in a dangerous directory
         # (not just if dangerous dir is an ancestor - that would reject all paths)
         if calculated_parent == dangerous:
-            raise FileNotFoundError(
-                f"Refusing to load pyproject.toml from system directory: "
-                f"{calculated_path}\npyproject.toml should be in a user project "
-                f"directory, not {dangerous}"
-            )
+            raise FileNotFoundError(f"Refusing to load pyproject.toml from system directory: {calculated_path}\npyproject.toml should be in a user project directory, not {dangerous}")
 
     # SAFEGUARD: Ensure we're NOT loading from tests/ directory
     if calculated_path.parent.name == "tests":
-        raise FileNotFoundError(
-            f"Refusing to load pyproject.toml from tests/ directory: "
-            f"{calculated_path}\nThis would cause UV to create tests/.venv. "
-            f"Configuration must be in project root."
-        )
+        raise FileNotFoundError(f"Refusing to load pyproject.toml from tests/ directory: {calculated_path}\nThis would cause UV to create tests/.venv. Configuration must be in project root.")
 
     # Validate the path exists
     if not calculated_path.exists():
-        raise FileNotFoundError(
-            f"Project pyproject.toml not found at expected location: "
-            f"{calculated_path}\nCalculated from testrunner.py: "
-            f"{testrunner_path}"
-        )
+        raise FileNotFoundError(f"Project pyproject.toml not found at expected location: {calculated_path}\nCalculated from testrunner.py: {testrunner_path}")
 
     # Heuristic 1: Verify this is a Python project root
     # Check for common project root markers
     project_root = calculated_path.parent
     has_src_dir = (project_root / "src").exists()
     has_tests_dir = (project_root / "tests").exists()
-    has_readme = any(
-        (project_root / name).exists()
-        for name in ["README.md", "README.rst", "README.txt"]
-    )
+    has_readme = any((project_root / name).exists() for name in ["README.md", "README.rst", "README.txt"])
 
     if not (has_src_dir or has_tests_dir):
-        raise FileNotFoundError(
-            f"pyproject.toml found at {calculated_path}, but directory doesn't "
-            f"look like project root.\nExpected to find 'src/' or 'tests/' "
-            f"directory in {project_root}"
-        )
+        raise FileNotFoundError(f"pyproject.toml found at {calculated_path}, but directory doesn't look like project root.\nExpected to find 'src/' or 'tests/' directory in {project_root}")
 
     # Heuristic 2: Verify pyproject.toml contains svg2fbf configuration
     try:
@@ -368,18 +337,12 @@ def find_project_pyproject_toml() -> Path:
         has_project_name = config.get("project", {}).get("name") == "svg2fbf"
 
         if not (has_svg2fbf_config or has_project_name):
-            raise FileNotFoundError(
-                f"pyproject.toml found at {calculated_path}, but doesn't contain "
-                f"svg2fbf configuration.\nThis may be the wrong project's "
-                f"pyproject.toml."
-            )
+            raise FileNotFoundError(f"pyproject.toml found at {calculated_path}, but doesn't contain svg2fbf configuration.\nThis may be the wrong project's pyproject.toml.")
 
     except Exception as e:
         if isinstance(e, FileNotFoundError):
             raise
-        raise FileNotFoundError(
-            f"Failed to validate pyproject.toml at {calculated_path}: {e}"
-        ) from e
+        raise FileNotFoundError(f"Failed to validate pyproject.toml at {calculated_path}: {e}") from e
 
     return calculated_path
 
@@ -451,9 +414,7 @@ def validate_and_repair_config(pyproject_path: Path) -> None:
         # All keys present - no repair needed
         return
 
-    print(
-        f"\n⚠️  WARNING: pyproject.toml missing {len(missing_keys)} configuration keys:"
-    )
+    print(f"\n⚠️  WARNING: pyproject.toml missing {len(missing_keys)} configuration keys:")
     for key in missing_keys:
         print(f"   - {key}")
     print("\n🔧 Repairing configuration with default values...")
@@ -501,9 +462,7 @@ def validate_and_repair_config(pyproject_path: Path) -> None:
                 doc["tool"]["svg2fbf"]["test"][key] = default_value
 
         # Write to temporary file first
-        temp_fd, temp_path = tempfile.mkstemp(
-            suffix=".toml", prefix="pyproject_", dir=pyproject_path.parent
-        )
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".toml", prefix="pyproject_", dir=pyproject_path.parent)
         try:
             with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
                 tomlkit.dump(doc, f)
@@ -531,9 +490,7 @@ def validate_and_repair_config(pyproject_path: Path) -> None:
             print("   ℹ️  Using tomli_w for repair (formatting may change)")
 
             # Write to temporary file first
-            temp_fd, temp_path = tempfile.mkstemp(
-                suffix=".toml", prefix="pyproject_", dir=pyproject_path.parent
-            )
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".toml", prefix="pyproject_", dir=pyproject_path.parent)
             try:
                 with os.fdopen(temp_fd, "wb") as f:
                     tomli_w.dump(current_config, f)
@@ -545,27 +502,19 @@ def validate_and_repair_config(pyproject_path: Path) -> None:
                 # Atomic rename (replaces original)
                 os.replace(temp_path, pyproject_path)
                 print(f"   ✓ Configuration repaired: {pyproject_path}")
-                print(
-                    "   ⚠️  Note: File formatting was not preserved "
-                    "(install tomlkit for better results)"
-                )
+                print("   ⚠️  Note: File formatting was not preserved (install tomlkit for better results)")
 
             except Exception as e:
                 # Clean up temp file on error
                 if Path(temp_path).exists():
                     os.unlink(temp_path)
-                raise RuntimeError(
-                    f"Failed to write repaired configuration: {e}"
-                ) from e
+                raise RuntimeError(f"Failed to write repaired configuration: {e}") from e
 
         except ImportError:
             # Neither tomlkit nor tomli_w available
             print("   ❌ Cannot repair: No TOML writer available")
             print("   Install with: uv pip install tomlkit  (or tomli-w)")
-            raise RuntimeError(
-                "Missing configuration keys and cannot repair "
-                "(no TOML writer available)"
-            ) from None
+            raise RuntimeError("Missing configuration keys and cannot repair (no TOML writer available)") from None
 
 
 def load_test_config() -> dict[str, Any]:
@@ -650,8 +599,7 @@ def validate_svg_has_viewbox(svg_path: Path) -> tuple[bool, str]:
         if len(parts) != VIEWBOX_COMPONENT_COUNT:
             return (
                 False,
-                f"Invalid viewBox format: '{viewbox}' "
-                f"(expected {VIEWBOX_COMPONENT_COUNT} values)",
+                f"Invalid viewBox format: '{viewbox}' (expected {VIEWBOX_COMPONENT_COUNT} values)",
             )
 
         # Validate values are numeric
@@ -747,9 +695,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         viewbox_str = f"{bbox['x']} {bbox['y']} {bbox['width']} {bbox['height']}"
 
         # Check if viewBox already exists
-        existing_viewbox = root.get("viewBox") or root.get(
-            "{http://www.w3.org/2000/svg}viewBox"
-        )
+        existing_viewbox = root.get("viewBox") or root.get("{http://www.w3.org/2000/svg}viewBox")
 
         if existing_viewbox:
             # Update existing viewBox
@@ -771,11 +717,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
                 raise RuntimeError("Malformed <svg> tag")
 
             # Build new tag with viewBox
-            new_svg_tag = (
-                svg_tag[:insert_pos]
-                + f' viewBox="{viewbox_str}"'
-                + svg_tag[insert_pos:]
-            )
+            new_svg_tag = svg_tag[:insert_pos] + f' viewBox="{viewbox_str}"' + svg_tag[insert_pos:]
 
             # Replace in content
             content = content.replace(svg_tag, new_svg_tag, 1)
@@ -794,9 +736,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         raise RuntimeError(f"Failed to update SVG file: {e}") from e
 
 
-def calculate_union_bbox(
-    svg_files: list[Path], verbose: bool = True
-) -> dict[str, float]:
+def calculate_union_bbox(svg_files: list[Path], verbose: bool = True) -> dict[str, float]:
     """
     Calculate union bounding box across multiple SVG frames.
 
@@ -826,15 +766,10 @@ def calculate_union_bbox(
             bboxes.append(bbox)
 
             if verbose:
-                print(
-                    f"      Frame {i:02d}: x={bbox['x']:7.2f}, y={bbox['y']:7.2f}, "
-                    f"w={bbox['width']:7.2f}, h={bbox['height']:7.2f}"
-                )
+                print(f"      Frame {i:02d}: x={bbox['x']:7.2f}, y={bbox['y']:7.2f}, w={bbox['width']:7.2f}, h={bbox['height']:7.2f}")
 
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to calculate bbox for {svg_file.name}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to calculate bbox for {svg_file.name}: {e}") from e
 
     # Calculate union bbox
     # x = minimum x coordinate (can be negative)
@@ -854,18 +789,13 @@ def calculate_union_bbox(
     union_bbox = {"x": min_x, "y": min_y, "width": union_width, "height": union_height}
 
     if verbose:
-        print(
-            f"\n   ✅ Union bbox: x={union_bbox['x']:.2f}, y={union_bbox['y']:.2f}, "
-            f"width={union_bbox['width']:.2f}, height={union_bbox['height']:.2f}"
-        )
+        print(f"\n   ✅ Union bbox: x={union_bbox['x']:.2f}, y={union_bbox['y']:.2f}, width={union_bbox['width']:.2f}, height={union_bbox['height']:.2f}")
         print(f"      This viewBox will be applied to ALL {len(svg_files)} frames\n")
 
     return union_bbox
 
 
-def repair_animation_sequence_viewbox(
-    svg_files: list[Path], verbose: bool = True
-) -> int:
+def repair_animation_sequence_viewbox(svg_files: list[Path], verbose: bool = True) -> int:
     """
     Repair viewBox for animation sequence using union bbox strategy.
 
@@ -997,10 +927,7 @@ def repair_svg_viewbox(svg_path: Path, verbose: bool = True) -> bool:
         bbox = calculate_svg_bbox(svg_path)
 
         if verbose:
-            print(
-                f"      Calculated bbox: x={bbox['x']}, y={bbox['y']}, "
-                f"width={bbox['width']}, height={bbox['height']}"
-            )
+            print(f"      Calculated bbox: x={bbox['x']}, y={bbox['y']}, width={bbox['width']}, height={bbox['height']}")
 
         # Add viewBox to SVG
         add_viewbox_to_svg(svg_path, bbox)
@@ -1051,10 +978,7 @@ def validate_svg_numbering(svg_files: list[Path]) -> tuple[bool, str]:
         actual_num = int(actual_num_str)
 
         if actual_num != expected_num:
-            return False, (
-                f"Frame {expected_num}: Expected frame number {expected_num}, "
-                f"found {actual_num} in '{svg_file.name}'"
-            )
+            return False, (f"Frame {expected_num}: Expected frame number {expected_num}, found {actual_num} in '{svg_file.name}'")
 
     return True, ""
 
@@ -1167,9 +1091,7 @@ class DigitCountAdjustment:
 # Collision resolution constants
 # When multiple files have the same name, we add a deterministic suffix to
 # preserve alphabetical ordering
-FBFTEST_SUFFIX_PATTERN = re.compile(
-    r"___FBFTEST\[\d+\]___"
-)  # Pattern to detect/strip suffix
+FBFTEST_SUFFIX_PATTERN = re.compile(r"___FBFTEST\[\d+\]___")  # Pattern to detect/strip suffix
 # Format for adding suffix: ___FBFTEST[0]___, ___FBFTEST[1]___, etc.
 FBFTEST_SUFFIX_FORMAT = "___FBFTEST[{}]___"
 
@@ -1305,9 +1227,7 @@ def get_exact_file_size(file_path: Path) -> int:
     return file_path.stat().st_size
 
 
-def update_svg_dependency_references(
-    svg_path: Path, reference_mapping: dict[str, str], encoding: str = "utf-8"
-) -> None:
+def update_svg_dependency_references(svg_path: Path, reference_mapping: dict[str, str], encoding: str = "utf-8") -> None:
     """
     Update dependency references in SVG file content.
 
@@ -1352,9 +1272,7 @@ def update_svg_dependency_references(
     # partial replacements
     # Sort by length (longest first) to ensure "fonts/tahoma.woff" is replaced
     # before "tahoma.woff"
-    sorted_refs = sorted(
-        reference_mapping.items(), key=lambda x: len(x[0]), reverse=True
-    )
+    sorted_refs = sorted(reference_mapping.items(), key=lambda x: len(x[0]), reverse=True)
 
     original_content = content
     for original_ref, new_ref in sorted_refs:
@@ -1367,9 +1285,7 @@ def update_svg_dependency_references(
             with open(svg_path, "w", encoding=encoding) as f:
                 f.write(content)
         except OSError as e:
-            raise RuntimeError(
-                f"Failed to write updated SVG file '{svg_path}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to write updated SVG file '{svg_path}': {e}") from e
 
 
 def resolve_filename_collisions(
@@ -1449,9 +1365,7 @@ def resolve_filename_collisions(
     """
     # Input validation
     if not isinstance(files_to_copy, list):
-        raise TypeError(
-            f"files_to_copy must be a list, got {type(files_to_copy).__name__}"
-        )
+        raise TypeError(f"files_to_copy must be a list, got {type(files_to_copy).__name__}")
 
     if not files_to_copy:
         return {}, {}, {}
@@ -1459,22 +1373,14 @@ def resolve_filename_collisions(
     # Validate structure
     for i, item in enumerate(files_to_copy):
         if not isinstance(item, tuple) or len(item) != 2:
-            raise ValueError(
-                f"files_to_copy[{i}] must be a tuple of (Path, str), got "
-                f"{type(item).__name__}"
-            )
+            raise ValueError(f"files_to_copy[{i}] must be a tuple of (Path, str), got {type(item).__name__}")
 
         source_path, dest_name = item
         if not isinstance(source_path, Path):
-            raise TypeError(
-                f"files_to_copy[{i}][0] must be a Path, got "
-                f"{type(source_path).__name__}"
-            )
+            raise TypeError(f"files_to_copy[{i}][0] must be a Path, got {type(source_path).__name__}")
 
         if not isinstance(dest_name, str):
-            raise TypeError(
-                f"files_to_copy[{i}][1] must be a str, got {type(dest_name).__name__}"
-            )
+            raise TypeError(f"files_to_copy[{i}][1] must be a str, got {type(dest_name).__name__}")
 
         if not source_path.exists():
             raise ValueError(f"Source file does not exist: {source_path}")
@@ -1486,19 +1392,9 @@ def resolve_filename_collisions(
         for deps in svg_dependencies.values():
             all_dependency_paths.update(deps)
 
-    root_svgs = [
-        (src, dest)
-        for src, dest in files_to_copy
-        if dest.endswith(".svg") and src not in all_dependency_paths
-    ]
-    dependency_svgs = [
-        (src, dest)
-        for src, dest in files_to_copy
-        if dest.endswith(".svg") and src in all_dependency_paths
-    ]
-    non_svg_deps = [
-        (src, dest) for src, dest in files_to_copy if not dest.endswith(".svg")
-    ]
+    root_svgs = [(src, dest) for src, dest in files_to_copy if dest.endswith(".svg") and src not in all_dependency_paths]
+    dependency_svgs = [(src, dest) for src, dest in files_to_copy if dest.endswith(".svg") and src in all_dependency_paths]
+    non_svg_deps = [(src, dest) for src, dest in files_to_copy if not dest.endswith(".svg")]
 
     # Generate UUIDs for root SVGs only
     svg_uuids: dict[Path, str] = {}
@@ -1563,13 +1459,8 @@ def resolve_filename_collisions(
 
                     # Find the original reference string for this dependency
                     original_ref = None
-                    if (
-                        svg_original_references
-                        and parent_svg in svg_original_references
-                    ):
-                        original_ref = svg_original_references[parent_svg].get(
-                            source_path
-                        )
+                    if svg_original_references and parent_svg in svg_original_references:
+                        original_ref = svg_original_references[parent_svg].get(source_path)
 
                     if original_ref:
                         # Use actual reference string from SVG file
@@ -1786,9 +1677,7 @@ def build_candidates_ladder(files: list[Path]) -> dict[int, list[Path]]:
     # Validate all items are Path objects pointing to .svg files
     for i, file in enumerate(files):
         if not isinstance(file, Path):
-            raise TypeError(
-                f"files[{i}] must be a Path object, got {type(file).__name__}"
-            )
+            raise TypeError(f"files[{i}] must be a Path object, got {type(file).__name__}")
 
         if not file.name.endswith(".svg"):
             raise ValueError(f"files[{i}] must be an SVG file, got '{file.name}'")
@@ -1876,9 +1765,7 @@ def assign_numbers_deterministically(files: list[Path]) -> dict[Path, int]:
     # Validate all items are Path objects pointing to .svg files
     for i, file in enumerate(files):
         if not isinstance(file, Path):
-            raise TypeError(
-                f"files[{i}] must be a Path object, got {type(file).__name__}"
-            )
+            raise TypeError(f"files[{i}] must be a Path object, got {type(file).__name__}")
 
         if not file.name.endswith(".svg"):
             raise ValueError(f"files[{i}] must be an SVG file, got '{file.name}'")
@@ -1920,9 +1807,7 @@ def assign_numbers_deterministically(files: list[Path]) -> dict[Path, int]:
     for frame_num in range(1, len(files) + 1):
         candidates = ladder.get(frame_num, [])
         for candidate in candidates:
-            if (
-                candidate not in assigned_files
-            ):  # ← Only criterion: not already assigned
+            if candidate not in assigned_files:  # ← Only criterion: not already assigned
                 # Found an unassigned candidate for this number
                 assignments[candidate] = frame_num
                 assigned_files.add(candidate)
@@ -1932,9 +1817,7 @@ def assign_numbers_deterministically(files: list[Path]) -> dict[Path, int]:
     # Second pass: assign remaining files to remaining numbers
     # These are files with no number hints or files whose hints were already taken
     remaining_files = [f for f in files if f not in assigned_files]
-    remaining_numbers = sorted(
-        [n for n in range(1, len(files) + 1) if n not in assigned_numbers]
-    )
+    remaining_numbers = sorted([n for n in range(1, len(files) + 1) if n not in assigned_numbers])
 
     # Assign in order (deterministic because files list order is preserved)
     for file, num in zip(remaining_files, remaining_numbers, strict=False):
@@ -2083,9 +1966,7 @@ def autonumber_svg_files(folder_path: Path) -> dict[str, str]:
     return renames
 
 
-def extract_reference_strings(
-    svg_path: Path, dependency_paths: set[Path], encoding: str = "utf-8"
-) -> dict[Path, str]:
+def extract_reference_strings(svg_path: Path, dependency_paths: set[Path], encoding: str = "utf-8") -> dict[Path, str]:
     """
     Extract the original reference strings that point to each dependency.
 
@@ -2141,10 +2022,7 @@ def extract_reference_strings(
                         continue
 
                     # Skip URLs, data URIs, fragment-only references
-                    if any(
-                        ref.startswith(p)
-                        for p in ["http://", "https://", "data:", "#", "//"]
-                    ):
+                    if any(ref.startswith(p) for p in ["http://", "https://", "data:", "#", "//"]):
                         continue
 
                     # Remove fragment to resolve file path
@@ -2175,16 +2053,10 @@ def extract_reference_strings(
                             if parent_path.exists() and parent_path.is_file():
                                 resolved_path = parent_path
                             # Try grandparent directory
-                            elif (
-                                grandparent_path := (
-                                    svg_dir / "../.." / filename
-                                ).resolve()
-                            ).exists() and grandparent_path.is_file():
+                            elif (grandparent_path := (svg_dir / "../.." / filename).resolve()).exists() and grandparent_path.is_file():
                                 resolved_path = grandparent_path
                             # Try same directory as SVG
-                            elif (
-                                same_dir_path := (svg_dir / filename).resolve()
-                            ).exists() and same_dir_path.is_file():
+                            elif (same_dir_path := (svg_dir / filename).resolve()).exists() and same_dir_path.is_file():
                                 resolved_path = same_dir_path
                             else:
                                 # No fallback found
@@ -2247,10 +2119,7 @@ def extract_svg_dependencies(svg_path: Path, encoding: str = "utf-8") -> set[Pat
             content = svg_path.read_text(encoding=encoding)
         except UnicodeDecodeError:
             # Fallback to latin-1 if UTF-8 fails
-            print(
-                f"⚠️  Warning: UTF-8 decode failed for {svg_path.name}, "
-                f"trying latin-1..."
-            )
+            print(f"⚠️  Warning: UTF-8 decode failed for {svg_path.name}, trying latin-1...")
             content = svg_path.read_text(encoding="latin-1")
         except Exception as e:
             print(f"⚠️  Warning: Cannot read {svg_path.name}: {e}")
@@ -2277,10 +2146,7 @@ def extract_svg_dependencies(svg_path: Path, encoding: str = "utf-8") -> set[Pat
                         continue
 
                     # Skip URLs, data URIs, and pure fragment identifiers
-                    if any(
-                        ref.startswith(prefix)
-                        for prefix in ["http://", "https://", "data:", "#", "//"]
-                    ):
+                    if any(ref.startswith(prefix) for prefix in ["http://", "https://", "data:", "#", "//"]):
                         continue
 
                     # Strip fragment identifiers from the end (e.g., "file.svg#id"
@@ -2342,9 +2208,7 @@ def extract_svg_dependencies(svg_path: Path, encoding: str = "utf-8") -> set[Pat
     return dependencies
 
 
-def create_session_from_folder(
-    folder_path: Path, sessions_dir: Path, config: dict[str, Any]
-) -> tuple[str, Path]:
+def create_session_from_folder(folder_path: Path, sessions_dir: Path, config: dict[str, Any]) -> tuple[str, Path]:
     """
     Create a new test E2E test session from a folder containing numbered SVG frames.
 
@@ -2378,10 +2242,7 @@ def create_session_from_folder(
     # Apply max_frames limit from config
     max_frames = config.get("max_frames", 50)
     if len(svg_files) > max_frames:
-        print(
-            f"   ⚠️  Limiting to first {max_frames} frames "
-            f"(max_frames from pyproject.toml)"
-        )
+        print(f"   ⚠️  Limiting to first {max_frames} frames (max_frames from pyproject.toml)")
         svg_files = svg_files[:max_frames]
 
     print(f"   Using {len(svg_files)} frames for E2E test session")
@@ -2457,9 +2318,7 @@ def create_session_from_folder(
     if not is_valid:
         print(f"❌ Error: {error_msg}")
         print("\n   SVG files must be numbered sequentially starting from 1")
-        print(
-            "   Examples: frame001.svg, frame002.svg OR frame00001.svg, frame00002.svg"
-        )
+        print("   Examples: frame001.svg, frame002.svg OR frame00001.svg, frame00002.svg")
         sys.exit(1)
     print("   ✓ Frame numbering valid")
 
@@ -2521,17 +2380,12 @@ def create_session_from_folder(
             print(f"        {svg_file.name}")
 
     # Copy non-SVG dependency files (fonts, images, etc.)
-    dependency_files = [
-        f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() != ".svg"
-    ]
+    dependency_files = [f for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() != ".svg"]
     for file in dependency_files:
         shutil.copy2(file, input_frames_dir / file.name)
 
     total_files = len(svg_files) + len(dependency_files)
-    print(
-        f"   ✓ Copied {len(svg_files)} SVG frames + "
-        f"{len(dependency_files)} dependency files = {total_files} total\n"
-    )
+    print(f"   ✓ Copied {len(svg_files)} SVG frames + {len(dependency_files)} dependency files = {total_files} total\n")
 
     # Create session metadata
     fingerprint = compute_session_fingerprint(svg_files)
@@ -2592,24 +2446,15 @@ def create_session_from_files(
     for i, svg_path in enumerate(svg_file_paths, start=1):
         # Check existence
         if not svg_path.exists():
-            raise FileNotFoundError(
-                f"Frame {i}: File not found: {svg_path}\n   Ensure file path "
-                f"is correct and accessible"
-            )
+            raise FileNotFoundError(f"Frame {i}: File not found: {svg_path}\n   Ensure file path is correct and accessible")
 
         # Check if it's a file (not directory)
         if not svg_path.is_file():
-            raise ValueError(
-                f"Frame {i}: Not a regular file: {svg_path}\n   Path points to "
-                f"a directory or special file"
-            )
+            raise ValueError(f"Frame {i}: Not a regular file: {svg_path}\n   Path points to a directory or special file")
 
         # Check file extension
         if svg_path.suffix.lower() != ".svg":
-            raise ValueError(
-                f"Frame {i}: Not an SVG file: {svg_path}\n   File must have "
-                f".svg extension (found: {svg_path.suffix})"
-            )
+            raise ValueError(f"Frame {i}: Not an SVG file: {svg_path}\n   File must have .svg extension (found: {svg_path.suffix})")
 
         # Check read permission
         if not svg_path.is_file() or not svg_path.stat().st_size > 0:
@@ -2624,11 +2469,7 @@ def create_session_from_files(
     try:
         repair_animation_sequence_viewbox(svg_file_paths, verbose=True)
     except RuntimeError as e:
-        raise ValueError(
-            f"Failed to repair viewBox: {e}\n   viewBox calculation failed\n"
-            f"   Manual fix: Add viewBox attribute to SVG root element\n"
-            f'   Example: <svg viewBox="0 0 1200 674" ...>'
-        ) from e
+        raise ValueError(f'Failed to repair viewBox: {e}\n   viewBox calculation failed\n   Manual fix: Add viewBox attribute to SVG root element\n   Example: <svg viewBox="0 0 1200 674" ...>') from e
 
     # Create session directory with error handling
     session_num = find_next_session_number(sessions_dir)
@@ -2639,10 +2480,7 @@ def create_session_from_files(
     try:
         session_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError as e:
-        raise PermissionError(
-            f"Cannot create session directory: {session_dir}\n"
-            f"   Check write permissions for: {sessions_dir}"
-        ) from e
+        raise PermissionError(f"Cannot create session directory: {session_dir}\n   Check write permissions for: {sessions_dir}") from e
 
     # Create input_frames and runs directories
     # Why: Directory names from CONSTANTS.py
@@ -2653,9 +2491,7 @@ def create_session_from_files(
         input_frames_dir.mkdir(exist_ok=True)
         runs_dir.mkdir(exist_ok=True)
     except PermissionError as e:
-        raise PermissionError(
-            f"Cannot create session directories: {session_dir}"
-        ) from e
+        raise PermissionError(f"Cannot create session directories: {session_dir}") from e
 
     # Setup cleanup handler in case of failure
     def cleanup_on_failure() -> None:
@@ -2673,9 +2509,7 @@ def create_session_from_files(
         print("   Extracting dependencies from SVG files...")
         all_dependencies = set()
         for svg_path in svg_file_paths:
-            deps = extract_svg_dependencies(
-                svg_path, encoding=config["create_session_encoding"]
-            )
+            deps = extract_svg_dependencies(svg_path, encoding=config["create_session_encoding"])
             all_dependencies.update(deps)
 
         if all_dependencies:
@@ -2698,10 +2532,7 @@ def create_session_from_files(
             try:
                 shutil.copy2(svg_path, dest_path)
             except (PermissionError, OSError) as e:
-                raise PermissionError(
-                    f"Failed to copy frame {i}: {svg_path.name}\n"
-                    f"   Destination: {dest_path}\n   Error: {e}"
-                ) from e
+                raise PermissionError(f"Failed to copy frame {i}: {svg_path.name}\n   Destination: {dest_path}\n   Error: {e}") from e
 
             copied_svg_names.append(new_name)
             print(f"   ✓ Frame {i}: {svg_path.name} → {new_name}")
@@ -2714,9 +2545,7 @@ def create_session_from_files(
                 # Find which SVG referenced this dependency
                 referencing_svg = None
                 for svg_path in svg_file_paths:
-                    if dep_path in extract_svg_dependencies(
-                        svg_path, encoding=config["create_session_encoding"]
-                    ):
+                    if dep_path in extract_svg_dependencies(svg_path, encoding=config["create_session_encoding"]):
                         referencing_svg = svg_path
                         break
 
@@ -2739,9 +2568,7 @@ def create_session_from_files(
 
         # Create session metadata
         # Use copied SVG names for fingerprint
-        fingerprint = hashlib.sha256(
-            "|".join(sorted(copied_svg_names)).encode()
-        ).hexdigest()[:16]
+        fingerprint = hashlib.sha256("|".join(sorted(copied_svg_names)).encode()).hexdigest()[:16]
 
         metadata = {
             "fingerprint": fingerprint,
@@ -2760,11 +2587,7 @@ def create_session_from_files(
 
     except Exception as e:
         # Cleanup will be handled by registered cleanup_on_failure handler
-        raise RuntimeError(
-            f"Failed to create session from file list: {e}\n"
-            f"   Session directory: {session_dir}\n"
-            f"   Partial files have been cleaned up"
-        ) from e
+        raise RuntimeError(f"Failed to create session from file list: {e}\n   Session directory: {session_dir}\n   Partial files have been cleaned up") from e
 
     # Success - unregister cleanup handler
     if cleanup_on_failure in _cleanup_handlers:
@@ -2821,10 +2644,7 @@ def create_session_from_inputs(
     print("   Validating input paths...")
     for i, input_path in enumerate(input_paths, start=1):
         if not input_path.exists():
-            raise FileNotFoundError(
-                f"Input {i}: Path not found: {input_path}\n   Ensure path is "
-                f"correct and accessible"
-            )
+            raise FileNotFoundError(f"Input {i}: Path not found: {input_path}\n   Ensure path is correct and accessible")
     print(f"   ✓ All {len(input_paths)} input paths validated")
 
     # Create temporary session directory
@@ -2871,9 +2691,7 @@ def create_session_from_inputs(
         # Collect tuples of (source_path, dest_name)
         files_to_copy: list[tuple[Path, str]] = []
         svg_source_paths: set[Path] = set()  # Track which files are SVG files
-        root_input_svg_paths: set[Path] = (
-            set()
-        )  # Track ROOT input SVGs (not dependencies)
+        root_input_svg_paths: set[Path] = set()  # Track ROOT input SVGs (not dependencies)
         # WHY: Dependencies should NOT be assigned frame numbers
         # Only root input files become test frames
 
@@ -2888,11 +2706,7 @@ def create_session_from_inputs(
                 # Subdirectories typically contain helper elements (fonts, images)
                 # Use --recursive flag to include subdirectories in frame selection
                 glob_pattern = "**/*" if recursive else "*"
-                iterator = (
-                    input_path.glob(glob_pattern)
-                    if not recursive
-                    else input_path.rglob("*")
-                )
+                iterator = input_path.glob(glob_pattern) if not recursive else input_path.rglob("*")
 
                 for item in iterator:
                     if item.is_file():
@@ -2907,20 +2721,13 @@ def create_session_from_inputs(
                         files_to_copy.append((item, dest_name))
 
                         # Track SVG files (exclude FBF files)
-                        if (
-                            item.suffix.lower() == ".svg"
-                            and ".fbf.svg" not in item.name
-                        ):
+                        if item.suffix.lower() == ".svg" and ".fbf.svg" not in item.name:
                             svg_source_paths.add(item)
                             # Mark as root input (from direct user input, not a
                             # dependency)
                             root_input_svg_paths.add(item)
 
-                file_count = sum(
-                    1
-                    for f, _ in files_to_copy
-                    if input_path in f.parents or f.parent == input_path
-                )
+                file_count = sum(1 for f, _ in files_to_copy if input_path in f.parents or f.parent == input_path)
                 print(f"      ✓ Found {file_count} files")
 
             elif input_path.is_file():
@@ -2931,10 +2738,7 @@ def create_session_from_inputs(
                 files_to_copy.append((input_path, dest_name))
 
                 # Track SVG files (exclude FBF files)
-                if (
-                    input_path.suffix.lower() == ".svg"
-                    and ".fbf.svg" not in input_path.name
-                ):
+                if input_path.suffix.lower() == ".svg" and ".fbf.svg" not in input_path.name:
                     svg_source_paths.add(input_path)
                     # Mark as root input (from direct user input, not a dependency)
                     root_input_svg_paths.add(input_path)
@@ -3023,9 +2827,7 @@ def create_session_from_inputs(
 
         # STEP 3: Report filtering results
         if incompatible_files:
-            print(
-                f"      ⏭️  Filtered out {len(incompatible_files)} incompatible file(s):"
-            )
+            print(f"      ⏭️  Filtered out {len(incompatible_files)} incompatible file(s):")
             for file_path, reason in incompatible_files:
                 print(f"          - {file_path.name} ({reason})")
 
@@ -3041,13 +2843,8 @@ def create_session_from_inputs(
         # list
         # ====================================================================
         incompatible_paths = {path for path, reason in incompatible_files}
-        files_to_copy = [
-            (src, dest) for src, dest in files_to_copy if src not in incompatible_paths
-        ]
-        print(
-            f"      ✓ Removed {len(incompatible_paths)} incompatible files "
-            f"from copy list"
-        )
+        files_to_copy = [(src, dest) for src, dest in files_to_copy if src not in incompatible_paths]
+        print(f"      ✓ Removed {len(incompatible_paths)} incompatible files from copy list")
 
         # STEP 5: Create NEW clean dictionary of ONLY compatible files
         # ========================================================================
@@ -3086,32 +2883,22 @@ def create_session_from_inputs(
 
         svg_dependencies: dict[Path, set[Path]] = {}
         all_dependencies: set[Path] = set()
-        svg_original_references: dict[
-            Path, dict[Path, str]
-        ] = {}  # Will be populated if dependencies found
+        svg_original_references: dict[Path, dict[Path, str]] = {}  # Will be populated if dependencies found
 
         # CRITICAL: Extract dependencies ONLY from compatible root SVG files
         # WHY: Incompatible files will never become test frames, so their
         # dependencies are irrelevant and should not be copied
         for svg_path in svg_source_paths:
             try:
-                deps = extract_svg_dependencies(
-                    svg_path, encoding=config["create_session_encoding"]
-                )
+                deps = extract_svg_dependencies(svg_path, encoding=config["create_session_encoding"])
                 if deps:
                     svg_dependencies[svg_path] = deps
                     all_dependencies.update(deps)
             except Exception as e:
-                print(
-                    f"      ⚠️  Warning: Failed to extract dependencies from "
-                    f"{svg_path.name}: {e}"
-                )
+                print(f"      ⚠️  Warning: Failed to extract dependencies from {svg_path.name}: {e}")
 
         if all_dependencies:
-            print(
-                f"   ✓ Found {len(all_dependencies)} dependency files from "
-                f"{len(svg_dependencies)} SVGs"
-            )
+            print(f"   ✓ Found {len(all_dependencies)} dependency files from {len(svg_dependencies)} SVGs")
 
             # Extract original reference strings from SVG files
             # WHY: We need the ACTUAL reference strings (e.g.,
@@ -3121,9 +2908,7 @@ def create_session_from_inputs(
                 if deps:
                     # Extract original reference strings for this SVG's
                     # dependencies
-                    ref_strings = extract_reference_strings(
-                        svg_path, deps, encoding=config["create_session_encoding"]
-                    )
+                    ref_strings = extract_reference_strings(svg_path, deps, encoding=config["create_session_encoding"])
                     if ref_strings:
                         svg_original_references[svg_path] = ref_strings
 
@@ -3156,20 +2941,11 @@ def create_session_from_inputs(
         # ====================================================================
         print("\n   🔀 Phase 1c: Resolving filename collisions...")
 
-        resolved_names, svg_uuids, svg_reference_mappings = resolve_filename_collisions(
-            files_to_copy, svg_dependencies, svg_original_references
-        )
+        resolved_names, svg_uuids, svg_reference_mappings = resolve_filename_collisions(files_to_copy, svg_dependencies, svg_original_references)
 
         # Count collisions
-        collision_count = sum(
-            1 for dest_name in resolved_names.values() if "___FBFTEST[" in dest_name
-        )
-        uuid_prefix_count = sum(
-            1
-            for dest_name in resolved_names.values()
-            if not dest_name.endswith(".svg")
-            and any(uuid_val in dest_name for uuid_val in svg_uuids.values())
-        )
+        collision_count = sum(1 for dest_name in resolved_names.values() if "___FBFTEST[" in dest_name)
+        uuid_prefix_count = sum(1 for dest_name in resolved_names.values() if not dest_name.endswith(".svg") and any(uuid_val in dest_name for uuid_val in svg_uuids.values()))
 
         if collision_count > 0:
             print(f"   ✓ Resolved {collision_count} SVG filename collisions")
@@ -3215,9 +2991,7 @@ def create_session_from_inputs(
                 dest_path = dependencies_dir / resolved_dest_name
                 # Track mapping for reference updates: old relative path ->
                 # new relative path
-                dependency_file_mapping[resolved_dest_name] = (
-                    f"dependencies/{resolved_dest_name}"
-                )
+                dependency_file_mapping[resolved_dest_name] = f"dependencies/{resolved_dest_name}"
 
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -3236,16 +3010,10 @@ def create_session_from_inputs(
                 print(f"      ⚠️  Warning: Failed to copy {source_path.name}: {e}")
 
         print(f"   ✓ Copied {copy_count} files to input_frames")
-        print(
-            f"   ✓ Including {len(copied_root_svg_files)} root SVG files "
-            f"(for frame numbering)"
-        )
+        print(f"   ✓ Including {len(copied_root_svg_files)} root SVG files (for frame numbering)")
         dependency_count = copy_count - len(copied_root_svg_files)
         if dependency_count > 0:
-            print(
-                f"   ✓ Placed {dependency_count} dependencies in "
-                f"dependencies/ subfolder"
-            )
+            print(f"   ✓ Placed {dependency_count} dependencies in dependencies/ subfolder")
 
         # ====================================================================
         # Phase 1e: Update SVG references with UUID-suffixed dependency names
@@ -3320,10 +3088,7 @@ def create_session_from_inputs(
                             )
                             update_count += 1
                         except RuntimeError as e:
-                            print(
-                                f"      ⚠️  Warning: Failed to update references in "
-                                f"{copied_svg_path.name}: {e}"
-                            )
+                            print(f"      ⚠️  Warning: Failed to update references in {copied_svg_path.name}: {e}")
 
             print(f"   ✓ Updated references in {update_count} SVG files")
 
@@ -3371,34 +3136,24 @@ def create_session_from_inputs(
 
         # Count dependency files for informational purposes
         all_svg_files_count = len(list(input_frames_dir.rglob("*.svg")))
-        all_svg_files_count -= len(
-            [f for f in input_frames_dir.rglob("*.svg") if ".fbf.svg" in f.name]
-        )
+        all_svg_files_count -= len([f for f in input_frames_dir.rglob("*.svg") if ".fbf.svg" in f.name])
         dependency_count = all_svg_files_count - len(svg_files)
         if dependency_count > 0:
             print(f"   Dependency files (not numbered): {dependency_count}")
 
         if not svg_files:
-            raise ValueError(
-                "No valid SVG files found in inputs!\n   Ensure inputs contain "
-                ".svg files (not .fbf.svg)"
-            )
+            raise ValueError("No valid SVG files found in inputs!\n   Ensure inputs contain .svg files (not .fbf.svg)")
 
         # Step 3: Move defective/obsolete files
         defective_svg_dir = Path(__file__).parent / "examples_dev" / "defective_svg"
-        obsolete_fbf_dir = (
-            Path(__file__).parent / "examples_dev" / "obsolete_fbf_format"
-        )
+        obsolete_fbf_dir = Path(__file__).parent / "examples_dev" / "obsolete_fbf_format"
 
         defective_svg_dir.mkdir(parents=True, exist_ok=True)
         obsolete_fbf_dir.mkdir(parents=True, exist_ok=True)
 
         # Move any FBF files to obsolete_fbf_format
         if fbf_files:
-            print(
-                f"\n   🗂️  Moving {len(fbf_files)} FBF files to "
-                f"examples_dev/obsolete_fbf_format/..."
-            )
+            print(f"\n   🗂️  Moving {len(fbf_files)} FBF files to examples_dev/obsolete_fbf_format/...")
             for fbf_file in fbf_files:
                 dest = obsolete_fbf_dir / fbf_file.name
                 shutil.move(str(fbf_file), str(dest))
@@ -3419,14 +3174,9 @@ def create_session_from_inputs(
         assignments = assign_numbers_deterministically(svg_files)
 
         # Sort frames by assigned number to get final order
-        ordered_frames = [
-            svg_file for svg_file, _ in sorted(assignments.items(), key=lambda x: x[1])
-        ]
+        ordered_frames = [svg_file for svg_file, _ in sorted(assignments.items(), key=lambda x: x[1])]
 
-        print(
-            f"   ✓ Frame sequence determined: {len(ordered_frames)} frames "
-            f"in deterministic order"
-        )
+        print(f"   ✓ Frame sequence determined: {len(ordered_frames)} frames in deterministic order")
 
         # Update svg_files list with final sorted order
         svg_files = ordered_frames
@@ -3454,9 +3204,7 @@ def create_session_from_inputs(
         # If some files are missing viewBox, warn but continue
         # svg2fbf will handle viewBox processing during conversion
         if len(files_without_viewbox) > 0:
-            print(
-                f"\n   ⚠️  Warning: {len(files_without_viewbox)} files missing viewBox"
-            )
+            print(f"\n   ⚠️  Warning: {len(files_without_viewbox)} files missing viewBox")
             print("   svg2fbf will attempt to process these during test execution")
         else:
             print("   ✅ All files have viewBox attributes")
@@ -3509,10 +3257,7 @@ def create_session_from_inputs(
 
     except Exception as e:
         # Cleanup will be handled by registered cleanup_on_failure handler
-        raise RuntimeError(
-            f"Failed to create session from inputs: {e}\n"
-            f"   Partial files have been cleaned up"
-        ) from e
+        raise RuntimeError(f"Failed to create session from inputs: {e}\n   Partial files have been cleaned up") from e
 
     # Success - unregister cleanup handler
     if cleanup_on_failure in _cleanup_handlers:
@@ -3551,9 +3296,7 @@ def compute_session_fingerprint(svg_files: list[Path]) -> str:
     return hashlib.sha256(fingerprint_string.encode()).hexdigest()[:16]
 
 
-def find_existing_session(
-    sessions_dir: Path, fingerprint: str, frame_count: int
-) -> str | None:
+def find_existing_session(sessions_dir: Path, fingerprint: str, frame_count: int) -> str | None:
     """
     Find existing E2E test session with matching fingerprint.
 
@@ -3613,9 +3356,7 @@ def find_next_session_number(sessions_dir: Path) -> int:
     return max_num + 1
 
 
-def find_or_create_session(
-    sessions_dir: Path, svg_files: list[Path], input_folder: Path
-) -> tuple[str, Path, bool]:
+def find_or_create_session(sessions_dir: Path, svg_files: list[Path], input_folder: Path) -> tuple[str, Path, bool]:
     """
     Find existing E2E test session for this set of frames, or create new one.
 
@@ -4103,10 +3844,7 @@ def list_test_sessions(sessions_dir: Path) -> None:
         if len(paths_str) > 80:
             paths_str = paths_str[:77] + "..."
 
-        print(
-            f"{session_num:3d} - Frames: {frame_count:3d} | {outcome_color} "
-            f"{outcome:20s} | {paths_str}"
-        )
+        print(f"{session_num:3d} - Frames: {frame_count:3d} | {outcome_color} {outcome:20s} | {paths_str}")
 
     print()
     print("=" * 100)
@@ -4253,10 +3991,7 @@ def delete_session(
 
         print(f"🗑️  Delete RUNS from E2E test session {session_num}")
         print("\n   Test Details:")
-        print(
-            f"   {session_num:3d} - Frames: {frame_count:3d} | {outcome_color} "
-            f"{outcome:20s} | {paths_str}"
-        )
+        print(f"   {session_num:3d} - Frames: {frame_count:3d} | {outcome_color} {outcome:20s} | {paths_str}")
         print(f"\n   Action: Delete {len(run_dirs)} test run(s), KEEP E2E test session")
         print(f"   E2E Test Session directory: {session_dir}")
         print("\n   Runs to delete:")
@@ -4267,10 +4002,7 @@ def delete_session(
         print("      - input_frames/ (original SVG files)")
 
         if not non_interactive:
-            response = input(
-                f"\n⚠️  Delete {len(run_dirs)} run(s) but KEEP test session "
-                f"{session_num}? [y/N]: "
-            )
+            response = input(f"\n⚠️  Delete {len(run_dirs)} run(s) but KEEP test session {session_num}? [y/N]: ")
             if response.lower() not in ["y", "yes"]:
                 print("❌ Deletion cancelled")
                 sys.exit(0)
@@ -4290,10 +4022,7 @@ def delete_session(
         # Delete entire session
         print(f"🗑️  Delete ENTIRE E2E TEST SESSION {session_num}")
         print("\n   Test Details:")
-        print(
-            f"   {session_num:3d} - Frames: {frame_count:3d} | {outcome_color} "
-            f"{outcome:20s} | {paths_str}"
-        )
+        print(f"   {session_num:3d} - Frames: {frame_count:3d} | {outcome_color} {outcome:20s} | {paths_str}")
         print("\n   Action: Delete entire E2E test session (cannot be undone)")
         print(f"   E2E Test Session directory: {session_dir}")
         print("\n   Will delete:")
@@ -4317,9 +4046,7 @@ def delete_session(
             sys.exit(1)
 
 
-def purge_old_runs(
-    sessions_dir: Path, until_date_str: str | None = None, non_interactive: bool = False
-) -> None:
+def purge_old_runs(sessions_dir: Path, until_date_str: str | None = None, non_interactive: bool = False) -> None:
     """
     Delete old test runs across all sessions.
 
@@ -4388,10 +4115,7 @@ def purge_old_runs(
         runs_by_session[session_dir].append((run_dir, run_timestamp))
 
     # Display what will be deleted
-    print(
-        f"   Found {len(old_runs)} old test run(s) in "
-        f"{len(runs_by_session)} E2E test session(s):\n"
-    )
+    print(f"   Found {len(old_runs)} old test run(s) in {len(runs_by_session)} E2E test session(s):\n")
     for session_dir, runs in sorted(runs_by_session.items()):
         # Get session number from directory name
         try:
@@ -4403,22 +4127,13 @@ def purge_old_runs(
 
         print(f"   Test E2E E2E Test Session {session_num} ({frame_count} frames):")
         for run_dir, run_timestamp in sorted(runs):
-            print(
-                f"      - Run: {run_dir.name} "
-                f"({run_timestamp.strftime('%Y/%m/%d %H:%M:%S')})"
-            )
+            print(f"      - Run: {run_dir.name} ({run_timestamp.strftime('%Y/%m/%d %H:%M:%S')})")
 
-    print(
-        "\n   Note: This will delete TEST RUNS only, not the E2E test "
-        "sessions themselves"
-    )
+    print("\n   Note: This will delete TEST RUNS only, not the E2E test sessions themselves")
     print("   E2E Test Sessions will be preserved with their input_frames")
 
     if not non_interactive:
-        response = input(
-            f"\n⚠️  Delete {len(old_runs)} old test run(s) from "
-            f"{len(runs_by_session)} session(s)? [y/N]: "
-        )
+        response = input(f"\n⚠️  Delete {len(old_runs)} old test run(s) from {len(runs_by_session)} session(s)? [y/N]: ")
         if response.lower() not in ["y", "yes"]:
             print("❌ Purge cancelled")
             sys.exit(0)
@@ -4476,9 +4191,7 @@ def run_pytest_units(filters: list[str]) -> None:
     sys.exit(result.returncode)
 
 
-def collect_random_svgs(
-    source_folders: list[Path], count: int, recursive: bool = False
-) -> list[Path]:
+def collect_random_svgs(source_folders: list[Path], count: int, recursive: bool = False) -> list[Path]:
     """
     Randomly select SVG files from source folders.
 
@@ -4516,38 +4229,21 @@ def collect_random_svgs(
         # Subdirectories typically contain helper elements (fonts, images)
         # Use recursive=True to include subdirectories in frame selection
         if recursive:
-            svgs_in_folder = [
-                svg
-                for svg in folder.rglob("*.svg")
-                if svg.is_file() and ".fbf.svg" not in svg.name.lower()
-            ]
+            svgs_in_folder = [svg for svg in folder.rglob("*.svg") if svg.is_file() and ".fbf.svg" not in svg.name.lower()]
         else:
-            svgs_in_folder = [
-                svg
-                for svg in folder.glob("*.svg")
-                if svg.is_file() and ".fbf.svg" not in svg.name.lower()
-            ]
+            svgs_in_folder = [svg for svg in folder.glob("*.svg") if svg.is_file() and ".fbf.svg" not in svg.name.lower()]
 
         scan_mode = "recursively" if recursive else "root level only"
-        print(
-            f"   {folder.name}: Found {len(svgs_in_folder)} SVG file(s) ({scan_mode})"
-        )
+        print(f"   {folder.name}: Found {len(svgs_in_folder)} SVG file(s) ({scan_mode})")
         all_svgs.extend(svgs_in_folder)
 
     print(f"\n📊 Total SVG files found: {len(all_svgs)}")
 
     if len(all_svgs) == 0:
-        raise ValueError(
-            "No SVG files found in source folders!\n"
-            "   Ensure folders contain .svg files (not .fbf.svg)"
-        )
+        raise ValueError("No SVG files found in source folders!\n   Ensure folders contain .svg files (not .fbf.svg)")
 
     if len(all_svgs) < count:
-        raise ValueError(
-            f"Not enough SVG files! Requested {count}, but only "
-            f"{len(all_svgs)} found.\n   Either reduce count or add more "
-            f"source folders."
-        )
+        raise ValueError(f"Not enough SVG files! Requested {count}, but only {len(all_svgs)} found.\n   Either reduce count or add more source folders.")
 
     # Randomly select n files
     selected = random.sample(all_svgs, count)
@@ -4588,10 +4284,7 @@ def main() -> None:
                 print(f"❌ Error: Unexpected argument: {arg}")
                 print("\nUsage:")
                 print("  testrunner.py run_units                    # Run all tests")
-                print(
-                    "  testrunner.py run_units -- REGEX [REGEX]   # Run tests "
-                    "matching patterns (OR logic)"
-                )
+                print("  testrunner.py run_units -- REGEX [REGEX]   # Run tests matching patterns (OR logic)")
                 print("\nExamples:")
                 print("  testrunner.py run_units")
                 print('  testrunner.py run_units -- "test_frame"')
@@ -4606,10 +4299,7 @@ def main() -> None:
         if len(sys.argv) < 3:
             print("❌ Error: E2E E2E Test Session ID required")
             print("\nUsage:")
-            print(
-                "  testrunner.py results <session_id>  # Open results for an "
-                "E2E test session"
-            )
+            print("  testrunner.py results <session_id>  # Open results for an E2E test session")
             print("\nExamples:")
             print("  testrunner.py results 77")
             print("  testrunner.py results session_077_23frames")
@@ -4627,10 +4317,7 @@ def main() -> None:
         if len(sys.argv) < 3:
             print("❌ Error: E2E E2E Test Session ID required")
             print("\nUsage:")
-            print(
-                "  testrunner.py delete <session_id> [--non-interactive] "
-                "[--only-clean-runs]"
-            )
+            print("  testrunner.py delete <session_id> [--non-interactive] [--only-clean-runs]")
             print("\nExamples:")
             print("  testrunner.py delete 77")
             print("  testrunner.py delete 77 --only-clean-runs")
@@ -4672,10 +4359,7 @@ def main() -> None:
         if len(sys.argv) < 3:
             print("❌ Error: At least one E2E test session ID required")
             print("\nUsage:")
-            print(
-                "  testrunner.py run <session_id> [<session_id> ...] "
-                "[--image-tolerance N] [--pixel-tolerance N]"
-            )
+            print("  testrunner.py run <session_id> [<session_id> ...] [--image-tolerance N] [--pixel-tolerance N]")
             print("\nExamples:")
             print("  testrunner.py run 77")
             print("  testrunner.py run 88 45 7 193")
@@ -4720,16 +4404,11 @@ def main() -> None:
 
         for session_id in session_ids:
             print(f"\n{'=' * 80}")
-            print(
-                f"📦 Running E2E test session {session_id} "
-                f"({session_ids.index(session_id) + 1}/{len(session_ids)})"
-            )
+            print(f"📦 Running E2E test session {session_id} ({session_ids.index(session_id) + 1}/{len(session_ids)})")
             print(f"{'=' * 80}\n")
 
             # Execute session without opening browser (will open all at once at the end)
-            report_path = execute_test_session(
-                session_id, config, sessions_dir, open_in_browser=False
-            )
+            report_path = execute_test_session(session_id, config, sessions_dir, open_in_browser=False)
             report_paths.append(report_path)
 
         # Inject batch navigation for multiple sessions
@@ -4773,53 +4452,25 @@ def main() -> None:
             print("\nUsage:")
             print("  testrunner.py create [options] -- <path1> [path2] [path3] ...")
             print("\nOptions:")
-            print(
-                "  --image-tolerance N   Override image tolerance (default from "
-                "pyproject.toml)"
-            )
-            print(
-                "  --pixel-tolerance N   Override pixel tolerance (default from "
-                "pyproject.toml)"
-            )
+            print("  --image-tolerance N   Override image tolerance (default from pyproject.toml)")
+            print("  --pixel-tolerance N   Override pixel tolerance (default from pyproject.toml)")
             print("  --autonumber         Auto-number SVG files in directories")
-            print(
-                "  --recursive          Scan directories recursively (default: "
-                "root level only)"
-            )
-            print(
-                "  --random N           Randomly select N SVG files from source "
-                "folders (excludes .fbf.svg)"
-            )
+            print("  --recursive          Scan directories recursively (default: root level only)")
+            print("  --random N           Randomly select N SVG files from source folders (excludes .fbf.svg)")
             print("\nImportant Notes:")
-            print(
-                "  • By default, directory scanning is NON-RECURSIVE (root level only)"
-            )
+            print("  • By default, directory scanning is NON-RECURSIVE (root level only)")
             print("  • Use --recursive to include subdirectories in frame selection")
-            print(
-                "  • Subdirectories typically contain helper elements (fonts, images)"
-            )
+            print("  • Subdirectories typically contain helper elements (fonts, images)")
             print("  • Root-level SVGs are frames; subdirectory SVGs are dependencies")
-            print(
-                "  • Incompatible files (SMIL animations, JS, multimedia) are "
-                "filtered BEFORE processing"
-            )
+            print("  • Incompatible files (SMIL animations, JS, multimedia) are filtered BEFORE processing")
             print("\nExamples:")
             print("\n  Basic Usage:")
             print("    testrunner.py create -- /path/to/folder")
             print("    testrunner.py create -- file1.svg file2.svg file3.svg")
             print("    testrunner.py create --image-tolerance 0.05 -- /path/to/folder")
-            print(
-                "    testrunner.py create --autonumber -- /path/to/folder1 "
-                "/path/to/folder2"
-            )
-            print(
-                "\n  Random Selection (root level only, recommended for W3C test "
-                "suite):"
-            )
-            print(
-                "    testrunner.py create --random 50 -- "
-                "'FBF.SVG/SVG 1.1 W3C Test Suit/w3c_50frames/'"
-            )
+            print("    testrunner.py create --autonumber -- /path/to/folder1 /path/to/folder2")
+            print("\n  Random Selection (root level only, recommended for W3C test suite):")
+            print("    testrunner.py create --random 50 -- 'FBF.SVG/SVG 1.1 W3C Test Suit/w3c_50frames/'")
             print("    just test-random-w3c 50  # Convenient alias")
             print("\n  Random Selection (recursive, for nested directories):")
             print("    testrunner.py create --random 50 --recursive -- examples/")
@@ -4829,10 +4480,7 @@ def main() -> None:
             print("      ├── test1.svg           ← Root level: test frames (SCANNED)")
             print("      ├── test2.svg           ← Root level: test frames (SCANNED)")
             print("      └── subdirs/")
-            print(
-                "          └── helper.svg      ← Subdirectory: dependency (NOT "
-                "SCANNED by default)"
-            )
+            print("          └── helper.svg      ← Subdirectory: dependency (NOT SCANNED by default)")
             print("\nFor more help: testrunner.py --help")
             sys.exit(1)
 
@@ -4879,10 +4527,7 @@ def main() -> None:
             print("\nExamples:")
             print("  testrunner.py create -- /path/to/folder")
             print("  testrunner.py create --image-tolerance 0.05 -- /path/to/folder")
-            print(
-                "  testrunner.py create --random 50 -- "
-                "'FBF.SVG/SVG 1.1 W3C Test Suit/w3c_50frames/'"
-            )
+            print("  testrunner.py create --random 50 -- 'FBF.SVG/SVG 1.1 W3C Test Suit/w3c_50frames/'")
             print("  just test-random-w3c 50  # Convenient alias")
             print("\nFor more help: testrunner.py --help")
             sys.exit(1)
@@ -4911,9 +4556,7 @@ def main() -> None:
 
             # Use random selection function
             try:
-                input_paths = collect_random_svgs(
-                    input_paths, random_count, recursive=recursive
-                )
+                input_paths = collect_random_svgs(input_paths, random_count, recursive=recursive)
                 print()
             except ValueError as e:
                 print("\n❌ Random selection failed:")
@@ -4941,9 +4584,7 @@ def main() -> None:
 
         # Create session using unified function
         try:
-            session_id, session_dir = create_session_from_inputs(
-                input_paths, sessions_dir, config, recursive
-            )
+            session_id, session_dir = create_session_from_inputs(input_paths, sessions_dir, config, recursive)
 
             print("To run this E2E E2E test session:")
             print(f"   uv run python testrunner.py run {session_id.split('_')[1]}")
@@ -4993,12 +4634,8 @@ def inject_batch_navigation(report_paths: list[Path]) -> None:
         prev_index = (idx - 1) % len(report_paths)
         next_index = (idx + 1) % len(report_paths)
 
-        first_btn_style = (
-            "opacity: 0.5; cursor: not-allowed;" if is_first else "cursor: pointer;"
-        )
-        last_btn_style = (
-            "opacity: 0.5; cursor: not-allowed;" if is_last else "cursor: pointer;"
-        )
+        first_btn_style = "opacity: 0.5; cursor: not-allowed;" if is_first else "cursor: pointer;"
+        last_btn_style = "opacity: 0.5; cursor: not-allowed;" if is_last else "cursor: pointer;"
 
         nav_script = f"""
     <script>
@@ -5181,10 +4818,7 @@ def execute_test_session(
     # Apply max_frames limit from config
     max_frames = config.get("max_frames", 50)
     if len(svg_files) > max_frames:
-        print(
-            f"⚠️  Session has {original_svg_count} frames, limiting to first "
-            f"{max_frames} (max_frames from pyproject.toml)"
-        )
+        print(f"⚠️  Session has {original_svg_count} frames, limiting to first {max_frames} (max_frames from pyproject.toml)")
         svg_files = svg_files[:max_frames]
 
     # Validate session integrity
@@ -5236,9 +4870,7 @@ def execute_test_session(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Run-level subdirectories (names from CONSTANTS.py)
-    input_frames_png_dir = (
-        output_dir / DIR_INPUT_FRAMES_PNG
-    )  # Rendered PNGs from input SVGs
+    input_frames_png_dir = output_dir / DIR_INPUT_FRAMES_PNG  # Rendered PNGs from input SVGs
     output_frames_png_dir = output_dir / DIR_OUTPUT_FRAMES_PNG  # Captured PNGs from FBF
     fbf_output_dir = output_dir / DIR_FBF_OUTPUT
     diff_png_dir = output_dir / DIR_DIFF_PNG  # Grayscale difference maps
@@ -5260,9 +4892,7 @@ def execute_test_session(
     # CRITICAL: Use svg2fbf's frame processor to calculate transforms
     # Why: Ensures test uses EXACT same logic as svg2fbf for transforms
     # Precision values from CONSTANTS.py (maximum precision for accuracy)
-    frame_processor = SVG2FBFFrameProcessor(
-        digits=DEFAULT_PRECISION_DIGITS, cdigits=DEFAULT_PRECISION_CDIGITS
-    )
+    frame_processor = SVG2FBFFrameProcessor(digits=DEFAULT_PRECISION_DIGITS, cdigits=DEFAULT_PRECISION_CDIGITS)
 
     # Session-level input_frames directory (original SVGs)
     # Why: Directory name from CONSTANTS.py
@@ -5281,9 +4911,7 @@ def execute_test_session(
     # files keep their original names (no frame*.svg pattern).
     # Dependencies are in input_frames/dependencies/ subdirectory.
     all_test_svg_files = list(session_input_frames_dir.glob("*.svg"))
-    batch_svg_files = sorted(
-        [f for f in all_test_svg_files if f.parent == session_input_frames_dir]
-    )
+    batch_svg_files = sorted([f for f in all_test_svg_files if f.parent == session_input_frames_dir])
 
     # SAFETY CHECK: Verify no incompatible content slipped through
     # This should never happen if session was created correctly, but check anyway
@@ -5300,10 +4928,7 @@ def execute_test_session(
             incompatible_found.append((svg_file.name, "multimedia"))
 
     if incompatible_found:
-        print(
-            f"❌ CRITICAL ERROR: Found {len(incompatible_found)} file(s) with "
-            f"incompatible content in input_frames!"
-        )
+        print(f"❌ CRITICAL ERROR: Found {len(incompatible_found)} file(s) with incompatible content in input_frames!")
         print("   These should have been filtered during E2E test session creation.")
         for filename, reason in incompatible_found:
             print(f"     - {filename} ({reason})")
@@ -5318,9 +4943,7 @@ def execute_test_session(
 
     # Get first frame dimensions using svg2fbf logic
     first_svg = batch_svg_files[0]
-    first_width, first_height, first_viewbox, _, _ = frame_processor.process_frame(
-        first_svg
-    )
+    first_width, first_height, first_viewbox, _, _ = frame_processor.process_frame(first_svg)
 
     print(f"   First frame dimensions: {first_width} x {first_height}")
     print(f"   First frame viewBox: {first_viewbox}")
@@ -5338,9 +4961,7 @@ def execute_test_session(
         # We must render the MODIFIED SVG, not the original file with transforms applied
         if i == 0:
             # First frame: process to get fixed SVG
-            width, height, viewbox, transform, svg_doc = frame_processor.process_frame(
-                svg_file, first_frame_dimensions=None
-            )
+            width, height, viewbox, transform, svg_doc = frame_processor.process_frame(svg_file, first_frame_dimensions=None)
 
             # ⚠️ CRITICAL SAFETY FIX: Ensure SVG root has width/height
             # attributes for Puppeteer
@@ -5386,9 +5007,7 @@ def execute_test_session(
                 svg_doc.writexml(f, encoding="utf-8")  # type: ignore[attr-defined]
         else:
             # Subsequent frames: process with first frame dimensions
-            width, height, viewbox, transform, svg_doc = frame_processor.process_frame(
-                svg_file, first_frame_dimensions=first_frame_dimensions
-            )
+            width, height, viewbox, transform, svg_doc = frame_processor.process_frame(svg_file, first_frame_dimensions=first_frame_dimensions)
 
             # ⚠️ CRITICAL SAFETY FIX: Ensure SVG root has width/height
             # attributes for Puppeteer
@@ -5454,9 +5073,7 @@ def execute_test_session(
 
         input_pngs.append(png_path)
         if transform:
-            print(
-                f"   ✓ Frame {i + 1}: {svg_file.name} (transform: {transform[:40]}...)"
-            )
+            print(f"   ✓ Frame {i + 1}: {svg_file.name} (transform: {transform[:40]}...)")
         else:
             print(f"   ✓ Frame {i + 1}: {svg_file.name}")
 
@@ -5509,9 +5126,7 @@ def execute_test_session(
         yaml.dump(generation_card, f, default_flow_style=False, sort_keys=False)
 
     print(f"   ✓ Generation card created: {generation_card_path.name}")
-    print(
-        f"   ✓ Frame sequence: {len(batch_svg_files)} frames in exact rendering order\n"
-    )
+    print(f"   ✓ Frame sequence: {len(batch_svg_files)} frames in exact rendering order\n")
 
     # Step 2: Run svg2fbf with generation card
     print("🔨 Step 2: Running svg2fbf with generation card...")
@@ -5657,9 +5272,7 @@ def execute_test_session(
         "precision_digits": DEFAULT_PRECISION_DIGITS,
         "precision_cdigits": DEFAULT_PRECISION_CDIGITS,
         "tolerance": config["image_tolerance"],  # Add tolerance for HTML report
-        "pixel_tolerance": config[
-            "pixel_tolerance"
-        ],  # Add pixel tolerance for HTML report
+        "pixel_tolerance": config["pixel_tolerance"],  # Add pixel tolerance for HTML report
         "output_frames_dir": output_frames_png_dir,  # Path to output PNG
         # frames directory
         "fbf_file": fbf_file,  # Path to FBF animation file
@@ -5667,9 +5280,7 @@ def execute_test_session(
 
     batch_info = {
         "batch_dir": session_input_frames_dir,  # Use session-level input_frames path
-        "svg_sources": sorted(
-            session_input_frames_dir.glob("*.svg")
-        ),  # Use session SVGs
+        "svg_sources": sorted(session_input_frames_dir.glob("*.svg")),  # Use session SVGs
     }
 
     report_path = output_dir / "comparison_report.html"

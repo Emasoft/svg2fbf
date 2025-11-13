@@ -83,9 +83,7 @@ class TestFBFTestSuffixFormat:
         for i in range(100):
             formatted = FBFTEST_SUFFIX_FORMAT.format(i)
             match = FBFTEST_SUFFIX_PATTERN.search(formatted)
-            assert match is not None, (
-                f"Formatted suffix should match pattern: {formatted}"
-            )
+            assert match is not None, f"Formatted suffix should match pattern: {formatted}"
 
     def test_format_produces_expected_output(self):
         """FBFTEST_SUFFIX_FORMAT produces expected format"""
@@ -109,29 +107,19 @@ class TestFrameNumberPatterns:
         """Each pattern has correct tuple structure"""
         for item in FRAME_NUMBER_PATTERNS:
             assert isinstance(item, tuple), "Each pattern should be a tuple"
-            assert len(item) == 3, (
-                f"Each pattern tuple should have 3 elements, got {len(item)}"
-            )
+            assert len(item) == 3, f"Each pattern tuple should have 3 elements, got {len(item)}"
 
             compiled_pattern, priority, description = item
 
             # First element: compiled regex
-            assert hasattr(compiled_pattern, "search"), (
-                "First element should be compiled regex"
-            )
-            assert hasattr(compiled_pattern, "match"), (
-                "First element should have match method"
-            )
+            assert hasattr(compiled_pattern, "search"), "First element should be compiled regex"
+            assert hasattr(compiled_pattern, "match"), "First element should have match method"
 
             # Second element: integer priority
-            assert isinstance(priority, int), (
-                f"Priority should be int, got {type(priority)}"
-            )
+            assert isinstance(priority, int), f"Priority should be int, got {type(priority)}"
 
             # Third element: string description
-            assert isinstance(description, str), (
-                f"Description should be str, got {type(description)}"
-            )
+            assert isinstance(description, str), f"Description should be str, got {type(description)}"
 
     def test_patterns_have_unique_descriptions(self):
         """Pattern descriptions are unique and descriptive"""
@@ -139,9 +127,7 @@ class TestFrameNumberPatterns:
 
         # Most descriptions should be unique (some similar ones may exist)
         unique_count = len(set(descriptions))
-        assert unique_count > len(descriptions) * 0.8, (
-            "Most descriptions should be unique"
-        )
+        assert unique_count > len(descriptions) * 0.8, "Most descriptions should be unique"
 
     def test_patterns_priorities_are_reasonable(self):
         """Pattern priorities are non-negative integers in reasonable range"""
@@ -177,17 +163,9 @@ class TestFrameNumberPatterns:
 
             # Handle both single string and list of acceptable formats
             if isinstance(expected_formats, list):
-                assert any(
-                    fmt.lower() in matched_format.lower() for fmt in expected_formats
-                ), (
-                    f"Format mismatch for {filename}: expected {expected_formats}, "
-                    f"got {matched_format}"
-                )
+                assert any(fmt.lower() in matched_format.lower() for fmt in expected_formats), f"Format mismatch for {filename}: expected {expected_formats}, got {matched_format}"
             else:
-                assert expected_formats.lower() in matched_format.lower(), (
-                    f"Format mismatch for {filename}: expected {expected_formats}, "
-                    f"got {matched_format}"
-                )
+                assert expected_formats.lower() in matched_format.lower(), f"Format mismatch for {filename}: expected {expected_formats}, got {matched_format}"
 
     def test_patterns_extract_numbers_correctly(self):
         """Patterns correctly extract frame numbers"""
@@ -206,10 +184,7 @@ class TestFrameNumberPatterns:
                 match = pattern.search(filename)
                 if match:
                     extracted_number = int(match.group(1))
-                    assert extracted_number == expected_number, (
-                        f"Extracted wrong number from {filename}: "
-                        f"expected {expected_number}, got {extracted_number}"
-                    )
+                    assert extracted_number == expected_number, f"Extracted wrong number from {filename}: expected {expected_number}, got {extracted_number}"
                     found = True
                     break
 
@@ -240,9 +215,7 @@ class TestFrameNumberPriority:
         for attr in dir(FrameNumberPriority):
             if attr.isupper():
                 value = getattr(FrameNumberPriority, attr)
-                assert isinstance(value, int), (
-                    f"{attr} should be int, got {type(value)}"
-                )
+                assert isinstance(value, int), f"{attr} should be int, got {type(value)}"
 
     def test_priority_values_are_non_negative(self):
         """All priority values are non-negative"""
@@ -254,21 +227,11 @@ class TestFrameNumberPriority:
     def test_priority_respects_hierarchy(self):
         """Priority values respect the intended hierarchy"""
         # Lower values = higher priority
-        assert FrameNumberPriority.UNDERSCORE_SVG < FrameNumberPriority.DASH_SVG, (
-            "UNDERSCORE should have higher priority than DASH"
-        )
-        assert FrameNumberPriority.DASH_SVG < FrameNumberPriority.DOT_SVG, (
-            "DASH should have higher priority than DOT"
-        )
-        assert FrameNumberPriority.DOT_SVG < FrameNumberPriority.START_NUMBER, (
-            "DOT should have higher priority than START_NUMBER"
-        )
-        assert FrameNumberPriority.START_NUMBER < FrameNumberPriority.BRACKETS, (
-            "START_NUMBER should have higher priority than BRACKETS"
-        )
-        assert FrameNumberPriority.BRACKETS < FrameNumberPriority.EMBEDDED, (
-            "BRACKETS should have higher priority than EMBEDDED"
-        )
+        assert FrameNumberPriority.UNDERSCORE_SVG < FrameNumberPriority.DASH_SVG, "UNDERSCORE should have higher priority than DASH"
+        assert FrameNumberPriority.DASH_SVG < FrameNumberPriority.DOT_SVG, "DASH should have higher priority than DOT"
+        assert FrameNumberPriority.DOT_SVG < FrameNumberPriority.START_NUMBER, "DOT should have higher priority than START_NUMBER"
+        assert FrameNumberPriority.START_NUMBER < FrameNumberPriority.BRACKETS, "START_NUMBER should have higher priority than BRACKETS"
+        assert FrameNumberPriority.BRACKETS < FrameNumberPriority.EMBEDDED, "BRACKETS should have higher priority than EMBEDDED"
 
     def test_priority_values_are_spread_out(self):
         """Priority values have reasonable spacing for subpriorities"""
@@ -283,10 +246,7 @@ class TestFrameNumberPriority:
         """Extended extensions (extra ext) have lower priority than base"""
         # UNDERSCORE_EXTRA_EXT should be lower priority (higher value)
         # than UNDERSCORE_SVG
-        assert (
-            FrameNumberPriority.UNDERSCORE_SVG
-            < FrameNumberPriority.UNDERSCORE_EXTRA_EXT
-        )
+        assert FrameNumberPriority.UNDERSCORE_SVG < FrameNumberPriority.UNDERSCORE_EXTRA_EXT
 
 
 class TestDigitCountAdjustment:
@@ -302,9 +262,7 @@ class TestDigitCountAdjustment:
         ]
 
         for attr in required_attributes:
-            assert hasattr(DigitCountAdjustment, attr), (
-                f"Missing digit adjustment: {attr}"
-            )
+            assert hasattr(DigitCountAdjustment, attr), f"Missing digit adjustment: {attr}"
 
     def test_digit_adjustment_values_are_integers(self):
         """All digit adjustment values are integers"""
@@ -328,9 +286,7 @@ class TestConstantsConsistency:
         for i in range(10):
             suffix = FBFTEST_SUFFIX_FORMAT.format(i)
             match = FBFTEST_SUFFIX_PATTERN.search(suffix)
-            assert match is not None, (
-                f"Suffix format and pattern not compatible for iteration {i}"
-            )
+            assert match is not None, f"Suffix format and pattern not compatible for iteration {i}"
 
     def test_patterns_use_defined_priorities(self):
         """All patterns use FrameNumberPriority constants"""
@@ -353,9 +309,7 @@ class TestConstantsConsistency:
                     used_priorities.add(base_priority)
 
         # Most base priorities should be used
-        assert len(used_priorities) >= 6, (
-            "Most base priorities should be used in patterns"
-        )
+        assert len(used_priorities) >= 6, "Most base priorities should be used in patterns"
 
     def test_no_hardcoded_magic_numbers(self):
         """Constants should not contain unexplained magic numbers"""
@@ -375,9 +329,7 @@ class TestConstantsConsistency:
             gap = next_priority - current
 
             # Gap should be at least 100 to allow for sub-priorities
-            assert gap >= 100, (
-                f"Priority gap between {current} and {next_priority} seems too small"
-            )
+            assert gap >= 100, f"Priority gap between {current} and {next_priority} seems too small"
 
     def test_digit_adjustments_reasonable_values(self):
         """Digit adjustment values are reasonable and sequential"""
@@ -426,6 +378,4 @@ class TestConstantsImmutability:
             priority_groups[base].append(priority)
 
         # Should have patterns for at least 7 major priority levels
-        assert len(priority_groups) >= 7, (
-            "Should have patterns for major priority levels"
-        )
+        assert len(priority_groups) >= 7, "Should have patterns for major priority levels"

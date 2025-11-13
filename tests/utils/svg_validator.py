@@ -218,9 +218,7 @@ class SVGValidator:
         # All checks passed!
         return True, None
 
-    def _validate_fonts(
-        self, tree: etree.Element, content: str, svg_path: Path
-    ) -> tuple[bool, str | None]:
+    def _validate_fonts(self, tree: etree.Element, content: str, svg_path: Path) -> tuple[bool, str | None]:
         """
         Validate font definitions and usage
 
@@ -243,9 +241,7 @@ class SVGValidator:
         # Check style attributes: style="font-family: Arial"
         for elem in tree.iter():
             style = elem.get("style") or ""  # Why: elem.get() can return None
-            font_family = (
-                elem.get("font-family") or ""
-            )  # Why: elem.get() can return None
+            font_family = elem.get("font-family") or ""  # Why: elem.get() can return None
 
             # Parse font-family from style attribute
             if "font-family" in style:
@@ -284,9 +280,7 @@ class SVGValidator:
             # Why: Embedded fonts via @font-face are self-contained
             if "@font-face" in content:
                 # Look for this specific font in @font-face rules
-                font_face_pattern = (
-                    r'@font-face\s*{[^}]*font-family\s*:\s*["\']?' + re.escape(font)
-                )
+                font_face_pattern = r'@font-face\s*{[^}]*font-family\s*:\s*["\']?' + re.escape(font)
                 if re.search(font_face_pattern, content, re.IGNORECASE):
                     continue
 
@@ -309,16 +303,13 @@ class SVGValidator:
             # Why: Undefined fonts will cause rendering issues
             return (
                 False,
-                f"Font '{font}' is used but not defined, embedded, or available "
-                f"as system font",
+                f"Font '{font}' is used but not defined, embedded, or available as system font",
             )
 
         # All fonts are properly defined
         return True, None
 
-    def _validate_images(
-        self, tree: etree.Element, svg_path: Path
-    ) -> tuple[bool, str | None]:
+    def _validate_images(self, tree: etree.Element, svg_path: Path) -> tuple[bool, str | None]:
         """
         Validate image resources (local files, remote URLs, data URIs)
 
@@ -345,9 +336,7 @@ class SVGValidator:
 
         for img_elem in tree.findall(".//svg:image", namespaces):
             # Get href (can be 'href' or 'xlink:href')
-            href = img_elem.get("href") or img_elem.get(
-                "{http://www.w3.org/1999/xlink}href"
-            )
+            href = img_elem.get("href") or img_elem.get("{http://www.w3.org/1999/xlink}href")
 
             if not href:
                 continue  # No image reference, skip
@@ -382,8 +371,7 @@ class SVGValidator:
                     if content_type and not content_type.startswith("image/"):
                         return (
                             False,
-                            f"Remote URL is not an image "
-                            f"(content-type: {content_type}): {href}",
+                            f"Remote URL is not an image (content-type: {content_type}): {href}",
                         )
                 except requests.RequestException as e:
                     return False, f"Cannot reach remote image: {href} ({str(e)})"
@@ -399,8 +387,7 @@ class SVGValidator:
                 if not local_path.exists():
                     return (
                         False,
-                        f"Local image not found: {href} "
-                        f"(tried relative to SVG and absolute)",
+                        f"Local image not found: {href} (tried relative to SVG and absolute)",
                     )
 
             # Verify it's a valid image file
@@ -438,9 +425,7 @@ class SVGValidator:
             with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as tmp:
                 tmp_path = Path(tmp.name)
 
-                success = self.puppeteer_renderer.render_svg_to_png(
-                    svg_path=svg_path, output_png_path=tmp_path, width=800, height=600
-                )
+                success = self.puppeteer_renderer.render_svg_to_png(svg_path=svg_path, output_png_path=tmp_path, width=800, height=600)
 
                 if not success:
                     return False, "Failed to render in browser (Puppeteer error)"
@@ -466,8 +451,7 @@ class SVGValidator:
                         if np.all(arr == 255):
                             return (
                                 False,
-                                "Rendered image is completely white "
-                                "(no content rendered)",
+                                "Rendered image is completely white (no content rendered)",
                             )
 
                 except Exception as e:

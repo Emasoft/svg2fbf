@@ -182,9 +182,7 @@ class SVG2FBFFrameProcessor:
             # Get the viewBox using svg2fbf's exact logic
             # getViewBox returns: (vbX, vbY, vbWidth, vbHeight, doc_width, doc_height)
             # where vb* are viewBox values and doc_* are width/height attribute values
-            vbX, vbY, vbWidth, vbHeight, doc_width, doc_height = svg2fbf.getViewBox(
-                doc_element, options
-            )
+            vbX, vbY, vbWidth, vbHeight, doc_width, doc_height = svg2fbf.getViewBox(doc_element, options)
 
             # Use viewBox dimensions as the canonical width/height
             # (this matches svg2fbf's behavior)
@@ -225,9 +223,7 @@ class SVG2FBFFrameProcessor:
                 current_frame_group = svg_doc.createElement("g")
 
                 # Call svg2fbf's transform calculation function
-                svg2fbf.add_transform_to_match_input_frame_viewbox(
-                    doc_element, first_viewbox, current_frame_group
-                )
+                svg2fbf.add_transform_to_match_input_frame_viewbox(doc_element, first_viewbox, current_frame_group)
 
                 # Extract the transform attribute that was added (minidom API)
                 if current_frame_group.hasAttribute("transform"):
@@ -250,9 +246,7 @@ class SVG2FBFFrameProcessor:
         if hasattr(svg2fbf, "current_filepath"):
             self._saved_globals["current_filepath"] = svg2fbf.current_filepath
         if hasattr(svg2fbf, "options"):
-            self._saved_globals["options"] = (
-                copy.deepcopy(svg2fbf.options) if svg2fbf.options else None
-            )
+            self._saved_globals["options"] = copy.deepcopy(svg2fbf.options) if svg2fbf.options else None
         if hasattr(svg2fbf, "scouringContext"):
             self._saved_globals["scouringContext"] = svg2fbf.scouringContext
         if hasattr(svg2fbf, "scouringContextC"):
@@ -595,10 +589,7 @@ if __name__ == "__main__":
         print()
         print("Examples:")
         print("  python svg2fbf_frame_processor.py frame_001.svg")
-        print(
-            "  python svg2fbf_frame_processor.py frame_001.svg "
-            "frame_002.svg frame_003.svg"
-        )
+        print("  python svg2fbf_frame_processor.py frame_001.svg frame_002.svg frame_003.svg")
         sys.exit(1)
 
     svg_files = [Path(f) for f in sys.argv[1:]]
@@ -619,9 +610,7 @@ if __name__ == "__main__":
         print(f"Frame {idx + 1}: {svg_file.name}")
         print("-" * 70)
 
-        width, height, viewbox, transform = processor.process_frame(
-            svg_file, first_frame_dimensions=first_dims
-        )
+        width, height, viewbox, transform = processor.process_frame(svg_file, first_frame_dimensions=first_dims)
 
         # Save first frame dimensions for subsequent frames
         if idx == 0:

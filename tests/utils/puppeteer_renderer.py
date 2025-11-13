@@ -43,9 +43,7 @@ class PuppeteerRenderer:
         # Check Node.js is installed
         # Why: Need Node.js to run Puppeteer scripts
         if not shutil.which("node"):
-            raise RuntimeError(
-                "Node.js not found. Please install Node.js: https://nodejs.org/"
-            )
+            raise RuntimeError("Node.js not found. Please install Node.js: https://nodejs.org/")
 
         # Check required scripts exist
         # Why: Need these scripts to render SVGs and animations
@@ -56,18 +54,13 @@ class PuppeteerRenderer:
             raise RuntimeError(f"render_svg.js not found at: {render_svg_script}")
 
         if not render_fbf_script.exists():
-            raise RuntimeError(
-                f"render_fbf_animation.js not found at: {render_fbf_script}"
-            )
+            raise RuntimeError(f"render_fbf_animation.js not found at: {render_fbf_script}")
 
         # Check Puppeteer is installed
         # Why: Scripts won't work without Puppeteer
         node_modules = self.node_scripts_dir.parent / "node_modules"
         if not node_modules.exists():
-            raise RuntimeError(
-                f"node_modules not found. Run 'npm install' in "
-                f"{self.node_scripts_dir.parent}"
-            )
+            raise RuntimeError(f"node_modules not found. Run 'npm install' in {self.node_scripts_dir.parent}")
 
     def render_svg_to_png(
         self,
@@ -142,18 +135,14 @@ class PuppeteerRenderer:
         if transform:
             cmd.append(transform)
         else:
-            cmd.append(
-                ""
-            )  # Why: Empty string placeholder to maintain argument positions
+            cmd.append("")  # Why: Empty string placeholder to maintain argument positions
 
         # Add viewbox if provided
         # Why: Use first frame's viewBox for subsequent frames (matches FBF animation)
         if viewbox:
             cmd.append(viewbox)
         else:
-            cmd.append(
-                ""
-            )  # Why: Empty string placeholder to maintain argument positions
+            cmd.append("")  # Why: Empty string placeholder to maintain argument positions
 
         # Add preserveAspectRatio (always, even if empty string)
         # Why: Control aspect ratio behavior for SVGs with negative viewBox
@@ -179,9 +168,7 @@ class PuppeteerRenderer:
             # Check if output file was created
             # Why: Script might exit 0 but fail to create file
             if not output_png_path.exists():
-                print(
-                    "⚠️  render_svg.js exited successfully but output file not created"
-                )
+                print("⚠️  render_svg.js exited successfully but output file not created")
                 return False
 
             return True
@@ -259,9 +246,7 @@ class PuppeteerRenderer:
             # Why: Puppeteer handles SMIL animation timing and frame capture
             # Timeout: Give 5 seconds per frame + 30 second overhead
             timeout = (frame_count * 5) + 30
-            _ = subprocess.run(
-                cmd, capture_output=True, text=True, check=True, timeout=timeout
-            )
+            _ = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=timeout)
 
             # Collect captured frame paths
             # Why: Return paths in order for comparison
