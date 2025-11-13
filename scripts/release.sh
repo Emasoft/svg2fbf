@@ -206,10 +206,10 @@ restore_original_branch() {
   fi
 }
 
-# Define a cleanup function to delete tracked temporary files and restore the original branch.
-# Use this function to handle both successful completions and error exits.
-# This cleanup is explicit - it only deletes files we explicitly tracked during execution.
-cleanup() {
+# Define a function to delete tracked temporary files.
+# Call this function explicitly at the end of the script - do NOT use trap.
+# Manual cleanup is safer than automatic trap which can have unexpected side effects.
+cleanup_temporary_files() {
   # Delete only the temporary release notes files that were explicitly created and tracked.
   # Loop through the RELEASE_NOTES_FILES array and delete each file individually.
   # This approach is safer than wildcards - we only delete what we know we created.
@@ -222,16 +222,7 @@ cleanup() {
       fi
     done
   fi
-
-  # Restore the original branch that was active when the script started.
-  # Use the dedicated restore function for better error handling and visibility.
-  restore_original_branch
 }
-
-# Register the cleanup function to run automatically when the script exits.
-# Use trap with the EXIT signal so cleanup runs on both success and failure.
-# Rely on this trap to protect the user from being left on an unexpected branch.
-trap cleanup EXIT
 
 # Declare an array that records which channels and branches have been requested.
 # Use an array of strings like "alpha:dev" or "stable:master" for easy human reading.
@@ -948,5 +939,15 @@ fi
 
 # Print a final confirmation that all requested channels were processed.
 # Mention the branch that was originally active so users know the initial context.
-# Rely on the cleanup trap to ensure the current branch is restored to start_branch.
 echo "All requested channels processed. Original branch was '$start_branch'."
+echo ""
+
+# Explicitly clean up temporary files created during the release process.
+# This deletes only the files we explicitly tracked in RELEASE_NOTES_FILES array.
+# Manual cleanup is safer than automatic trap which can have unexpected side effects.
+cleanup_temporary_files
+
+# Explicitly restore the original branch that was active when the script started.
+# Manual branch restoration gives us full control and visibility over branch state.
+# This ensures the user is left on their original branch after the script completes.
+restore_original_branch
