@@ -29,13 +29,13 @@ alpha   beta     rc     stable  (mirror)
 
 ### Branch Workflow Table
 
-| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Promotion Command          | Release Type |
-|-----------|--------------------------------|----------------|----------|-----------|----------------|----------------------------|--------------|
-| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `just promote-to-testing`  | alpha        |
-| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `just promote-to-review`   | beta         |
-| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `just promote-to-stable`   | rc           |
-| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | (syncs to main)            | stable       |
-| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `just sync-main`           | (none)       |
+| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Promotion Command          | Install Command         | Release Type |
+|-----------|--------------------------------|----------------|----------|-----------|----------------|----------------------------|-------------------------|--------------|
+| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `just promote-to-testing`  | `just install-alpha`    | alpha        |
+| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `just promote-to-review`   | `just install-beta`     | beta         |
+| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `just promote-to-stable`   | `just install-rc`       | rc           |
+| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | (syncs to main)            | `just install-stable`   | stable       |
+| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `just sync-main`           | `just install-stable`   | (none)       |
 
 ### Detailed Branch Descriptions
 
@@ -178,12 +178,40 @@ just publish
 
 For complete release workflow documentation, see [docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md).
 
+### Installing Released Versions
+
+Each branch has a corresponding install command to install directly from GitHub:
+
+```bash
+# Install from specific branches
+just install-alpha    # Install latest from dev branch (alpha)
+just install-beta     # Install latest from testing branch (beta)
+just install-rc       # Install latest from review branch (rc)
+just install-stable   # Install latest from master branch (stable)
+
+# Install local development version
+just build            # Build wheel from current code
+just install          # Install the built wheel
+```
+
+**Use cases:**
+- **Testing releases**: Install alpha/beta/rc to test before promoting
+- **User installation**: Use `just install-stable` for production
+- **Development**: Use `just build && just install` for local testing
+
 ### Common Development Patterns
 
 **Pattern 1: New Feature**
 ```bash
 git checkout dev
 # ... implement feature ...
+
+# Test locally
+just build
+just install
+svg2fbf --version  # Verify
+
+# Promote when ready
 just promote-to-testing
 # ... fix bugs found in testing ...
 just promote-to-review
@@ -203,13 +231,35 @@ git push origin master
 just publish
 ```
 
-**Pattern 3: Manual Testing on dev**
+**Pattern 3: Testing Pre-releases**
+```bash
+# Install and test alpha release
+just install-alpha
+svg2fbf --version
+# ... test alpha ...
+
+# Install and test beta release
+just install-beta
+svg2fbf --version
+# ... test beta ...
+
+# Install stable when approved
+just install-stable
+```
+
+**Pattern 4: Local Development**
 ```bash
 git checkout dev
 # ... make changes ...
 just test   # Check if tests pass
 just lint   # Check code style
-# Continue working if needed, or promote if ready
+
+# Test local build
+just build
+just install
+svg2fbf --version  # Should show current version
+
+# Continue working or promote if ready
 just promote-to-testing
 ```
 
