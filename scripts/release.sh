@@ -167,27 +167,65 @@ no_pypi=""
 # Improve developer ergonomics by leaving the repository on the same branch as before.
 start_branch="$(git rev-parse --abbrev-ref HEAD)"
 
-# Define a cleanup function to restore the original branch when the script exits.
-# Use this function to handle both successful completions and error exits.
-# Make sure the final branch matches start_branch whenever possible.
-cleanup() {
-  # Remove any leftover temporary release notes files from the project root directory.
-  # These files are created by git-cliff during the release process for GitHub releases.
-  # Clean them up regardless of whether the script succeeds or fails.
-  # Use the stored PROJECT_ROOT to ensure cleanup happens in the correct location.
-  # This prevents accidentally deleting files in unrelated directories if cwd changed.
-  find "$PROJECT_ROOT" -maxdepth 1 -name '.release-notes-*.md' -type f -delete 2>/dev/null || true
+# Initialize an array to track temporary release notes files created during the release.
+# Each time a release notes file is created, it will be added to this array.
+# The cleanup function will delete only the files in this array, nothing else.
+# This provides explicit control over what gets deleted instead of using wildcards.
+declare -a RELEASE_NOTES_FILES=()
 
-  # Compare the current branch with the original start_branch to detect differences.
-  # Only attempt to restore the original branch if a different branch is currently checked out.
-  # Avoid unnecessary checkouts when already on the desired branch.
-  if [[ "$(git rev-parse --abbrev-ref HEAD)" != "$start_branch" ]]; then
-    # Inform the user that the script is restoring the original branch due to exit.
-    # Print this message to stderr so it is visible as diagnostic output.
-    # Use a best-effort checkout that ignores failures to avoid masking real exit codes.
-    echo "Restoring original branch '$start_branch'..." >&2
-    git checkout "$start_branch" 2>/dev/null || true
+# Define a function to safely switch git branches with validation.
+# This function records the current branch and provides a way to return to it.
+# Use this instead of raw git checkout to maintain better control over branch state.
+switch_to_branch() {
+  local target_branch="$1"
+  local current_branch
+  current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  # Only checkout if we're not already on the target branch
+  if [[ "$current_branch" != "$target_branch" ]]; then
+    echo "Switching from '$current_branch' to '$target_branch'..." >&2
+    git checkout "$target_branch"
   fi
+}
+
+# Define a function to safely return to the original branch.
+# This encapsulates the logic for restoring the starting branch state.
+# Call this in cleanup to ensure the user is left on their original branch.
+restore_original_branch() {
+  local current_branch
+  current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  # Only restore if we're not already on the start branch
+  if [[ "$current_branch" != "$start_branch" ]]; then
+    echo "Restoring original branch '$start_branch'..." >&2
+    git checkout "$start_branch" 2>/dev/null || {
+      echo "Warning: Could not restore original branch '$start_branch'" >&2
+      echo "Current branch: $current_branch" >&2
+      return 1
+    }
+  fi
+}
+
+# Define a cleanup function to delete tracked temporary files and restore the original branch.
+# Use this function to handle both successful completions and error exits.
+# This cleanup is explicit - it only deletes files we explicitly tracked during execution.
+cleanup() {
+  # Delete only the temporary release notes files that were explicitly created and tracked.
+  # Loop through the RELEASE_NOTES_FILES array and delete each file individually.
+  # This approach is safer than wildcards - we only delete what we know we created.
+  if [[ ${#RELEASE_NOTES_FILES[@]} -gt 0 ]]; then
+    echo "Cleaning up ${#RELEASE_NOTES_FILES[@]} temporary release notes file(s)..." >&2
+    for notes_file in "${RELEASE_NOTES_FILES[@]}"; do
+      if [[ -f "$PROJECT_ROOT/$notes_file" ]]; then
+        rm -f "$PROJECT_ROOT/$notes_file" 2>/dev/null || true
+        echo "  ✓ Deleted: $notes_file" >&2
+      fi
+    done
+  fi
+
+  # Restore the original branch that was active when the script started.
+  # Use the dedicated restore function for better error handling and visibility.
+  restore_original_branch
 }
 
 # Register the cleanup function to run automatically when the script exits.
@@ -596,8 +634,13 @@ generate_changelog_and_notes() {
   # Write these notes into the version-specific notes_file for later use with gh.
   git cliff --tag "$new_version" --latest -o "$notes_file"
 
+  # Track this file in the global array so cleanup can delete it explicitly.
+  # Add the notes_file to the RELEASE_NOTES_FILES array for later cleanup.
+  # This ensures we only delete files we explicitly created, not random files.
+  RELEASE_NOTES_FILES+=("$notes_file")
+
   # Print the notes_file path so callers can use it when creating GitHub releases.
-  # Allow release_channel to pass this file to gh release create via --notes-file.
+  # Allow release_channel to pass this file to gh release --notes-file.
   # Keep this function focused on changelog and notes generation logic.
   echo "$notes_file"
 }
@@ -622,9 +665,9 @@ release_channel() {
   echo "=== Releasing channel '$channel' from branch '$branch' ==="
 
   # Check out the target branch so that all subsequent commands operate on its content.
-  # Allow git to validate the branch name and exit if the branch does not exist.
+  # Use the switch_to_branch function for safer, more controlled branch switching.
   # Ensure that uv, git-cliff, and build operations always run from the correct branch state.
-  git checkout "$branch"
+  switch_to_branch "$branch"
 
   # Fetch the latest changes for this branch from the origin remote.
   # Use git fetch to update remote-tracking references without merging anything.
@@ -834,14 +877,13 @@ release_channel() {
     fi
   fi
 
-  # Remove the temporary notes file immediately after use.
-  # This file was created by git-cliff and used for GitHub release notes.
-  # Clean it up right after the release to avoid accumulation in the working directory.
-  # Use the full path from PROJECT_ROOT to ensure correct location.
-  # Use -f to ignore "file not found" errors in case it was already removed.
+  # Remove the temporary notes file immediately after use (belt-and-suspenders cleanup).
+  # This file was created by git-cliff and is already tracked in RELEASE_NOTES_FILES array.
+  # Clean it up right after the release for tidiness, though trap cleanup will also catch it.
+  # This provides immediate cleanup rather than waiting until script exit.
   if [[ -n "$notes_file" && -f "$PROJECT_ROOT/$notes_file" ]]; then
     rm -f "$PROJECT_ROOT/$notes_file" 2>/dev/null || true
-    echo "✓ Cleaned up temporary release notes file: $notes_file" >&2
+    echo "✓ Cleaned up: $notes_file" >&2
   fi
 
   # Print a final message indicating completion of release work for this channel.
@@ -856,8 +898,8 @@ release_channel() {
     echo ""
     echo "🔄 Syncing master → main (keeping main up to date)..."
 
-    # Checkout main branch to prepare for sync
-    git checkout main
+    # Checkout main branch to prepare for sync using the safe switch function
+    switch_to_branch main
 
     # Reset main to exactly match master (hard reset)
     git reset --hard master
