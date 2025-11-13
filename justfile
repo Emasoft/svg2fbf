@@ -8,17 +8,23 @@
 #   Or via package managers: brew install just, cargo install just, etc.
 #
 # Usage:
-#   just --list              # Show all available commands
-#   just add                 # Add and sync dependencies
-#   just add-dev             # Add dev dependencies and sync
-#   just remove              # Remove and sync dependencies
-#   just build               # Build wheel (auto-bumps: alpha if alpha, patch if stable)
-#   just install             # Smart install (builds only if code changed)
-#   just reinstall           # Full rebuild and reinstall (default: alpha bump)
-#   just changelog           # Generate/update CHANGELOG.md from git history
-#   just release v0.2.0      # Create release (changelog + tag)
-#   just clean               # Clean temp directories
-#   just test                # Run tests
+#   just --list                  # Show all available commands
+#   just add                     # Add and sync dependencies
+#   just add-dev                 # Add dev dependencies and sync
+#   just remove                  # Remove and sync dependencies
+#   just build                   # Build wheel (auto-bumps: alpha if alpha, patch if stable)
+#   just install                 # Smart install (builds only if code changed)
+#   just reinstall               # Full rebuild and reinstall (default: alpha bump)
+#   just promote-to-testing      # Merge dev → testing (feature complete)
+#   just promote-to-review       # Merge testing → review (bugs fixed)
+#   just promote-to-stable       # Merge review → master (ready for release)
+#   just sync-main               # Sync main branch with master (keep identical)
+#   just release                 # Release all 4 channels to GitHub (no PyPI)
+#   just publish                 # Release all + publish stable to PyPI
+#   just changelog               # Generate/update CHANGELOG.md from git history
+#   just release-tag v0.2.0      # Manually create release tag
+#   just clean                   # Clean temp directories
+#   just test                    # Run tests
 
 # Default recipe (runs when you just type "just")
 default:
@@ -739,6 +745,233 @@ install-hooks:
     @./scripts/install-hooks.sh
 
 # ============================================================================
+# Branch Promotion (Development Pipeline)
+# ============================================================================
+# Development workflow: dev → testing → review → master
+# Each command merges and pushes to the next stage in the pipeline
+
+# Promote dev branch to testing (feature complete, ready for testing)
+promote-to-testing:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🚀 Promoting dev → testing"
+    echo ""
+
+    # Save current branch
+    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    # Ensure dev and testing branches exist
+    if ! git show-ref --verify --quiet refs/heads/dev; then
+        echo "❌ Error: 'dev' branch does not exist" >&2
+        exit 1
+    fi
+    if ! git show-ref --verify --quiet refs/heads/testing; then
+        echo "❌ Error: 'testing' branch does not exist" >&2
+        exit 1
+    fi
+
+    # Check for uncommitted changes
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "❌ Error: You have uncommitted changes. Please commit or stash them first." >&2
+        exit 1
+    fi
+
+    echo "1. Checking out testing branch..."
+    git checkout testing
+
+    echo "2. Pulling latest from origin/testing..."
+    git pull origin testing
+
+    echo "3. Merging dev into testing..."
+    git merge dev --no-ff -m "Merge dev into testing - feature complete, ready for testing"
+
+    echo "4. Pushing to origin/testing..."
+    git push origin testing
+
+    echo "5. Returning to $ORIGINAL_BRANCH..."
+    git checkout "$ORIGINAL_BRANCH"
+
+    echo ""
+    echo "✅ Successfully promoted dev → testing"
+    echo ""
+    echo "Next steps:"
+    echo "  - Test the 'testing' branch thoroughly"
+    echo "  - When bugs are fixed, run: just promote-to-review"
+
+# Promote testing branch to review (bugs fixed, ready for RC)
+promote-to-review:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🚀 Promoting testing → review"
+    echo ""
+
+    # Save current branch
+    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    # Ensure testing and review branches exist
+    if ! git show-ref --verify --quiet refs/heads/testing; then
+        echo "❌ Error: 'testing' branch does not exist" >&2
+        exit 1
+    fi
+    if ! git show-ref --verify --quiet refs/heads/review; then
+        echo "❌ Error: 'review' branch does not exist" >&2
+        exit 1
+    fi
+
+    # Check for uncommitted changes
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "❌ Error: You have uncommitted changes. Please commit or stash them first." >&2
+        exit 1
+    fi
+
+    echo "1. Checking out review branch..."
+    git checkout review
+
+    echo "2. Pulling latest from origin/review..."
+    git pull origin review
+
+    echo "3. Merging testing into review..."
+    git merge testing --no-ff -m "Merge testing into review - bugs fixed, ready for release candidate"
+
+    echo "4. Pushing to origin/review..."
+    git push origin review
+
+    echo "5. Returning to $ORIGINAL_BRANCH..."
+    git checkout "$ORIGINAL_BRANCH"
+
+    echo ""
+    echo "✅ Successfully promoted testing → review"
+    echo ""
+    echo "Next steps:"
+    echo "  - Review the 'review' branch for final approval"
+    echo "  - When approved, run: just promote-to-stable"
+
+# Promote review branch to master (review passed, ready for stable release)
+promote-to-stable:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🚀 Promoting review → master"
+    echo ""
+
+    # Save current branch
+    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    # Ensure review and master branches exist
+    if ! git show-ref --verify --quiet refs/heads/review; then
+        echo "❌ Error: 'review' branch does not exist" >&2
+        exit 1
+    fi
+    if ! git show-ref --verify --quiet refs/heads/master; then
+        echo "❌ Error: 'master' branch does not exist" >&2
+        exit 1
+    fi
+
+    # Check for uncommitted changes
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "❌ Error: You have uncommitted changes. Please commit or stash them first." >&2
+        exit 1
+    fi
+
+    echo "1. Checking out master branch..."
+    git checkout master
+
+    echo "2. Pulling latest from origin/master..."
+    git pull origin master
+
+    echo "3. Merging review into master..."
+    git merge review --no-ff -m "Merge review into master - ready for stable release"
+
+    echo "4. Pushing to origin/master..."
+    git push origin master
+
+    echo "5. Returning to $ORIGINAL_BRANCH..."
+    git checkout "$ORIGINAL_BRANCH"
+
+    echo ""
+    echo "✅ Successfully promoted review → master"
+    echo ""
+    echo "Next steps:"
+    echo "  - Run releases: ./scripts/release.sh --stable master"
+    echo "  - Or full pipeline: ./scripts/release.sh --alpha dev --beta testing --rc review --stable master"
+
+# Sync main branch with master (keeps them identical)
+sync-main:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔄 Syncing master → main..."
+    echo ""
+    echo "This will make main identical to master."
+    echo ""
+
+    # Save current branch
+    ORIGINAL_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    # Fetch latest
+    git fetch origin master main
+
+    # Checkout main
+    git checkout main
+
+    # Reset main to match master exactly
+    git reset --hard master
+
+    # Push to origin (force with lease for safety)
+    git push origin main --force-with-lease
+
+    # Return to original branch
+    git checkout "$ORIGINAL_BRANCH"
+
+    echo ""
+    echo "✅ main is now synced with master"
+    echo "   (main and master are identical)"
+
+# ============================================================================
+# Automated Releases
+# ============================================================================
+# Run the multi-channel release script to create GitHub releases with auto-generated changelogs
+
+# Release all channels (alpha, beta, rc, stable) to GitHub
+# Does NOT publish stable to PyPI - use 'just publish' for that
+release:
+    @echo "🚀 Creating GitHub releases for all channels (without PyPI)..."
+    @echo ""
+    @echo "Channels:"
+    @echo "  • alpha  (from dev branch)"
+    @echo "  • beta   (from testing branch)"
+    @echo "  • rc     (from review branch)"
+    @echo "  • stable (from master branch) → GitHub only (no PyPI)"
+    @echo ""
+    @echo "Note: This creates releases on GitHub but does NOT publish to PyPI."
+    @echo "      Use 'just publish' to publish stable to PyPI."
+    @echo ""
+    @./scripts/release.sh --alpha dev --beta testing --rc review --stable master --no-pypi
+
+# Release all channels (alpha, beta, rc, stable) and publish stable to PyPI
+# Requires UV_PUBLISH_TOKEN environment variable
+publish:
+    @echo "🚀 Creating GitHub releases for ALL channels and publishing to PyPI..."
+    @echo ""
+    @echo "Channels:"
+    @echo "  • alpha  (from dev branch) → GitHub only"
+    @echo "  • beta   (from testing branch) → GitHub only"
+    @echo "  • rc     (from review branch) → GitHub only"
+    @echo "  • stable (from master branch) → GitHub + PyPI ✨"
+    @echo ""
+    @if [ -z "${UV_PUBLISH_TOKEN-}" ]; then \
+        echo "❌ Error: UV_PUBLISH_TOKEN not set"; \
+        echo "Please export your PyPI token:"; \
+        echo "  export UV_PUBLISH_TOKEN=\"pypi-XXXXXXXXXXXX\""; \
+        exit 1; \
+    fi
+    @echo "✓ UV_PUBLISH_TOKEN is set"
+    @echo ""
+    @./scripts/release.sh --alpha dev --beta testing --rc review --stable master
+
+# ============================================================================
 # Changelog
 # ============================================================================
 
@@ -764,9 +997,9 @@ changelog-preview:
     @echo ""
     uv run git-cliff
 
-# Update changelog and create a release tag
-release version:
-    @echo "🚀 Preparing release {{version}}..."
+# Manually update changelog and create a release tag (for custom/manual releases)
+release-tag version:
+    @echo "🚀 Manually preparing release tag {{version}}..."
     @echo ""
     @echo "1. Updating CHANGELOG.md..."
     uv run git-cliff --tag {{version}} --output CHANGELOG.md
@@ -783,6 +1016,8 @@ release version:
     @echo "To push:"
     @echo "  git push origin main"
     @echo "  git push origin {{version}}"
+    @echo ""
+    @echo "Note: For automated multi-channel releases, use 'just release' or 'just publish'"
 
 # ============================================================================
 # Development Helpers
