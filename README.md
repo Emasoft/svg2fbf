@@ -480,30 +480,79 @@ svg2fbf --help
 
 **That's it!** All dependencies (including Node.js and Puppeteer for the viewBox repair utility) will be **automatically installed** on first use.
 
-### Updating
+### Upgrading
 
-To update to the latest version:
+#### Check Current Version
 
 ```bash
-# Simple: reinstall from git (automatically gets latest)
-uv tool install --reinstall git+https://github.com/Emasoft/svg2fbf.git --python 3.10
+# See what version you have installed
+svg2fbf --version
 ```
 
-Or uninstall first, then install:
+#### Upgrade to Latest Stable
 
 ```bash
-# 1. Uninstall current version
-uv tool uninstall svg2fbf
+# Upgrade from PyPI (recommended)
+uv tool install --upgrade svg2fbf
 
-# 2. Install latest version
-uv tool install git+https://github.com/Emasoft/svg2fbf.git --python 3.10
+# Or upgrade from GitHub master branch
+uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@master --python 3.10
+```
+
+#### Upgrade to Specific Release Channel
+
+```bash
+# Upgrade to release candidate (rc)
+uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@review --python 3.10
+
+# Upgrade to beta
+uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.10
+
+# Upgrade to alpha (bleeding edge)
+uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
+```
+
+#### Force Reinstall (Clean Upgrade)
+
+If you encounter issues, perform a clean reinstall:
+
+```bash
+# Method 1: Use --reinstall flag
+uv tool install --reinstall svg2fbf
+
+# Method 2: Uninstall then install
+uv tool uninstall svg2fbf
+uv tool install svg2fbf --python 3.10
 ```
 
 ### Uninstalling
 
+Remove svg2fbf completely from your system:
+
 ```bash
+# Uninstall svg2fbf
 uv tool uninstall svg2fbf
 ```
+
+**Verify uninstallation:**
+
+```bash
+# This should show "command not found" or similar
+svg2fbf --version
+# Or check uv tools list
+uv tool list
+```
+
+**What gets removed:**
+- The `svg2fbf` command
+- The `svg-repair-viewbox` utility
+- All dependencies installed for svg2fbf
+- Python virtual environment for the tool
+
+**What stays:**
+- Your SVG files and FBF.SVG outputs
+- Configuration files you created
+- The `uv` package manager itself
 
 ---
 
