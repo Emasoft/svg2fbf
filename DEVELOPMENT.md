@@ -29,13 +29,13 @@ alpha   beta     rc     stable  (mirror)
 
 ### Branch Workflow Table
 
-| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Promotion Command          | Install Command         | Release Type |
-|-----------|--------------------------------|----------------|----------|-----------|----------------|----------------------------|-------------------------|--------------|
-| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `just promote-to-testing`  | `just install-alpha`    | alpha        |
-| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `just promote-to-review`   | `just install-beta`     | beta         |
-| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `just promote-to-stable`   | `just install-rc`       | rc           |
-| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | (syncs to main)            | `just install-stable`   | stable       |
-| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `just sync-main`           | `just install-stable`   | (none)       |
+| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Clone & Checkout                           | Promotion Command          | Install Command         | Release Type |
+|-----------|--------------------------------|----------------|----------|-----------|----------------|--------------------------------------------|----------------------------|-------------------------|--------------|
+| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `gh repo clone Emasoft/svg2fbf -- -b dev`  | `just promote-to-testing`  | `just install-alpha`    | alpha        |
+| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `gh repo clone Emasoft/svg2fbf -- -b testing` | `just promote-to-review`   | `just install-beta`     | beta         |
+| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf -- -b review` | `just promote-to-stable`   | `just install-rc`       | rc           |
+| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf -- -b master` | (syncs to main)            | `just install-stable`   | stable       |
+| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf` (default)  | `just sync-main`           | `just install-stable`   | (none)       |
 
 ### Detailed Branch Descriptions
 
