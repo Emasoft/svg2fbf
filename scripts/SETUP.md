@@ -173,14 +173,17 @@ just test-match "test_transform"
 # Build wheel (NO version bump - keeps current version)
 just build
 
-# Smart install (only builds if needed, NO version bump)
+# Install current wheel from dist/
 just install
+
+# Install specific release channels from GitHub
+just install-alpha    # Install alpha from dev branch
+just install-beta     # Install beta from testing branch
+just install-rc       # Install rc from review branch
+just install-stable   # Install stable from master branch
 
 # Force full rebuild (clean + build + install, NO version bump)
 just reinstall
-
-# Manually bump version if needed (use sparingly - prefer release pipeline)
-just bump alpha   # or beta, rc, patch, minor, major
 ```
 
 **Note:** Version bumping is handled automatically by the release pipeline. Use `just release` or `just publish` for versioned releases.
