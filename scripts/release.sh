@@ -156,6 +156,12 @@ start_branch="$(git rev-parse --abbrev-ref HEAD)"
 # Use this function to handle both successful completions and error exits.
 # Make sure the final branch matches start_branch whenever possible.
 cleanup() {
+  # Remove any leftover temporary release notes files from the working directory.
+  # These files are created by git-cliff during the release process for GitHub releases.
+  # Clean them up regardless of whether the script succeeds or fails.
+  # Use find with -delete for robust cleanup even if there are many files.
+  find . -maxdepth 1 -name '.release-notes-*.md' -type f -delete 2>/dev/null || true
+
   # Compare the current branch with the original start_branch to detect differences.
   # Only attempt to restore the original branch if a different branch is currently checked out.
   # Avoid unnecessary checkouts when already on the desired branch.
@@ -812,11 +818,13 @@ release_channel() {
     fi
   fi
 
-  # Remove the temporary notes file if it was created and has a non-empty path.
-  # Avoid accumulating .release-notes-<version>.md files in the working directory.
-  # Ignore errors from rm to keep the release flow robust.
-  if [[ -n "$notes_file" ]]; then
-    rm -f "$notes_file" || true
+  # Remove the temporary notes file immediately after use.
+  # This file was created by git-cliff and used for GitHub release notes.
+  # Clean it up right after the release to avoid accumulation in the working directory.
+  # Use -f to ignore "file not found" errors in case it was already removed.
+  if [[ -n "$notes_file" && -f "$notes_file" ]]; then
+    rm -f "$notes_file" 2>/dev/null || true
+    echo "✓ Cleaned up temporary release notes file: $notes_file" >&2
   fi
 
   # Print a final message indicating completion of release work for this channel.
