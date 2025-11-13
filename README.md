@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python"></a>
-  <a href="https://github.com/Emasoft/svg2fbf/releases"><img src="https://img.shields.io/badge/version-0.1.2a4-orange.svg" alt="Version"></a>
+  <a href="https://github.com/Emasoft/svg2fbf/releases"><img src="https://img.shields.io/github/v/release/Emasoft/svg2fbf?include_prereleases" alt="Version"></a>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ---
 
-> **⚠️ ALPHA SOFTWARE**: svg2fbf is currently in **alpha development** (v0.1.2a4). While functional and tested, the API, command-line interface, and FBF format specification may change between releases. Use in production with caution and expect breaking changes until the stable 1.0 release.
+> **⚠️ ALPHA SOFTWARE**: svg2fbf is currently in **alpha development**. While functional and tested, the API, command-line interface, and FBF format specification may change between releases. Use in production with caution and expect breaking changes until the stable 1.0 release. Check the [releases page](https://github.com/Emasoft/svg2fbf/releases) for the latest version.
 
 ---
 
@@ -55,7 +55,7 @@ The FBF.SVG format is designed around eight core principles:
 **📂 [FBF.SVG Format Standard](FBF.SVG/)** — Complete format specification in dedicated folder
 
 Core documents:
-- **📋 [Specification](FBF.SVG/FBF_SVG_SPECIFICATION.md)** - Complete format specification (v0.1.2a4)
+- **📋 [Specification](FBF.SVG/FBF_SVG_SPECIFICATION.md)** - Complete format specification
 - **📐 [XML Schema (XSD)](FBF.SVG/fbf-svg.xsd)** - Formal schema definition for validation
 - **📊 [Metadata Spec](FBF.SVG/FBF_METADATA_SPEC.md)** - RDF/XML metadata requirements
 - **📝 [Format Guide](FBF.SVG/FBF_FORMAT.md)** - Technical implementation details

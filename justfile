@@ -26,7 +26,7 @@
 #   just release                 # Release all 4 channels to GitHub (no PyPI)
 #   just publish                 # Release all + publish stable to PyPI
 #   just changelog               # Generate/update CHANGELOG.md from git history
-#   just release-tag v0.2.0      # Manually create release tag
+#   just release-tag <version>   # Manually create release tag (e.g., v1.0.0)
 #   just clean                   # Clean temp directories
 #   just test                    # Run tests
 

@@ -419,49 +419,39 @@ uv tool install dist/svg2fbf-{version}-py3-none-any.whl --python 3.10
 
 ## Building
 
-### Quick Development Rebuild (Recommended)
+### Quick Development Build (Recommended)
 
-For rapid development cycles, use the provided `reinstall.sh` script with automatic version management:
+For rapid development cycles, use the `just` commands:
 
 ```bash
-# Bump alpha version (default) and reinstall
-./reinstall.sh              # 0.1.2a2 → 0.1.2a3
+# Build development wheel (NO version bump)
+just build
 
-# Switch to beta testing
-./reinstall.sh --beta       # 0.1.2a3 → 0.1.2b1
+# Install built wheel
+just install
 
-# Finalize patch release
-./reinstall.sh --patch      # 0.1.2b1 → 0.1.2
-
-# Bump minor version
-./reinstall.sh --minor      # 0.1.2 → 0.2.0
-
-# Show all options
-./reinstall.sh --help
+# Or do both at once (full rebuild)
+just reinstall
 ```
 
-**What it does:**
-1. Displays current version with color-coded output
-2. Automatically bumps the version according to the flag (default: `--alpha`)
-3. Syncs dependencies with `uv sync --quiet`
-4. Builds a fresh wheel with `uv build --wheel --quiet`
-5. Uninstalls the current svg2fbf installation (if present)
-6. Installs the newly built wheel as a system-wide CLI tool
-7. Verifies installation and displays success message with version
+**What `just build` does:**
+1. Gets current version from pyproject.toml
+2. Gets short git hash for local version identifier
+3. Creates development version with +dev.{hash} suffix (PEP 440 compliant)
+4. Builds wheel with development version (e.g., `0.1.2a15+dev.cb48211`)
+5. Restores original version in pyproject.toml
+6. No version bumping - versions only change during releases
 
-**Available options:**
-- `--alpha` - Increment alpha version (default): `0.1.2a1` → `0.1.2a2`
-- `--beta` - Switch to/increment beta: `0.1.2a2` → `0.1.2b1`
-- `--rc` - Switch to/increment release candidate: `0.1.2b1` → `0.1.2rc1`
-- `--patch` - Finalize patch release: `0.1.2rc1` → `0.1.2`
-- `--minor` - Bump minor version: `0.1.2` → `0.2.0`
-- `--major` - Bump major version: `0.2.0` → `1.0.0`
+**Development builds** get a unique suffix based on git commit hash, allowing you to:
+- Build multiple times without version changes
+- Distinguish development builds from releases
+- Test code without affecting version numbers
 
-This is the **fastest way** to test your changes during development. The script ensures svg2fbf is available as a system-wide CLI command after installation.
+**Release builds** (clean, no suffix) are created by:
+- `just release` - Create releases on GitHub (all 4 channels)
+- `just publish` - Create releases + publish stable to PyPI
 
-### Manual Build Process
-
-If you prefer manual control or need custom build options:
+### Build Process Details
 
 #### Development Build
 
