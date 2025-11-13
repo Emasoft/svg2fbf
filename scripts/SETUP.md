@@ -5,9 +5,13 @@ Complete setup guide for svg2fbf development environment.
 ## Quick Start
 
 ```bash
-# Clone repository
-git clone https://github.com/Emasoft/svg2fbf.git
+# Clone repository (recommended: use GitHub CLI)
+gh repo clone Emasoft/svg2fbf -- -b dev
 cd svg2fbf
+
+# Or use URL format:
+# gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b dev
+# cd svg2fbf
 
 # Install git hooks
 ./scripts/install-hooks.sh
@@ -19,6 +23,8 @@ just sync
 # You're ready! Run tests:
 just test
 ```
+
+**Why `gh repo clone`?** GitHub CLI handles authentication automatically and accepts both `Owner/Repo` format and full URLs. The `-- -b BRANCH` flag checks out the specified branch immediately.
 
 ## Detailed Setup
 
@@ -65,10 +71,40 @@ cargo install just
 
 ### 3. Clone Repository
 
+**⚠️ IMPORTANT: Developers must clone the full repository to get test data (93MB+)**
+
+PyPI and GitHub releases exclude test sessions to keep downloads small. Use the GitHub CLI for authentication and ease:
+
 ```bash
-git clone https://github.com/Emasoft/svg2fbf.git
+# Recommended: GitHub CLI (handles auth automatically)
+# Method 1: Owner/Repo format (shortest)
+gh repo clone Emasoft/svg2fbf
 cd svg2fbf
+git checkout dev        # for alpha development
+
+# Method 2: Clone and checkout in one command (RECOMMENDED)
+# gh repo clone Emasoft/svg2fbf -- -b dev
+# cd svg2fbf
+
+# Method 3: Using full HTTPS URL
+# gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b dev
+# cd svg2fbf
+
+# Method 4: Using SSH URL (if you have SSH keys set up)
+# gh repo clone git@github.com:Emasoft/svg2fbf.git -- -b dev
+# cd svg2fbf
+
+# Alternative: standard git clone (without gh CLI)
+# git clone https://github.com/Emasoft/svg2fbf.git
+# cd svg2fbf
+# git checkout dev
 ```
+
+**Why clone vs install from PyPI?**
+- ✅ Full test suite (93MB+ test sessions)
+- ✅ Development tools and scripts
+- ✅ Complete git history
+- ✅ Ability to contribute changes
 
 ### 4. Setup Environment
 
