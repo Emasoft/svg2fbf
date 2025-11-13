@@ -31,12 +31,14 @@ import decimal
 import math
 import os
 import re
+import subprocess
 import sys
 import time
 import traceback
 import urllib.parse
 import uuid
 import warnings
+import webbrowser
 import xml.dom.minidom
 import xml.parsers.expat
 from collections import defaultdict, namedtuple
@@ -2055,6 +2057,7 @@ of SVG files using SMIL animation.
     parser.add_argument("-d", "--digits", dest="digits", type=int, help="🔬 coordinate precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-c", "--cdigits", dest="cdigits", type=int, help="🔬 control point precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-q", "--quiet", action="store_true", dest="quiet_mode", help="🔇 don't print status messages to stdout", default=False)
+    parser.add_argument("--no-browser", action="store_true", dest="no_browser", help="🚫 don't automatically open the generated FBF animation in browser", default=False)
     parser.add_argument("-r", "--copyright", action="store_true", dest="show_copyright_info", help="⚖️  show legal information and exit", default=False)
 
     # Metadata options - Authoring & Provenance
@@ -2415,6 +2418,101 @@ def print_log_and_exit(exit_code=1):
     if log is not None:
         ppp(log)
     sys.exit(exit_code)
+
+
+def open_in_browser(filepath):
+    """
+    Open the generated FBF SVG file in Chrome/Chromium browser, with fallback to default browser.
+
+    Why: Provide immediate visual feedback of the generated animation
+    Why: Try Chrome first, then Chromium (both have excellent SVG/SMIL support),
+         fall back to default if neither available
+
+    Args:
+        filepath: Path to the generated FBF SVG file
+    """
+    # Convert to absolute path and file:// URL
+    # Why: Browsers need absolute file:// URLs to open local files
+    abs_path = os.path.abspath(filepath)
+    file_url = f"file://{abs_path}"
+
+    try:
+        # Try Chrome first (best SVG animation support)
+        # Why: Chrome has excellent SMIL/SVG animation support
+        chrome_paths = {
+            "darwin": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",  # macOS
+            "linux": "google-chrome",  # Linux
+            "linux2": "google-chrome",  # Linux (older Python)
+            "win32": "chrome",  # Windows
+        }
+
+        chrome_path = chrome_paths.get(sys.platform)
+
+        if chrome_path:
+            try:
+                # Why: Use subprocess for Chrome to avoid blocking and get better error handling
+                if sys.platform == "darwin":
+                    # macOS: use 'open -a' for proper app launching
+                    subprocess.Popen(["open", "-a", chrome_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    # Linux/Windows: direct chrome executable
+                    subprocess.Popen([chrome_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                if not options.quiet_mode:
+                    ppp(f"🌐 Opening in Chrome: {filepath}")
+                return
+            except (FileNotFoundError, OSError):
+                # Chrome not found, try Chromium
+                pass
+
+        # Try Chromium if Chrome not available
+        # Why: Chromium has the same excellent SVG/SMIL support as Chrome
+        chromium_paths = {
+            "darwin": "/Applications/Chromium.app/Contents/MacOS/Chromium",  # macOS
+            "linux": "chromium-browser",  # Linux (Debian/Ubuntu)
+            "linux2": "chromium-browser",  # Linux (older Python)
+            "win32": "chromium",  # Windows
+        }
+
+        chromium_path = chromium_paths.get(sys.platform)
+
+        if chromium_path:
+            try:
+                # Why: Use subprocess for Chromium to avoid blocking and get better error handling
+                if sys.platform == "darwin":
+                    # macOS: use 'open -a' for proper app launching
+                    subprocess.Popen(["open", "-a", chromium_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    # Linux/Windows: direct chromium executable
+                    # Why: Try both 'chromium' and 'chromium-browser' for different Linux distros
+                    try:
+                        subprocess.Popen([chromium_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except (FileNotFoundError, OSError):
+                        # Try alternate chromium command name
+                        subprocess.Popen(["chromium", file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                if not options.quiet_mode:
+                    ppp(f"🌐 Opening in Chromium: {filepath}")
+                return
+            except (FileNotFoundError, OSError):
+                # Chromium not found, fall through to default browser
+                pass
+
+        # Fallback to default browser
+        # Why: If Chrome and Chromium fail or not available, use system default browser
+        if webbrowser.open(file_url, new=2):  # new=2 opens in new tab if possible
+            if not options.quiet_mode:
+                ppp(f"🌐 Opening in default browser: {filepath}")
+        else:
+            # Browser opening failed
+            if not options.quiet_mode:
+                ppp(f"⚠️  Could not open browser automatically. Please open manually: {filepath}")
+
+    except Exception as e:
+        # Don't fail the whole program if browser opening fails
+        # Why: Browser opening is a convenience feature, not critical functionality
+        if not options.quiet_mode:
+            ppp(f"⚠️  Could not open browser: {e}")
 
 
 # simple function to remove prefixes
@@ -3888,6 +3986,11 @@ def generate_fbfsvg_animation():
         # Why: Print success message only if not quiet
         if not options.quiet_mode:
             ppp("\nFBFSVG ANIMATION CREATED SUCCESSFULLY.\n")
+
+        # Open in browser (unless --no-browser flag is set)
+        # Why: Provide immediate visual feedback of the generated animation
+        if not options.no_browser:
+            open_in_browser(output_filepath)
 
     except Exception as e:
         add2log(f"ERROR: {str(e)}")
