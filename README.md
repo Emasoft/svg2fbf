@@ -126,7 +126,6 @@ This comparison highlights what makes FBF.SVG unique in the web animation ecosys
 | **Works in Android mobile apps?** | ✅ **YES!** using free SVG libraries (AndroidSVG, etc.) | ✅ YES, using lottie-android library | ✅ YES, if exported as video (VideoView) | ✅ YES, using rive-android library | ✅ YES, using spine-android library |
 | **Opens in office software (PowerPoint, Keynote)?** | ✅ **YES!** | ❌ NO | ❌ NO | ❌ NO | ❌ NO |
 | **Imports into video editors (Premiere, Final Cut)?** | ✅ **YES!** as image sequence or direct import | ❌ NO, must convert to video first | ✅ YES, exports as video natively | ❌ NO, must convert to video first | ❌ NO, must convert to video first |
-| **Usable in print media?** | ✅ **YES!** (vector graphics for print) | ❌ NO | ❌ NO | ❌ NO | ❌ NO |
 | **Self-contained single file?** | ✅ **YES!** everything embedded in one SVG | ✅ YES, single JSON file (images as base64) | ❌ NO, JSON + separate PNG frame files | ✅ YES, single .riv file | ❌ NO, binary + separate image atlas file |
 
 ### 💡 The Verdict
