@@ -576,6 +576,20 @@ Notes:
         "-q", "--quiet", action="store_true", help="Suppress progress output"
     )
 
+    # Get version from package metadata
+    try:
+        from importlib.metadata import version as get_version
+        pkg_version = get_version("svg2fbf")
+    except Exception:
+        pkg_version = "0.1.0"
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"svg-repair-viewbox {pkg_version}",
+        help="Show version and exit",
+    )
+
     args = parser.parse_args()
 
     # Ensure dependencies are installed (auto-install if missing)
