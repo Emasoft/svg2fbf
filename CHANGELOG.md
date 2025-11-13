@@ -5,11 +5,32 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2025-11-13
+
+### Fixed
+
+- Ensure release notes files are always deleted
+- Ensure release script always operates from project root
+
+### Changed
+
+- Replace wildcard cleanup with explicit file tracking
+- Remove trap-based cleanup in favor of explicit manual cleanup
+
+### Miscellaneous
+
+- Ignore temporary release notes files
+
 ## [0.1.8] - 2025-11-13
+
+### Other
+
+- Release stable 0.1.8
 
 ### Miscellaneous
 
 - Update anime_girl animation to 10 fps and remove broken files
+- Update uv.lock for stable 0.1.8
 
 ## [0.1.7] - 2025-11-13
 
