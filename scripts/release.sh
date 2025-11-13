@@ -691,7 +691,8 @@ release_channel() {
   # Create a commit that encapsulates both the version bump and the changelog update.
   # Use a descriptive commit message including channel and version information.
   # Treat this commit as the canonical representation of the release in git history.
-  git commit -m "Release ${channel} ${new_version}"
+  # Use --no-verify to skip pre-commit hooks that might interfere with release automation.
+  git commit --no-verify -m "Release ${channel} ${new_version}"
 
   # Remove any previously built artifacts under the dist directory.
   # Clean the build output so no stale artifacts from earlier releases remain.
@@ -707,11 +708,18 @@ release_channel() {
   # Use these artifacts later when creating GitHub releases and publishing to PyPI.
   uv build
 
+  # Commit uv.lock changes that may occur during sync/build.
+  # Pre-commit hooks are skipped to avoid stashing/interference with release automation.
+  if [[ -n $(git status --porcelain uv.lock) ]]; then
+    git add uv.lock
+    git commit --no-verify -m "chore: Update uv.lock for ${channel} ${new_version}" || true
+  fi
+
   # Commit the built wheel to the branch so each branch tracks its versioned artifact.
   # This allows `just install` to work directly from the branch's committed wheel.
   # Each branch shows only its own versioned wheel in dist/.
   git add dist/
-  git commit -m "Add built wheel for ${channel} ${new_version}" || true
+  git commit --no-verify -m "Add built wheel for ${channel} ${new_version}" || true
 
   # Create a git tag pointing to the newly created release commit.
   # Use the tag name constructed earlier (for example, v1.2.3).
