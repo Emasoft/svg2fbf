@@ -7185,9 +7185,9 @@ def properlySizeDoc(docElement, options):
         # animations
         # Why: Defaulting to arbitrary dimensions causes inconsistent
         # frame sizing
-        print(f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.')
-        print(f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.')
-        print("   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.\n")
+        ppp(f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.')
+        ppp(f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.')
+        ppp("   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.\n")
         sys.exit(1)
 
     # parse viewBox attribute
