@@ -13,7 +13,11 @@
 #   just add-dev                 # Add dev dependencies and sync
 #   just remove                  # Remove and sync dependencies
 #   just build                   # Build wheel (NO version bump)
-#   just install                 # Smart install (builds only if code changed)
+#   just install                 # Install current wheel from dist/
+#   just install-alpha           # Install alpha from GitHub (dev branch)
+#   just install-beta            # Install beta from GitHub (testing branch)
+#   just install-rc              # Install rc from GitHub (review branch)
+#   just install-stable          # Install stable from GitHub (master branch)
 #   just reinstall               # Full rebuild and reinstall (NO version bump)
 #   just promote-to-testing      # Merge dev → testing (feature complete)
 #   just promote-to-review       # Merge testing → review (bugs fixed)
@@ -125,68 +129,27 @@ build:
     echo "Note: Version bumping is handled by the release pipeline."
     echo "      Use 'just release' or 'just publish' to create versioned releases."
 
-# Bump version (alpha, beta, rc, patch, minor, major)
-bump type="alpha":
-    @echo "⬆️  Bumping {{type}} version..."
-    uv version --bump {{type}} --no-sync
-    @echo "✅ Version bumped to:"
-    @grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'
-
-# Install as uv tool (auto-builds only if code changed)
+# Install current wheel as uv tool (installs existing wheel from dist/)
 install python="3.10":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "📥 Smart install (builds only if code changed)..."
+    echo "📥 Installing current wheel as uv tool..."
     echo ""
 
     # Find latest wheel
     WHEEL=$(ls -t dist/svg2fbf-*.whl 2>/dev/null | head -1)
 
-    # Check if we need to build
-    NEED_BUILD=false
-
     if [ -z "$WHEEL" ]; then
-        echo "ℹ️  No wheel found - will build"
-        NEED_BUILD=true
-    else
-        # Get version from wheel filename (e.g., svg2fbf-0.1.2a12-py3-none-any.whl)
-        WHEEL_VERSION=$(basename "$WHEEL" | sed 's/svg2fbf-\(.*\)-py3.*/\1/')
-        echo "Found wheel: $WHEEL_VERSION"
-
-        # Get current project version
-        PROJECT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-        echo "Project version: $PROJECT_VERSION"
-
-        # Check if versions match
-        if [ "$WHEEL_VERSION" != "$PROJECT_VERSION" ]; then
-            echo "ℹ️  Version mismatch - will build"
-            NEED_BUILD=true
-        else
-            # Check for changes in src/ since last commit
-            if git diff --quiet HEAD -- src/; then
-                echo "✓ No code changes since last version"
-                NEED_BUILD=false
-            else
-                echo "ℹ️  Code changes detected in src/ - will build"
-                NEED_BUILD=true
-            fi
-        fi
+        echo "❌ Error: No wheel found in dist/"
+        echo "Run 'just build' first to create a wheel"
+        exit 1
     fi
 
-    # Build if needed
-    if [ "$NEED_BUILD" = true ]; then
-        echo ""
-        echo "🔨 Building..."
-        just build
-        echo ""
-        # Update WHEEL to the newly built one
-        WHEEL=$(ls -t dist/svg2fbf-*.whl 2>/dev/null | head -1)
-    else
-        echo ""
-        echo "⏭️  Skipping build (using existing wheel)"
-        echo ""
-    fi
+    # Get version from wheel filename
+    WHEEL_VERSION=$(basename "$WHEEL" | sed 's/svg2fbf-\(.*\)-py3.*/\1/')
+    echo "Found wheel: $WHEEL_VERSION"
+    echo ""
 
     # Uninstall existing
     echo "🗑️  Uninstalling existing tool..."
@@ -210,6 +173,42 @@ install python="3.10":
     else
         echo "✅ Installed version: $INSTALLED_VERSION"
     fi
+
+# Install alpha release from GitHub
+install-alpha python="3.10":
+    @echo "📥 Installing latest alpha release from GitHub..."
+    @echo ""
+    uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python {{python}}
+    @echo ""
+    @echo "✅ Alpha version installed!"
+    @svg2fbf --version
+
+# Install beta release from GitHub
+install-beta python="3.10":
+    @echo "📥 Installing latest beta release from GitHub..."
+    @echo ""
+    uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python {{python}}
+    @echo ""
+    @echo "✅ Beta version installed!"
+    @svg2fbf --version
+
+# Install rc release from GitHub
+install-rc python="3.10":
+    @echo "📥 Installing latest rc release from GitHub..."
+    @echo ""
+    uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python {{python}}
+    @echo ""
+    @echo "✅ RC version installed!"
+    @svg2fbf --version
+
+# Install stable release from GitHub
+install-stable python="3.10":
+    @echo "📥 Installing latest stable release from GitHub..."
+    @echo ""
+    uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python {{python}}
+    @echo ""
+    @echo "✅ Stable version installed!"
+    @svg2fbf --version
 
 # Full rebuild and reinstall (cleans, builds, installs - NO version bump)
 reinstall python="3.10":
