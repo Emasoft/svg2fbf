@@ -81,13 +81,14 @@ limitations under the License.
 def _get_version():
     """
     Read version from installed package metadata.
-    
+
     Returns:
         Version string from installed package, or fallback "0.1.0" if unavailable
     """
     try:
         # Use importlib.metadata to get the installed package version
         from importlib.metadata import version
+
         return version("svg2fbf")
     except Exception:
         # Fallback for development/uninstalled scenarios
