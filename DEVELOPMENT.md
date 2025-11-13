@@ -6,6 +6,7 @@ For contribution guidelines, pull request process, and code of conduct, see [CON
 
 ## Table of Contents
 
+- [Branch Workflow & Development Stages](#branch-workflow--development-stages)
 - [Setting Up Development Environment](#setting-up-development-environment)
 - [Installation for Development](#installation-for-development)
 - [Building](#building)
@@ -13,6 +14,204 @@ For contribution guidelines, pull request process, and code of conduct, see [CON
 - [Code Quality](#code-quality)
 - [Version Management](#version-management)
 - [Project Structure](#project-structure)
+
+## Branch Workflow & Development Stages
+
+svg2fbf uses a **4-stage branch workflow** to separate development phases and enforce quality gates at the right time.
+
+### Development Pipeline Overview
+
+```
+dev → testing → review → master → main
+ ↓       ↓        ↓        ↓       ↓
+alpha   beta     rc     stable  (mirror)
+```
+
+### Branch Workflow Table
+
+| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Promotion Command          | Release Type |
+|-----------|--------------------------------|----------------|----------|-----------|----------------|----------------------------|--------------|
+| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `just promote-to-testing`  | alpha        |
+| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `just promote-to-review`   | beta         |
+| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `just promote-to-stable`   | rc           |
+| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | (syncs to main)            | stable       |
+| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `just sync-main`           | (none)       |
+
+### Detailed Branch Descriptions
+
+#### 1. **dev** - Development Branch
+- **Purpose**: Active feature development and patches
+- **Quality Level**: Code may be broken, incomplete, or experimental
+- **CI/CD**: ❌ **Disabled** - Developers iterate quickly without CI blocking
+- **Pre-commit Hooks**: Available but developers choose when to run
+- **Tests**: Expected to fail - work in progress
+- **When to use**: All new features start here
+- **Promotion**: When feature is complete → `just promote-to-testing`
+
+**Development workflow on dev:**
+```bash
+git checkout dev
+# ... work on features ...
+git commit -m "feat: Add new feature"
+git push origin dev
+
+# Manually test when ready
+just test    # Optional
+just lint    # Optional
+
+# When feature complete
+just promote-to-testing
+```
+
+#### 2. **testing** - Testing/QA Branch
+- **Purpose**: Bug hunting, QA testing, debugging
+- **Quality Level**: Features complete but bugs expected
+- **CI/CD**: ❌ **Disabled** - Tests are supposed to fail here!
+- **Pre-commit Hooks**: Available but not enforced
+- **Tests**: Expected to fail until all bugs fixed
+- **When to use**: After features merged from dev
+- **Promotion**: When all bugs fixed and tests pass → `just promote-to-review`
+
+**Testing workflow:**
+```bash
+git checkout testing
+# ... receive code from dev ...
+# ... testers find bugs ...
+
+# Developers fix bugs
+git commit -m "fix: Handle edge case in parser"
+git push origin testing
+
+# Keep fixing until all tests pass
+just test
+
+# When all tests pass
+just promote-to-review
+```
+
+#### 3. **review** - Review/RC Branch
+- **Purpose**: Final review before production release
+- **Quality Level**: All tests passing, ready for final approval
+- **CI/CD**: ✅ **Enabled** - Strict enforcement, all checks must pass
+- **Pre-commit Hooks**: Enforced
+- **Tests**: Must pass - this is the quality gate
+- **When to use**: Final checks before stable release
+- **Promotion**: When approved → `just promote-to-stable`
+
+**Review workflow:**
+```bash
+git checkout review
+# ... receive code from testing ...
+# ... final review, documentation checks ...
+
+# CI runs automatically - must pass
+# Manual final checks
+just test
+just lint
+just check
+
+# When approved
+just promote-to-stable
+```
+
+#### 4. **master** - Production Branch
+- **Purpose**: Stable, production-ready releases
+- **Quality Level**: Highest - only fully tested, approved code
+- **CI/CD**: ✅ **Enabled** - Strict enforcement
+- **Pre-commit Hooks**: Enforced
+- **Tests**: Must pass
+- **When to use**: Only after review approval
+- **Release**: `just publish` - Creates GitHub releases + PyPI publish
+
+**Master workflow:**
+```bash
+# After promotion from review
+git checkout master
+
+# Create releases
+just publish  # All 4 channels + PyPI
+
+# main branch auto-syncs with master
+```
+
+#### 5. **main** - GitHub Default Branch
+- **Purpose**: Mirror of master for GitHub compatibility
+- **Quality Level**: Same as master
+- **CI/CD**: ✅ **Enabled** - Strict enforcement
+- **Sync**: Automatically syncs with master after stable releases
+- **Manual sync**: `just sync-main` if needed
+
+### Why CI is Disabled on dev/testing
+
+**The problem**: If CI ran on every push to `dev` or `testing`, it would constantly fail and block your workflow.
+
+**The solution**: Developers manually decide when to run checks:
+
+```bash
+# On dev or testing branches, run checks manually when ready:
+just test          # Run test suite
+just lint          # Check code style
+just check         # Run all checks (lint + test)
+```
+
+**Quality gates**: CI only enforces on `review`, `master`, and `main` where code must be stable.
+
+### Branch Promotion Commands
+
+```bash
+# Promote through the pipeline
+just promote-to-testing   # dev → testing (feature complete)
+just promote-to-review    # testing → review (bugs fixed)
+just promote-to-stable    # review → master (approved)
+just sync-main            # master → main (manual sync)
+```
+
+### Release Commands
+
+```bash
+# Create releases on GitHub (no PyPI)
+just release
+
+# Create releases + publish stable to PyPI
+just publish
+```
+
+For complete release workflow documentation, see [docs/RELEASE_WORKFLOW.md](docs/RELEASE_WORKFLOW.md).
+
+### Common Development Patterns
+
+**Pattern 1: New Feature**
+```bash
+git checkout dev
+# ... implement feature ...
+just promote-to-testing
+# ... fix bugs found in testing ...
+just promote-to-review
+# ... final approval ...
+just promote-to-stable
+just publish
+```
+
+**Pattern 2: Hotfix**
+```bash
+git checkout master
+git checkout -b hotfix/critical-bug
+# ... fix bug ...
+git checkout master
+git merge hotfix/critical-bug
+git push origin master
+just publish
+```
+
+**Pattern 3: Manual Testing on dev**
+```bash
+git checkout dev
+# ... make changes ...
+just test   # Check if tests pass
+just lint   # Check code style
+# Continue working if needed, or promote if ready
+just promote-to-testing
+```
 
 ## Setting Up Development Environment
 
