@@ -2045,7 +2045,7 @@ of SVG files using SMIL animation.
     parser.add_argument("-o", "--output_path", dest="output_path", help="📁 output path for the resulting FBF animation file (default: ./)", default="./", metavar="PATH")
     parser.add_argument("-i", "--input_folder", dest="input_folder", help="📂 input folder containing SVG frames (required unless using YAML config with explicit frames)", default=None, metavar="FOLDER")
     parser.add_argument("-s", "--speed", dest="fps", type=float, help="⏱️  frame rate in frames per second (default: 1.0)", default=1.0, metavar="FPS")
-    parser.add_argument("-a", "--animation_type", choices=TYPE_CHOICES, dest="animation_type", default="once", help="🎞️  animation type: once, loop, pingpong_once, pingpong_loop, etc. (default: once)", metavar="TYPE")
+    parser.add_argument("-a", "--animation_type", choices=TYPE_CHOICES, dest="animation_type", default="loop", help="🎞️  animation type: once, loop, pingpong_once, pingpong_loop, etc. (default: loop)", metavar="TYPE")
     parser.add_argument("-m", "--max_frames", dest="max_frames", type=int, help="🔢 limit the maximum number of SVG files to load", default=None, metavar="N")
     parser.add_argument("--keep-xml-space", action="store_true", dest="keep_xml_space_attribute", default=False, help='won\'t remove the xml:space="preserve" attribute from the root SVG element')
     parser.add_argument("--no-keep-ratio", action="store_true", dest="no_keep_ratio", default=False, help="don't add preserveAspectRatio attribute to the output SVG (useful for animations with negative viewBox coordinates)")
@@ -2218,7 +2218,7 @@ def merge_config_with_cli(yaml_config, cli_options):
         cli_options.input_folder = gen_params["input_folder"]
     if "speed" in gen_params and cli_options.fps == 1.0:
         cli_options.fps = float(gen_params["speed"])
-    if "animation_type" in gen_params and cli_options.animation_type == "once":
+    if "animation_type" in gen_params and cli_options.animation_type == "loop":
         cli_options.animation_type = gen_params["animation_type"]
     if "digits" in gen_params and cli_options.digits == 28:
         cli_options.digits = int(gen_params["digits"])
