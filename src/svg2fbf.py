@@ -2374,7 +2374,19 @@ def change_extension_to_fbfsvg(file_name):
 #
 def ppp(txt=""):
     txt = txt.replace("\n", "\n\r")
-    sys.stdout.write("\r" + txt + "\n\r")
+    try:
+        sys.stdout.write("\r" + txt + "\n\r")
+    except UnicodeEncodeError:
+        # Windows console encoding issue - try UTF-8
+        # Why: Windows cmd.exe defaults to cp1252 which doesn't support Unicode box chars
+        try:
+            sys.stdout.buffer.write(("\r" + txt + "\n\r").encode("utf-8"))
+        except Exception:
+            # Last resort: strip problematic Unicode characters
+            import unicodedata
+
+            txt_ascii = "".join(c if ord(c) < 128 else "?" for c in txt)
+            sys.stdout.write("\r" + txt_ascii + "\n\r")
 
 
 def pppd(txt="", function_name=None):
