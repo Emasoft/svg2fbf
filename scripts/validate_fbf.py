@@ -185,9 +185,7 @@ class FBFValidator:
         valid = len(self.errors) == 0
         return ValidationResult(valid, self.errors, self.warnings, conformance_level)
 
-    def _parse_xml(
-        self, filepath: Path
-    ) -> tuple[ET.ElementTree | None, ET.Element | None]:
+    def _parse_xml(self, filepath: Path) -> tuple[ET.ElementTree | None, ET.Element | None]:
         """Parse XML file."""
         self.log("Parsing XML...")
         try:
@@ -221,9 +219,7 @@ class FBFValidator:
                     f"Missing or incorrect xmlns, expected: {SVG_NS}, found: {xmlns}",
                 )
         else:
-            self.error(
-                "structure", "Missing xmlns attribute, root element has no namespace"
-            )
+            self.error("structure", "Missing xmlns attribute, root element has no namespace")
 
         # Check xmlns:xlink
         xlink_xmlns = root.get(f"{{{XLINK_NS}}}xlink") or root.get("xmlns:xlink")
@@ -246,13 +242,9 @@ class FBFValidator:
                 try:
                     minX, minY, width, height = map(float, parts)
                     if width <= 0 or height <= 0:
-                        self.error(
-                            "structure", "viewBox width and height must be positive"
-                        )
+                        self.error("structure", "viewBox width and height must be positive")
                 except ValueError:
-                    self.error(
-                        "structure", f"viewBox values must be numeric: {viewBox}"
-                    )
+                    self.error("structure", f"viewBox values must be numeric: {viewBox}")
 
         self.log("✓ SVG root element validated")
 
@@ -272,9 +264,7 @@ class FBFValidator:
         # Check required IDs
         for required_id in REQUIRED_IDS:
             if required_id not in id_map:
-                self.error(
-                    "structure", f"Missing required element with id='{required_id}'"
-                )
+                self.error("structure", f"Missing required element with id='{required_id}'")
 
         # Validate strict document structure order
         self._validate_document_order(root)
@@ -297,8 +287,7 @@ class FBFValidator:
             elif not href.startswith("#FRAME"):
                 self.error(
                     "structure",
-                    f"PROSKENION xlink:href must reference a frame "
-                    f"(e.g., #FRAME00001), found: {href}",
+                    f"PROSKENION xlink:href must reference a frame (e.g., #FRAME00001), found: {href}",
                 )
 
         # Validate defs
@@ -340,11 +329,7 @@ class FBFValidator:
         self.log("Validating ANIMATION_BACKDROP hierarchy...")
 
         children = list(backdrop)
-        backdrop_children = {
-            child.get("id"): (i, child)
-            for i, child in enumerate(children)
-            if child.get("id")
-        }
+        backdrop_children = {child.get("id"): (i, child) for i, child in enumerate(children) if child.get("id")}
 
         # Validate STAGE_BACKGROUND (must be first structural element)
         if "STAGE_BACKGROUND" not in backdrop_children:
@@ -382,16 +367,11 @@ class FBFValidator:
             if not fg_elem.tag.endswith("g"):
                 self.error("structure", "STAGE_FOREGROUND must be a <g> element")
             if "ANIMATION_STAGE" in backdrop_children and fg_pos < stage_pos:
-                self.error(
-                    "structure", "STAGE_FOREGROUND must come after ANIMATION_STAGE"
-                )
+                self.error("structure", "STAGE_FOREGROUND must come after ANIMATION_STAGE")
             self.log("✓ STAGE_FOREGROUND found")
 
         # Validate ordering: STAGE_BACKGROUND < ANIMATION_STAGE < STAGE_FOREGROUND
-        if all(
-            k in backdrop_children
-            for k in ["STAGE_BACKGROUND", "ANIMATION_STAGE", "STAGE_FOREGROUND"]
-        ):
+        if all(k in backdrop_children for k in ["STAGE_BACKGROUND", "ANIMATION_STAGE", "STAGE_FOREGROUND"]):
             bg_pos = backdrop_children["STAGE_BACKGROUND"][0]
             st_pos = backdrop_children["ANIMATION_STAGE"][0]
             fg_pos = backdrop_children["STAGE_FOREGROUND"][0]
@@ -399,8 +379,7 @@ class FBFValidator:
             if not (bg_pos < st_pos < fg_pos):
                 self.error(
                     "structure",
-                    "Invalid order in ANIMATION_BACKDROP: expected "
-                    "STAGE_BACKGROUND → ANIMATION_STAGE → STAGE_FOREGROUND",
+                    "Invalid order in ANIMATION_BACKDROP: expected STAGE_BACKGROUND → ANIMATION_STAGE → STAGE_FOREGROUND",
                 )
 
         # Find ANIMATED_GROUP (must be direct child of STAGE)
@@ -432,9 +411,7 @@ class FBFValidator:
                 break
 
         if proskenion is None:
-            self.error(
-                "structure", "ANIMATED_GROUP must contain PROSKENION as direct child"
-            )
+            self.error("structure", "ANIMATED_GROUP must contain PROSKENION as direct child")
             return
 
         if not proskenion.tag.endswith("use"):
@@ -445,21 +422,14 @@ class FBFValidator:
         animate_children = [c for c in proskenion_children if c.tag.endswith("animate")]
 
         if len(animate_children) == 0:
-            self.error(
-                "structure", "PROSKENION must contain exactly one <animate> child"
-            )
+            self.error("structure", "PROSKENION must contain exactly one <animate> child")
         elif len(animate_children) > 1:
             self.error(
                 "structure",
-                f"PROSKENION must contain exactly ONE <animate> child, "
-                f"found {len(animate_children)}",
+                f"PROSKENION must contain exactly ONE <animate> child, found {len(animate_children)}",
             )
 
-        self.log(
-            "✓ ANIMATION_BACKDROP hierarchy validated "
-            "(BACKDROP → STAGE_BACKGROUND → STAGE → ANIMATED_GROUP → "
-            "PROSKENION → STAGE_FOREGROUND)"
-        )
+        self.log("✓ ANIMATION_BACKDROP hierarchy validated (BACKDROP → STAGE_BACKGROUND → STAGE → ANIMATED_GROUP → PROSKENION → STAGE_FOREGROUND)")
 
     def _validate_document_order(self, root: ET.Element):
         """Validate strict document element ordering for streaming optimization."""
@@ -475,9 +445,7 @@ class FBFValidator:
         child_index = 0
 
         # Optional metadata first
-        if child_index < len(children) and children[child_index].tag.endswith(
-            "metadata"
-        ):
+        if child_index < len(children) and children[child_index].tag.endswith("metadata"):
             expected_order.append("metadata")
             child_index += 1
 
@@ -488,8 +456,7 @@ class FBFValidator:
         else:
             self.error(
                 "structure",
-                "Missing or misplaced <desc> element "
-                "(must come after <metadata> if present)",
+                "Missing or misplaced <desc> element (must come after <metadata> if present)",
             )
 
         # Required ANIMATION_BACKDROP group
@@ -568,22 +535,13 @@ class FBFValidator:
             return
 
         # First child must be SHARED_DEFINITIONS
-        if not (
-            children[0].tag.endswith("g")
-            and children[0].get("id") == "SHARED_DEFINITIONS"
-        ):
-            self.error(
-                "structure", "First child of <defs> must be SHARED_DEFINITIONS group"
-            )
+        if not (children[0].tag.endswith("g") and children[0].get("id") == "SHARED_DEFINITIONS"):
+            self.error("structure", "First child of <defs> must be SHARED_DEFINITIONS group")
 
         # Remaining children should be FRAME groups in order
-        frame_children = [
-            c for c in children[1:] if c.get("id", "").startswith("FRAME")
-        ]
+        frame_children = [c for c in children[1:] if c.get("id", "").startswith("FRAME")]
         if len(frame_children) == 0:
-            self.error(
-                "structure", "No FRAME groups found in <defs> after SHARED_DEFINITIONS"
-            )
+            self.error("structure", "No FRAME groups found in <defs> after SHARED_DEFINITIONS")
 
     def _validate_frame_sequence(self, id_map: dict):
         """Validate that frame IDs are sequential."""
@@ -610,16 +568,12 @@ class FBFValidator:
             if num != expected:
                 self.error(
                     "structure",
-                    f"Frame IDs must be sequential starting from FRAME00001. "
-                    f"Expected FRAME{expected:05d}, found FRAME{num:05d}",
+                    f"Frame IDs must be sequential starting from FRAME00001. Expected FRAME{expected:05d}, found FRAME{num:05d}",
                 )
                 break
             expected += 1
 
-        self.log(
-            f"✓ Found {len(frame_ids)} sequential frames "
-            f"(FRAME{frame_numbers[0]:05d} to FRAME{frame_numbers[-1]:05d})"
-        )
+        self.log(f"✓ Found {len(frame_ids)} sequential frames (FRAME{frame_numbers[0]:05d} to FRAME{frame_numbers[-1]:05d})")
 
     def _validate_metadata(self, root: ET.Element) -> bool:
         """Validate RDF/XML metadata - STRICT mode requires ALL fields."""
@@ -757,21 +711,10 @@ class FBFValidator:
                 # Try without namespace
                 elem = desc_elem.find(f".//{field}")
             if elem is None:
-                self.error(
-                    "metadata", f"Missing REQUIRED Dublin Core field: dc:{field}"
-                )
+                self.error("metadata", f"Missing REQUIRED Dublin Core field: dc:{field}")
 
         # Check FBF fields that MUST be present (all categories)
-        all_fbf_fields = (
-            fbf_authoring_fields
-            + fbf_animation_fields_required
-            + fbf_animation_fields_optional
-            + fbf_generator_fields_required
-            + fbf_content_fields
-            + fbf_optimization_fields
-            + fbf_quality_fields
-            + fbf_technical_fields
-        )
+        all_fbf_fields = fbf_authoring_fields + fbf_animation_fields_required + fbf_animation_fields_optional + fbf_generator_fields_required + fbf_content_fields + fbf_optimization_fields + fbf_quality_fields + fbf_technical_fields
 
         for field in all_fbf_fields:
             elem = desc_elem.find(f".//{{{FBF_NS}}}{field}")
@@ -805,11 +748,7 @@ class FBFValidator:
             # Check xlink:href attributes
             href = elem.get(f"{{{XLINK_NS}}}href") or elem.get("href")
             if href:
-                if (
-                    href.startswith("http://")
-                    or href.startswith("https://")
-                    or href.startswith("//")
-                ):
+                if href.startswith("http://") or href.startswith("https://") or href.startswith("//"):
                     self.error(
                         "security",
                         f"External resource reference forbidden: {href}",
@@ -840,8 +779,7 @@ class FBFValidator:
         if script_count > 1:
             self.error(
                 "security",
-                f"Found {script_count} <script> elements "
-                f"(maximum 1 allowed for mesh gradient polyfill)",
+                f"Found {script_count} <script> elements (maximum 1 allowed for mesh gradient polyfill)",
             )
         elif script_count == 1:
             # Check if mesh gradients present
@@ -849,14 +787,10 @@ class FBFValidator:
             if meshgradient_count == 0:
                 self.error(
                     "security",
-                    "<script> element present but no <meshgradient> elements found "
-                    "(polyfill only allowed for mesh gradients)",
+                    "<script> element present but no <meshgradient> elements found (polyfill only allowed for mesh gradients)",
                 )
             else:
-                self.log(
-                    f"✓ Script element allowed "
-                    f"(mesh gradient polyfill for {meshgradient_count} meshgradients)"
-                )
+                self.log(f"✓ Script element allowed (mesh gradient polyfill for {meshgradient_count} meshgradients)")
 
         self.log("✓ Security constraints validated")
 
@@ -883,8 +817,7 @@ class FBFValidator:
         if attr_name != "xlink:href" and attr_name != "href":
             self.error(
                 "animation",
-                f"animate attributeName must be 'xlink:href' or 'href', "
-                f"found: {attr_name}",
+                f"animate attributeName must be 'xlink:href' or 'href', found: {attr_name}",
             )
 
         # Check values attribute
@@ -897,8 +830,7 @@ class FBFValidator:
             if len(frame_refs) < 2:
                 self.error(
                     "animation",
-                    f"animate values must contain at least 2 frames, "
-                    f"found {len(frame_refs)}",
+                    f"animate values must contain at least 2 frames, found {len(frame_refs)}",
                 )
 
             # Check frame reference format
@@ -906,16 +838,14 @@ class FBFValidator:
                 if not frame_ref.startswith("#FRAME"):
                     self.error(
                         "animation",
-                        f"Invalid frame reference: {frame_ref} "
-                        f"(must start with #FRAME)",
+                        f"Invalid frame reference: {frame_ref} (must start with #FRAME)",
                     )
                 else:
                     frame_id = frame_ref[1:]  # Remove #
                     if not FRAME_ID_PATTERN.match(frame_id):
                         self.error(
                             "animation",
-                            f"Invalid frame ID format: {frame_id} "
-                            f"(expected FRAMExxxxx)",
+                            f"Invalid frame ID format: {frame_id} (expected FRAMExxxxx)",
                         )
 
         # Check dur attribute
@@ -925,8 +855,7 @@ class FBFValidator:
         elif not re.match(r"^[0-9]+(\.[0-9]+)?s$", dur):
             self.error(
                 "animation",
-                f"Invalid dur format: {dur} "
-                f"(expected decimal followed by 's', e.g., '2.5s')",
+                f"Invalid dur format: {dur} (expected decimal followed by 's', e.g., '2.5s')",
             )
 
         # Check repeatCount attribute
@@ -936,8 +865,7 @@ class FBFValidator:
         elif repeat_count != "indefinite" and not repeat_count.isdigit():
             self.error(
                 "animation",
-                f"Invalid repeatCount: {repeat_count} "
-                f"(expected 'indefinite' or positive integer)",
+                f"Invalid repeatCount: {repeat_count} (expected 'indefinite' or positive integer)",
             )
 
         self.log("✓ SMIL animation validated")
@@ -1000,9 +928,7 @@ def main():
         epilog="Reference: docs/FBF_SVG_SPECIFICATION.md",
     )
     parser.add_argument("input", type=Path, help="Input FBF.SVG file")
-    parser.add_argument(
-        "--strict", action="store_true", help="Treat warnings as errors"
-    )
+    parser.add_argument("--strict", action="store_true", help="Treat warnings as errors")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     args = parser.parse_args()

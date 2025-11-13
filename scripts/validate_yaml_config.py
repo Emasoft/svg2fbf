@@ -255,10 +255,7 @@ class YAMLConfigValidator:
         if not found_sections:
             self.error(
                 "STRUCTURE",
-                (
-                    "No valid sections found "
-                    "(expected 'metadata' and/or 'generation_parameters')"
-                ),
+                ("No valid sections found (expected 'metadata' and/or 'generation_parameters')"),
             )
             valid = False
 
@@ -266,22 +263,14 @@ class YAMLConfigValidator:
         if "metadata" in config and not isinstance(config["metadata"], dict):
             self.error(
                 "STRUCTURE",
-                (
-                    f"'metadata' must be a dictionary, "
-                    f"got {type(config['metadata']).__name__}"
-                ),
+                (f"'metadata' must be a dictionary, got {type(config['metadata']).__name__}"),
             )
             valid = False
 
-        if "generation_parameters" in config and not isinstance(
-            config["generation_parameters"], dict
-        ):
+        if "generation_parameters" in config and not isinstance(config["generation_parameters"], dict):
             self.error(
                 "STRUCTURE",
-                (
-                    f"'generation_parameters' must be a dictionary, "
-                    f"got {type(config['generation_parameters']).__name__}"
-                ),
+                (f"'generation_parameters' must be a dictionary, got {type(config['generation_parameters']).__name__}"),
             )
             valid = False
 
@@ -327,16 +316,11 @@ class YAMLConfigValidator:
 
         # Recommended fields
         recommended = ["title", "creators", "description", "language", "rights"]
-        missing_recommended = [
-            f for f in recommended if f not in metadata or not metadata[f]
-        ]
+        missing_recommended = [f for f in recommended if f not in metadata or not metadata[f]]
         if missing_recommended:
             self.warning(
                 "METADATA",
-                (
-                    f"Recommended fields missing or empty: "
-                    f"{', '.join(missing_recommended)}"
-                ),
+                (f"Recommended fields missing or empty: {', '.join(missing_recommended)}"),
             )
 
         return valid
@@ -364,18 +348,12 @@ class YAMLConfigValidator:
             expected_type = spec["type"]
             if not isinstance(value, expected_type):
                 if isinstance(expected_type, tuple):
-                    type_names = " or ".join(
-                        t.__name__ if t is not type(None) else "null"
-                        for t in expected_type
-                    )
+                    type_names = " or ".join(t.__name__ if t is not type(None) else "null" for t in expected_type)
                 else:
                     type_names = expected_type.__name__
                 self.error(
                     "GENERATION",
-                    (
-                        f"Parameter '{field}' must be {type_names}, "
-                        f"got {type(value).__name__}"
-                    ),
+                    (f"Parameter '{field}' must be {type_names}, got {type(value).__name__}"),
                 )
                 valid = False
                 continue
@@ -384,30 +362,19 @@ class YAMLConfigValidator:
             if "enum" in spec and value not in spec["enum"]:
                 self.error(
                     "GENERATION",
-                    (
-                        f"Parameter '{field}' has invalid value '{value}'. "
-                        f"Valid values: {', '.join(spec['enum'])}"
-                    ),
+                    (f"Parameter '{field}' has invalid value '{value}'. Valid values: {', '.join(spec['enum'])}"),
                 )
                 valid = False
 
             # Range validation
-            if (
-                "min" in spec
-                and isinstance(value, (int, float))
-                and value < spec["min"]
-            ):
+            if "min" in spec and isinstance(value, (int, float)) and value < spec["min"]:
                 self.error(
                     "GENERATION",
                     f"Parameter '{field}' value {value} is below minimum {spec['min']}",
                 )
                 valid = False
 
-            if (
-                "max" in spec
-                and isinstance(value, (int, float))
-                and value > spec["max"]
-            ):
+            if "max" in spec and isinstance(value, (int, float)) and value > spec["max"]:
                 self.error(
                     "GENERATION",
                     f"Parameter '{field}' value {value} exceeds maximum {spec['max']}",
@@ -427,10 +394,7 @@ class YAMLConfigValidator:
         if has_input_folder and has_frames_list:
             self.warning(
                 "GENERATION",
-                (
-                    "Both 'input_folder' and 'frames' specified; "
-                    "'frames' list will take precedence"
-                ),
+                ("Both 'input_folder' and 'frames' specified; 'frames' list will take precedence"),
             )
 
         # Check for output specification
@@ -483,10 +447,7 @@ class YAMLConfigValidator:
         elif is_valid:
             print(f"✅ VALID YAML CONFIGURATION ({len(self.warnings)} warnings)")
         else:
-            print(
-                f"❌ INVALID YAML CONFIGURATION "
-                f"({len(self.errors)} errors, {len(self.warnings)} warnings)"
-            )
+            print(f"❌ INVALID YAML CONFIGURATION ({len(self.errors)} errors, {len(self.warnings)} warnings)")
 
         print()
 
@@ -509,10 +470,7 @@ def main():
         print("Usage: uv run python validate_yaml_config.py <config.yaml>")
         print()
         print("Example:")
-        print(
-            "  uv run python validate_yaml_config.py "
-            "examples/splat_button/splat_button.yaml"
-        )
+        print("  uv run python validate_yaml_config.py examples/splat_button/splat_button.yaml")
         sys.exit(2)
 
     file_path = Path(sys.argv[1])
