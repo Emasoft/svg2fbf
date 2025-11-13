@@ -764,6 +764,16 @@ release_channel() {
   # Also skip PyPI if the --no-pypi flag was passed, even for stable releases.
   # Keep pre-release artifacts available only as GitHub releases by design.
   if [[ "$channel" == "stable" && -z "$no_pypi" ]]; then
+    # CRITICAL SAFETY CHECK: Verify version string contains NO pre-release markers
+    # This is a belt-and-suspenders check to prevent accidental PyPI publication of RC/beta/alpha
+    # Only versions without "a", "b", or "rc" suffixes should reach PyPI
+    if [[ "$new_version" == *a[0-9]* || "$new_version" == *b[0-9]* || "$new_version" == *rc[0-9]* ]]; then
+      echo "❌ SAFETY ABORT: Version ${new_version} contains pre-release marker!" >&2
+      echo "❌ Pre-release versions (alpha/beta/rc) must NEVER be published to PyPI!" >&2
+      echo "❌ This indicates a configuration error. Please review channel settings." >&2
+      exit 1
+    fi
+
     # Ensure that UV_PUBLISH_TOKEN is set in the environment for stable releases.
     # Abort the script with a clear error if the token is missing.
     # Help avoid confusing authentication failures inside uv publish itself.
@@ -773,11 +783,24 @@ release_channel() {
       echo "Or use --no-pypi to skip PyPI publishing." >&2
       exit 1
     fi
+
+    # Final confirmation before PyPI publish with explicit safety messaging
+    echo ""
+    echo "🚨 PUBLISHING TO PyPI 🚨"
+    echo "  Channel: ${channel}"
+    echo "  Version: ${new_version}"
+    echo "  Branch:  ${branch}"
+    echo ""
+
     # Inform the user that the stable version is being published to PyPI now.
     # Show the exact version being uploaded to aid in tracking and debugging.
     # Invoke uv publish directly, relying on UV_PUBLISH_TOKEN already being exported.
     echo "Publishing stable version ${new_version} to PyPI with uv publish..."
     uv publish
+
+    echo ""
+    echo "✅ Successfully published version ${new_version} to PyPI"
+    echo ""
   else
     # Log that PyPI publishing is intentionally skipped.
     # Provide clear reasoning based on either channel type or no_pypi flag.
