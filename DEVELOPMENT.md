@@ -42,6 +42,8 @@ alpha   beta     rc     stable  (mirror)
 - **HTTPS URL**: `gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b BRANCH`
 - **SSH URL**: `gh repo clone git@github.com:Emasoft/svg2fbf.git -- -b BRANCH`
 
+**Important:** Git URLs do not support embedding branch names in the URL itself. You must always use the `-b` or `--branch` flag. There is no syntax like `git@github.com:user/repo.git#branch` or `git@github.com:user/repo.git@branch` that works.
+
 ### Detailed Branch Descriptions
 
 #### 1. **dev** - Development Branch
