@@ -18,7 +18,7 @@ sources = ["src"]
 
 [project]
 name = "svg2fbf"
-version = "0.1.2a12"
+version = "0.1.2a15"
 description = "SVG Frame-by-Frame Animation Generator - Create optimized FBF SVG animations from SVG sequences"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -89,6 +89,7 @@ dev = [
     "twine>=6.0.0",
     "watchdog>=6.0.0",
     "types-pyyaml>=6.0.12.20250915",
+    "git-cliff>=2.10.1",
 ]
 
 [tool.pytest.ini_options]

@@ -15,7 +15,8 @@
 #   just build               # Build wheel (auto-bumps: alpha if alpha, patch if stable)
 #   just install             # Smart install (builds only if code changed)
 #   just reinstall           # Full rebuild and reinstall (default: alpha bump)
-#   just reinstall --beta    # Bump beta version
+#   just changelog           # Generate/update CHANGELOG.md from git history
+#   just release v0.2.0      # Create release (changelog + tag)
 #   just clean               # Clean temp directories
 #   just test                # Run tests
 
@@ -736,6 +737,52 @@ clean-all:
 install-hooks:
     @echo "🔗 Installing git hooks..."
     @./scripts/install-hooks.sh
+
+# ============================================================================
+# Changelog
+# ============================================================================
+
+# Generate/update CHANGELOG.md from git history
+changelog:
+    @echo "📝 Generating CHANGELOG.md..."
+    uv run git-cliff --output CHANGELOG.md
+    @echo "✅ CHANGELOG.md updated"
+
+# Generate changelog for unreleased changes only
+changelog-unreleased:
+    @echo "📝 Generating unreleased changes..."
+    uv run git-cliff --unreleased
+
+# Generate changelog for specific version/tag
+changelog-tag tag:
+    @echo "📝 Generating changelog for {{tag}}..."
+    uv run git-cliff --tag {{tag}}
+
+# Preview changelog without writing to file
+changelog-preview:
+    @echo "📝 Preview of CHANGELOG.md:"
+    @echo ""
+    uv run git-cliff
+
+# Update changelog and create a release tag
+release version:
+    @echo "🚀 Preparing release {{version}}..."
+    @echo ""
+    @echo "1. Updating CHANGELOG.md..."
+    uv run git-cliff --tag {{version}} --output CHANGELOG.md
+    @echo ""
+    @echo "2. Committing changelog..."
+    git add CHANGELOG.md
+    git commit -m "chore(release): update CHANGELOG for {{version}}"
+    @echo ""
+    @echo "3. Creating git tag..."
+    git tag -a {{version}} -m "Release {{version}}"
+    @echo ""
+    @echo "✅ Release {{version}} prepared!"
+    @echo ""
+    @echo "To push:"
+    @echo "  git push origin main"
+    @echo "  git push origin {{version}}"
 
 # ============================================================================
 # Development Helpers
