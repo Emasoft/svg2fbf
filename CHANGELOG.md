@@ -389,6 +389,8 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 - Merge main: Track dist/ wheels in each branch
 - Merge branch 'main' into review
 - Merge branch 'main' into review
+- Release rc 0.1.3rc1
+- Add built wheel for rc 0.1.3rc1
 
 ### Documentation
 
@@ -401,6 +403,10 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 - Clarify git branch syntax and update installation commands
 - Remove all hardcoded version numbers
 - Remove all mentions of obsolete reinstall.sh script
+
+### Miscellaneous
+
+- Update uv.lock for rc 0.1.3rc1
 
 ---
 
