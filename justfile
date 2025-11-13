@@ -23,7 +23,7 @@
 #   just promote-to-review       # Merge testing → review (bugs fixed)
 #   just promote-to-stable       # Merge review → master (ready for release)
 #   just sync-main               # Sync main branch with master (keep identical)
-#   just sync_all                # Sync all branches from current branch (with confirmation)
+#   just equalize                # Equalize all branches from current branch (with confirmation)
 #   just release                 # Release all 4 channels to GitHub (no PyPI)
 #   just publish                 # Release all + publish stable to PyPI
 #   just changelog               # Generate/update CHANGELOG.md from git history
@@ -944,8 +944,8 @@ sync-main:
     echo "✅ main is now synced with master"
     echo "   (main and master are identical)"
 
-# Sync all branches from current branch (with confirmation)
-sync_all:
+# Equalize all branches from current branch (with confirmation)
+equalize:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -998,7 +998,7 @@ sync_all:
         echo ""
         echo "💡 Consider switching to one of these branches first:"
         for ahead_branch in "${BRANCHES_AHEAD[@]}"; do
-            echo "   git checkout $ahead_branch && just sync_all"
+            echo "   git checkout $ahead_branch && just equalize"
         done
         echo ""
         echo "════════════════════════════════════════════════════════════"
