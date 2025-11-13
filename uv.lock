@@ -1306,7 +1306,7 @@ wheels = [
 
 [[package]]
 name = "svg2fbf"
-version = "0.1.2a21"
+version = "0.1.2a22"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },
