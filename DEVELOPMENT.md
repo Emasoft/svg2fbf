@@ -474,6 +474,29 @@ svg2fbf --version
 svg2fbf -i examples/seagull/ -o /tmp -f test.fbf.svg -s 12
 ```
 
+### What's Included in Releases
+
+To keep release packages lightweight, **large test data is excluded** from wheels and source distributions:
+
+**Excluded from releases** (available only when cloning repo):
+- `tests/sessions/` - 93MB+ of SVG test frames and session data
+- `tests/**/*.zip` - Compressed test archives
+
+**Included in releases**:
+- Core source code
+- Essential runtime scripts (node_scripts, package.json)
+- Unit tests (small, fast-running tests)
+- Documentation
+
+**Package sizes**:
+- **Wheel**: ~129KB (without test data)
+- **Full repo clone**: ~93MB+ (with all test data)
+
+This design allows:
+- ✅ Fast PyPI/GitHub releases with small downloads
+- ✅ Comprehensive test suites for developers who clone the repo
+- ✅ CI/CD can still run tests (GitHub Actions clones full repo)
+
 ## Testing
 
 svg2fbf includes a comprehensive test suite with pixel-perfect validation.
