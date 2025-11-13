@@ -18,10 +18,11 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       # Ruff: verify formatting & lint (read-only; no --fix)
+      # Why: Use 'uv run' instead of 'uvx' to read project's pyproject.toml config
       - name: Ruff format (check only)
-        run: uvx ruff format --check .
+        run: uv run ruff format --check .
       - name: Ruff lint (no autofix)
-        run: uvx ruff check .
+        run: uv run ruff check .
 
       # TruffleHog: scan full repository history (fail on verified+unknown secrets)
       # NOTE: The action automatically adds --fail, --no-update, --github-actions flags
