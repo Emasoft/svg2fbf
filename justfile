@@ -107,29 +107,46 @@ remove pkg:
 # ============================================================================
 
 # Build wheel package (NO version bump - versions only bumped during releases)
+# Adds +dev.{git_hash} suffix to distinguish development builds from releases
 build:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "🔨 Building wheel package..."
+    echo "🔨 Building development wheel..."
 
     # Get current version
-    CURRENT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-    echo "Current version: $CURRENT_VERSION"
+    BASE_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+
+    # Get short git hash for local version identifier
+    GIT_HASH=$(git rev-parse --short HEAD)
+
+    # Create local version: version+dev.hash (PEP 440 compliant)
+    DEV_VERSION="${BASE_VERSION}+dev.${GIT_HASH}"
+
+    echo "Base version: $BASE_VERSION"
+    echo "Dev version:  $DEV_VERSION"
     echo ""
 
-    # Build wheel without version bump
+    # Temporarily update version in pyproject.toml
+    sed -i.bak "s/^version = \".*\"/version = \"${DEV_VERSION}\"/" pyproject.toml
+
+    # Build wheel with dev version
     echo "🔨 Building wheel..."
     uv build --wheel --quiet --out-dir dist
-    echo "✅ Wheel built:"
-    ls -t dist/svg2fbf-*.whl | head -1
+
+    # Restore original version
+    mv pyproject.toml.bak pyproject.toml
+
+    echo "✅ Development wheel built:"
+    ls -t dist/svg2fbf-*+dev.*.whl | head -1
     echo ""
-    echo "📦 Version: $CURRENT_VERSION"
+    echo "📦 Development version: $DEV_VERSION"
     echo ""
-    echo "Note: Version bumping is handled by the release pipeline."
-    echo "      Use 'just release' or 'just publish' to create versioned releases."
+    echo "Note: This is a development build with +dev.${GIT_HASH} suffix."
+    echo "      Release versions (clean, no suffix) are created by 'just release' or 'just publish'."
 
 # Install current wheel as uv tool (installs existing wheel from dist/)
+# Works with both development wheels (+dev.hash) and release wheels (clean)
 install python="3.10":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -137,7 +154,7 @@ install python="3.10":
     echo "📥 Installing current wheel as uv tool..."
     echo ""
 
-    # Find latest wheel
+    # Find latest wheel by modification time (most recently created)
     WHEEL=$(ls -t dist/svg2fbf-*.whl 2>/dev/null | head -1)
 
     if [ -z "$WHEEL" ]; then
@@ -146,9 +163,16 @@ install python="3.10":
         exit 1
     fi
 
-    # Get version from wheel filename
+    # Get version from wheel filename (handles both +dev.hash and clean versions)
     WHEEL_VERSION=$(basename "$WHEEL" | sed 's/svg2fbf-\(.*\)-py3.*/\1/')
     echo "Found wheel: $WHEEL_VERSION"
+
+    # Check if it's a development build
+    if [[ "$WHEEL_VERSION" == *"+dev."* ]]; then
+        echo "Type: Development build"
+    else
+        echo "Type: Release build"
+    fi
     echo ""
 
     # Uninstall existing
