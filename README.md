@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python"></a>
-  <a href="https://github.com/Emasoft/svg2fbf/releases"><img src="https://img.shields.io/badge/version-0.1.2a4-orange.svg" alt="Version"></a>
+  <a href="https://github.com/Emasoft/svg2fbf/releases"><img src="https://img.shields.io/github/v/release/Emasoft/svg2fbf?include_prereleases" alt="Version"></a>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ---
 
-> **⚠️ ALPHA SOFTWARE**: svg2fbf is currently in **alpha development** (v0.1.2a4). While functional and tested, the API, command-line interface, and FBF format specification may change between releases. Use in production with caution and expect breaking changes until the stable 1.0 release.
+> **⚠️ ALPHA SOFTWARE**: svg2fbf is currently in **alpha development**. While functional and tested, the API, command-line interface, and FBF format specification may change between releases. Use in production with caution and expect breaking changes until the stable 1.0 release. Check the [releases page](https://github.com/Emasoft/svg2fbf/releases) for the latest version.
 
 ---
 
@@ -55,7 +55,7 @@ The FBF.SVG format is designed around eight core principles:
 **📂 [FBF.SVG Format Standard](FBF.SVG/)** — Complete format specification in dedicated folder
 
 Core documents:
-- **📋 [Specification](FBF.SVG/FBF_SVG_SPECIFICATION.md)** - Complete format specification (v0.1.2a4)
+- **📋 [Specification](FBF.SVG/FBF_SVG_SPECIFICATION.md)** - Complete format specification
 - **📐 [XML Schema (XSD)](FBF.SVG/fbf-svg.xsd)** - Formal schema definition for validation
 - **📊 [Metadata Spec](FBF.SVG/FBF_METADATA_SPEC.md)** - RDF/XML metadata requirements
 - **📝 [Format Guide](FBF.SVG/FBF_FORMAT.md)** - Technical implementation details
@@ -410,24 +410,48 @@ svg2fbf is installed as a **uv tool**, which makes it available globally on your
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Install svg2fbf (Recommended: One Command)
+### Install svg2fbf
+
+Choose the release channel that fits your needs:
+
+#### Stable Release (Recommended for Production)
 
 ```bash
-# Install latest version from GitHub (always gets the most recent release)
-uv tool install git+https://github.com/Emasoft/svg2fbf.git --python 3.10
+# Install from PyPI (recommended - production-ready)
+uv tool install svg2fbf --python 3.10
+
+# Or install from GitHub stable branch
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python 3.10
 ```
 
-**That's it!** This single command always installs the latest version - no manual version typing needed.
+#### Pre-Release Channels
+
+```bash
+# Release Candidate (rc) - Final testing before stable
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python 3.10
+
+# Beta - Bug fixes and testing
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.10
+
+# Alpha - Latest features (may be unstable)
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
+```
+
+**Release Pipeline:**
+- **Alpha** (dev branch) → Active development, new features
+- **Beta** (testing branch) → Bug hunting and fixes
+- **RC** (review branch) → Release candidate, final approval
+- **Stable** (master branch) → Production-ready, published to PyPI
 
 ### Alternative Installation Methods
 
 <details>
 <summary>Click to expand alternative installation options</summary>
 
-#### Install Latest Release Wheel (Auto-Detected)
+#### Install from GitHub Releases
 
 ```bash
-# This script automatically finds and installs the latest release
+# This script automatically finds and installs the latest stable release
 LATEST_URL=$(curl -s https://api.github.com/repos/Emasoft/svg2fbf/releases/latest | grep "browser_download_url.*\.whl" | cut -d '"' -f 4)
 uv tool install "$LATEST_URL" --python 3.10
 ```
@@ -440,13 +464,6 @@ uv tool install dist/svg2fbf-*.whl --python 3.10
 
 # Or with absolute path
 uv tool install /path/to/svg2fbf-*.whl --python 3.10
-```
-
-#### Install Specific Version
-
-```bash
-# Install specific tag/version
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@v0.1.2a1 --python 3.10
 ```
 
 </details>
