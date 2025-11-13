@@ -469,12 +469,14 @@ just sync-main            # Sync main with master (manual)
 
 ```bash
 just --list              # Show all available commands
-just build               # Build wheel (auto-bump version)
+just build               # Build wheel (NO version bump)
 just install             # Install as uv tool
 just changelog           # Generate CHANGELOG.md
 just version             # Show current version
 git cliff --unreleased   # Preview unreleased changes
 ```
+
+**Note:** Version bumping is handled exclusively by the release pipeline (`just release` or `just publish`).
 
 ## Best Practices
 

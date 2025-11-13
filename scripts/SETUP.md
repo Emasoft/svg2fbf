@@ -170,18 +170,20 @@ just test-match "test_transform"
 ### Building & Installing
 
 ```bash
-# Build wheel (auto-bumps version)
+# Build wheel (NO version bump - keeps current version)
 just build
 
-# Smart install (only builds if needed)
+# Smart install (only builds if needed, NO version bump)
 just install
 
-# Force full rebuild
+# Force full rebuild (clean + build + install, NO version bump)
 just reinstall
 
-# Bump specific version
-just reinstall beta
+# Manually bump version if needed (use sparingly - prefer release pipeline)
+just bump alpha   # or beta, rc, patch, minor, major
 ```
+
+**Note:** Version bumping is handled automatically by the release pipeline. Use `just release` or `just publish` for versioned releases.
 
 ### Code Quality
 
