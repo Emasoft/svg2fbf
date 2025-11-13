@@ -5,6 +5,30 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2025-11-13
+
+### Added
+
+- Add 'just sync_all' command to sync all branches
+- Add branch-ahead warning to sync_all command
+
+### Fixed
+
+- Handle Windows Unicode encoding in ppp() function
+- Add UTF-8 encoding to subprocess calls in Windows tests
+- Use ppp() instead of print() for viewBox error message
+
+### Changed
+
+- Rename sync_all to equalize for clarity
+
+### Documentation
+
+- Add comprehensive documentation for 'just equalize' command
+- Add comprehensive upgrade and uninstall instructions
+- Add comprehensive Table of Contents to README
+- Add comprehensive Table of Contents to DEVELOPMENT.md and CONTRIBUTING.md
+
 ## [0.1.6] - 2025-11-13
 
 ### Added
@@ -14,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Change default animation type from 'once' to 'loop'
+
+### Other
+
+- Release stable 0.1.6
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.6
 
 ## [0.1.5] - 2025-11-13
 
