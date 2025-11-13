@@ -56,6 +56,7 @@ class TestMissingViewBoxError:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Required for Windows to decode UTF-8 box characters
         )
 
         # Verify exit code
@@ -87,10 +88,11 @@ class TestMissingViewBoxError:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Required for Windows to decode UTF-8 box characters
         )
 
         # Verify error message content
-        combined_output = result.stdout + result.stderr
+        combined_output = (result.stdout or "") + (result.stderr or "")
 
         # Check for key phrases in error message
         assert "ERROR IMPORTING FRAMES" in combined_output, "Missing 'ERROR IMPORTING FRAMES' in output"
@@ -132,6 +134,7 @@ class TestMissingViewBoxError:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Required for Windows to decode UTF-8 box characters
             timeout=30,
         )
 
@@ -168,9 +171,10 @@ class TestMissingViewBoxError:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Required for Windows to decode UTF-8 box characters
         )
 
-        combined_output = result.stdout + result.stderr
+        combined_output = (result.stdout or "") + (result.stderr or "")
 
         # Verify file path is mentioned in error
         assert "frame_00001.svg" in combined_output, "Error message should include the problematic filename"
@@ -198,9 +202,10 @@ class TestViewBoxErrorGuidance:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Required for Windows to decode UTF-8 box characters
         )
 
-        combined_output = result.stdout + result.stderr
+        combined_output = (result.stdout or "") + (result.stderr or "")
 
         # Check for global command mention
         assert "global command" in combined_output.lower(), "Error should mention 'global command'"
@@ -225,9 +230,10 @@ class TestViewBoxErrorGuidance:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Required for Windows to decode UTF-8 box characters
         )
 
-        combined_output = result.stdout + result.stderr
+        combined_output = (result.stdout or "") + (result.stderr or "")
 
         # Check for directory repair option
         assert "<input_folder>" in combined_output or "directory" in combined_output.lower(), "Error should show how to repair a directory of SVG files"
