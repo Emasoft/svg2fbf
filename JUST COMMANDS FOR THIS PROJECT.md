@@ -550,15 +550,6 @@ svg2fbf/
 - [uv documentation](https://docs.astral.sh/uv/)
 - [uv tool documentation](https://docs.astral.sh/uv/guides/tools/)
 
-## Migrating from Old Scripts
+## Migration Notes
 
-If you were using the old bash/Python scripts:
-
-| Old Command | New Command |
-|-------------|-------------|
-| `./reinstall.sh --alpha` | `just reinstall` |
-| `./synchdep.sh` | `just sync` |
-| `python reinstall.py --alpha` | `just reinstall` |
-| `python synchdep.py` | `just sync` |
-
-The justfile provides the same functionality with simpler commands.
+All project workflows have been consolidated into the justfile for consistency and cross-platform support. The justfile provides all necessary functionality with simpler, more maintainable commands.

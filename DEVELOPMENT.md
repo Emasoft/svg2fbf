@@ -925,13 +925,13 @@ svg2fbf/
 # 1. Make changes to svg2fbf.py
 
 # 2. Rebuild and reinstall in one command
-./reinstall.sh
+just reinstall
 
 # 3. Test the installed version
 svg2fbf -i examples/seagull/ -o /tmp -f test.fbf.svg -s 12
 
 # 4. Run specific test
-uv run pytest tests/test_frame_rendering.py::test_seagull_animation -v
+just test-file tests/test_frame_rendering.py
 ```
 
 **Alternative workflow** (without reinstalling):
