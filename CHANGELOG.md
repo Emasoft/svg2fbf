@@ -5,6 +5,12 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-11-13
+
+### Fixed
+
+- Add colored CLI help and fix Python DOM unlink bug
+
 ## [0.1.2] - 2025-11-13
 
 ### Added
@@ -389,6 +395,8 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 - Merge main: Track dist/ wheels in each branch
 - Merge branch 'main'
 - Merge branch 'main'
+- Release stable 0.1.2
+- Add built wheel for stable 0.1.2
 
 ### Documentation
 
@@ -401,6 +409,10 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 - Clarify git branch syntax and update installation commands
 - Remove all hardcoded version numbers
 - Remove all mentions of obsolete reinstall.sh script
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.2
 
 ---
 
