@@ -275,13 +275,21 @@ just promote-to-testing
 
 ### Initial Setup
 
+**⚠️ DEVELOPERS: Always clone the repository, never install from PyPI/releases!**
+
+PyPI and GitHub releases exclude large test data (93MB+ of test sessions). Developers need the full repository with all test suites.
+
 ```bash
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone the repository
-git clone https://github.com/Emasoft/svg2fbf.git
+# Clone the repository (RECOMMENDED: use GitHub CLI)
+gh repo clone Emasoft/svg2fbf
 cd svg2fbf
+
+# Alternative: standard git clone
+# git clone https://github.com/Emasoft/svg2fbf.git
+# cd svg2fbf
 
 # Create virtual environment with Python 3.12
 uv venv --python 3.12
@@ -476,26 +484,33 @@ svg2fbf -i examples/seagull/ -o /tmp -f test.fbf.svg -s 12
 
 ### What's Included in Releases
 
+**⚠️ IMPORTANT DISTINCTION:**
+- **End users**: Install from PyPI or GitHub releases (small, fast downloads)
+- **Developers**: MUST clone the repository (full test data required)
+
 To keep release packages lightweight, **large test data is excluded** from wheels and source distributions:
 
-**Excluded from releases** (available only when cloning repo):
+**Excluded from releases** (developers get these by cloning):
 - `tests/sessions/` - 93MB+ of SVG test frames and session data
 - `tests/**/*.zip` - Compressed test archives
+- Development scripts and tools
+- Complete git history
 
-**Included in releases**:
+**Included in releases** (end users get these):
 - Core source code
 - Essential runtime scripts (node_scripts, package.json)
 - Unit tests (small, fast-running tests)
 - Documentation
 
 **Package sizes**:
-- **Wheel**: ~129KB (without test data)
-- **Full repo clone**: ~93MB+ (with all test data)
+- **PyPI/GitHub releases (end users)**: ~129KB wheel
+- **Full repo clone (developers)**: ~93MB+
 
 This design allows:
-- ✅ Fast PyPI/GitHub releases with small downloads
-- ✅ Comprehensive test suites for developers who clone the repo
+- ✅ Fast PyPI/GitHub releases for end users (129KB)
+- ✅ Comprehensive test suites for developers (clone repo)
 - ✅ CI/CD can still run tests (GitHub Actions clones full repo)
+- ✅ No wasted bandwidth for users who just want to use the tool
 
 ## Testing
 

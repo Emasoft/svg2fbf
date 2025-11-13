@@ -5,8 +5,8 @@ Complete setup guide for svg2fbf development environment.
 ## Quick Start
 
 ```bash
-# Clone repository
-git clone https://github.com/Emasoft/svg2fbf.git
+# Clone repository (recommended: use GitHub CLI)
+gh repo clone Emasoft/svg2fbf
 cd svg2fbf
 
 # Install git hooks
@@ -19,6 +19,8 @@ just sync
 # You're ready! Run tests:
 just test
 ```
+
+**Why `gh repo clone`?** GitHub CLI handles authentication automatically and is the recommended way for developers to work with GitHub repositories.
 
 ## Detailed Setup
 
@@ -65,10 +67,25 @@ cargo install just
 
 ### 3. Clone Repository
 
+**⚠️ IMPORTANT: Developers must clone the full repository to get test data (93MB+)**
+
+PyPI and GitHub releases exclude test sessions to keep downloads small. Use the GitHub CLI for authentication and ease:
+
 ```bash
-git clone https://github.com/Emasoft/svg2fbf.git
+# Recommended: GitHub CLI (handles auth automatically)
+gh repo clone Emasoft/svg2fbf
 cd svg2fbf
+
+# Alternative: standard git clone
+# git clone https://github.com/Emasoft/svg2fbf.git
+# cd svg2fbf
 ```
+
+**Why clone vs install from PyPI?**
+- ✅ Full test suite (93MB+ test sessions)
+- ✅ Development tools and scripts
+- ✅ Complete git history
+- ✅ Ability to contribute changes
 
 ### 4. Setup Environment
 
