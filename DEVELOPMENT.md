@@ -29,13 +29,20 @@ alpha   beta     rc     stable  (mirror)
 
 ### Branch Workflow Table
 
-| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Promotion Command          | Install Command         | Release Type |
-|-----------|--------------------------------|----------------|----------|-----------|----------------|----------------------------|-------------------------|--------------|
-| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `just promote-to-testing`  | `just install-alpha`    | alpha        |
-| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `just promote-to-review`   | `just install-beta`     | beta         |
-| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `just promote-to-stable`   | `just install-rc`       | rc           |
-| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | (syncs to main)            | `just install-stable`   | stable       |
-| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `just sync-main`           | `just install-stable`   | (none)       |
+| Branch    | Purpose                        | Stage          | CI/CD    | Hooks     | Tests Expected | Clone & Checkout (gh CLI)                  | Promotion Command          | Install Command         | Release Type |
+|-----------|--------------------------------|----------------|----------|-----------|----------------|--------------------------------------------|----------------------------|-------------------------|--------------|
+| `dev`     | Active feature development     | Development    | Disabled | Manual    | ❌ May fail    | `gh repo clone Emasoft/svg2fbf -- -b dev`  | `just promote-to-testing`  | `just install-alpha`    | alpha        |
+| `testing` | Bug hunting & fixing           | Testing/QA     | Disabled | Manual    | ❌ Will fail   | `gh repo clone Emasoft/svg2fbf -- -b testing` | `just promote-to-review`   | `just install-beta`     | beta         |
+| `review`  | Final review & approval        | Pre-release    | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf -- -b review` | `just promote-to-stable`   | `just install-rc`       | rc           |
+| `master`  | Production-ready stable code   | Production     | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf -- -b master` | (syncs to main)            | `just install-stable`   | stable       |
+| `main`    | GitHub default (mirror master) | Production     | ✅ Enabled | Available | ✅ Must pass   | `gh repo clone Emasoft/svg2fbf` (default)  | `just sync-main`           | `just install-stable`   | (none)       |
+
+**Note:** `gh repo clone` accepts multiple formats:
+- **Owner/Repo**: `gh repo clone Emasoft/svg2fbf -- -b BRANCH` (shown above)
+- **HTTPS URL**: `gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b BRANCH`
+- **SSH URL**: `gh repo clone git@github.com:Emasoft/svg2fbf.git -- -b BRANCH`
+
+**Important:** Git URLs do not support embedding branch names in the URL itself. You must always use the `-b` or `--branch` flag. There is no syntax like `git@github.com:user/repo.git#branch` or `git@github.com:user/repo.git@branch` that works.
 
 ### Detailed Branch Descriptions
 
@@ -275,13 +282,30 @@ just promote-to-testing
 
 ### Initial Setup
 
+**⚠️ DEVELOPERS: Always clone the repository, never install from PyPI/releases!**
+
+PyPI and GitHub releases exclude large test data (93MB+ of test sessions). Developers need the full repository with all test suites.
+
 ```bash
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Clone the repository
-git clone https://github.com/Emasoft/svg2fbf.git
+# Clone the repository (RECOMMENDED: use GitHub CLI)
+# Method 1: Owner/Repo format (shortest)
+gh repo clone Emasoft/svg2fbf
 cd svg2fbf
+git checkout dev        # for alpha development (most common)
+
+# Method 2: Clone and checkout in one command (recommended)
+# gh repo clone Emasoft/svg2fbf -- -b dev
+
+# Method 3: Using full URL
+# gh repo clone https://github.com/Emasoft/svg2fbf.git -- -b dev
+
+# Alternative: standard git clone
+# git clone https://github.com/Emasoft/svg2fbf.git
+# cd svg2fbf
+# git checkout dev
 
 # Create virtual environment with Python 3.12
 uv venv --python 3.12
@@ -395,49 +419,39 @@ uv tool install dist/svg2fbf-{version}-py3-none-any.whl --python 3.10
 
 ## Building
 
-### Quick Development Rebuild (Recommended)
+### Quick Development Build (Recommended)
 
-For rapid development cycles, use the provided `reinstall.sh` script with automatic version management:
+For rapid development cycles, use the `just` commands:
 
 ```bash
-# Bump alpha version (default) and reinstall
-./reinstall.sh              # 0.1.2a2 → 0.1.2a3
+# Build development wheel (NO version bump)
+just build
 
-# Switch to beta testing
-./reinstall.sh --beta       # 0.1.2a3 → 0.1.2b1
+# Install built wheel
+just install
 
-# Finalize patch release
-./reinstall.sh --patch      # 0.1.2b1 → 0.1.2
-
-# Bump minor version
-./reinstall.sh --minor      # 0.1.2 → 0.2.0
-
-# Show all options
-./reinstall.sh --help
+# Or do both at once (full rebuild)
+just reinstall
 ```
 
-**What it does:**
-1. Displays current version with color-coded output
-2. Automatically bumps the version according to the flag (default: `--alpha`)
-3. Syncs dependencies with `uv sync --quiet`
-4. Builds a fresh wheel with `uv build --wheel --quiet`
-5. Uninstalls the current svg2fbf installation (if present)
-6. Installs the newly built wheel as a system-wide CLI tool
-7. Verifies installation and displays success message with version
+**What `just build` does:**
+1. Gets current version from pyproject.toml
+2. Gets short git hash for local version identifier
+3. Creates development version with +dev.{hash} suffix (PEP 440 compliant)
+4. Builds wheel with development version (e.g., `0.1.2a15+dev.cb48211`)
+5. Restores original version in pyproject.toml
+6. No version bumping - versions only change during releases
 
-**Available options:**
-- `--alpha` - Increment alpha version (default): `0.1.2a1` → `0.1.2a2`
-- `--beta` - Switch to/increment beta: `0.1.2a2` → `0.1.2b1`
-- `--rc` - Switch to/increment release candidate: `0.1.2b1` → `0.1.2rc1`
-- `--patch` - Finalize patch release: `0.1.2rc1` → `0.1.2`
-- `--minor` - Bump minor version: `0.1.2` → `0.2.0`
-- `--major` - Bump major version: `0.2.0` → `1.0.0`
+**Development builds** get a unique suffix based on git commit hash, allowing you to:
+- Build multiple times without version changes
+- Distinguish development builds from releases
+- Test code without affecting version numbers
 
-This is the **fastest way** to test your changes during development. The script ensures svg2fbf is available as a system-wide CLI command after installation.
+**Release builds** (clean, no suffix) are created by:
+- `just release` - Create releases on GitHub (all 4 channels)
+- `just publish` - Create releases + publish stable to PyPI
 
-### Manual Build Process
-
-If you prefer manual control or need custom build options:
+### Build Process Details
 
 #### Development Build
 
@@ -473,6 +487,36 @@ uv tool install dist/svg2fbf-*.whl --python 3.10
 svg2fbf --version
 svg2fbf -i examples/seagull/ -o /tmp -f test.fbf.svg -s 12
 ```
+
+### What's Included in Releases
+
+**⚠️ IMPORTANT DISTINCTION:**
+- **End users**: Install from PyPI or GitHub releases (small, fast downloads)
+- **Developers**: MUST clone the repository (full test data required)
+
+To keep release packages lightweight, **large test data is excluded** from wheels and source distributions:
+
+**Excluded from releases** (developers get these by cloning):
+- `tests/sessions/` - 93MB+ of SVG test frames and session data
+- `tests/**/*.zip` - Compressed test archives
+- Development scripts and tools
+- Complete git history
+
+**Included in releases** (end users get these):
+- Core source code
+- Essential runtime scripts (node_scripts, package.json)
+- Unit tests (small, fast-running tests)
+- Documentation
+
+**Package sizes**:
+- **PyPI/GitHub releases (end users)**: ~129KB wheel
+- **Full repo clone (developers)**: ~93MB+
+
+This design allows:
+- ✅ Fast PyPI/GitHub releases for end users (129KB)
+- ✅ Comprehensive test suites for developers (clone repo)
+- ✅ CI/CD can still run tests (GitHub Actions clones full repo)
+- ✅ No wasted bandwidth for users who just want to use the tool
 
 ## Testing
 
@@ -881,13 +925,13 @@ svg2fbf/
 # 1. Make changes to svg2fbf.py
 
 # 2. Rebuild and reinstall in one command
-./reinstall.sh
+just reinstall
 
 # 3. Test the installed version
 svg2fbf -i examples/seagull/ -o /tmp -f test.fbf.svg -s 12
 
 # 4. Run specific test
-uv run pytest tests/test_frame_rendering.py::test_seagull_animation -v
+just test-file tests/test_frame_rendering.py
 ```
 
 **Alternative workflow** (without reinstalling):
