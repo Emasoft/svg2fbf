@@ -12,7 +12,8 @@
 #   just add                 # Add and sync dependencies
 #   just add-dev             # Add dev dependencies and sync
 #   just remove              # Remove and sync dependencies
-#   just build               # Build wheel
+#   just build               # Build wheel (auto-bumps: alpha if alpha, patch if stable)
+#   just install             # Smart install (builds only if code changed)
 #   just reinstall           # Full rebuild and reinstall (default: alpha bump)
 #   just reinstall --beta    # Bump beta version
 #   just clean               # Clean temp directories
@@ -94,12 +95,39 @@ remove pkg:
 # Build & Install
 # ============================================================================
 
-# Build wheel package
+# Build wheel package (auto-bumps version: alpha if already alpha, patch otherwise)
 build:
-    @echo "🔨 Building wheel..."
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "🔨 Building with auto version bump..."
+
+    # Get current version
+    CURRENT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+    echo "Current version: $CURRENT_VERSION"
+
+    # Determine bump type: if version contains 'a' (alpha), bump alpha; else bump patch
+    if [[ "$CURRENT_VERSION" == *"a"* ]]; then
+        BUMP_TYPE="alpha"
+        echo "⬆️  Auto-bumping alpha version..."
+    else
+        BUMP_TYPE="patch"
+        echo "⬆️  Auto-bumping patch version..."
+    fi
+
+    # Bump version
+    uv version --bump "$BUMP_TYPE" --no-sync
+    NEW_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+    echo "✅ Bumped to: $NEW_VERSION"
+    echo ""
+
+    # Build wheel
+    echo "🔨 Building wheel..."
     uv build --wheel --quiet --out-dir dist
-    @echo "✅ Wheel built:"
-    @ls -t dist/svg2fbf-*.whl | head -1
+    echo "✅ Wheel built:"
+    ls -t dist/svg2fbf-*.whl | head -1
+    echo ""
+    echo "📦 Version: $NEW_VERSION"
 
 # Bump version (alpha, beta, rc, patch, minor, major)
 bump type="alpha":
@@ -108,32 +136,84 @@ bump type="alpha":
     @echo "✅ Version bumped to:"
     @grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'
 
-# Install as uv tool (from latest wheel)
+# Install as uv tool (auto-builds only if code changed)
 install python="3.10":
     #!/usr/bin/env bash
     set -euo pipefail
 
-    echo "📥 Installing svg2fbf as uv tool..."
+    echo "📥 Smart install (builds only if code changed)..."
+    echo ""
 
     # Find latest wheel
     WHEEL=$(ls -t dist/svg2fbf-*.whl 2>/dev/null | head -1)
 
+    # Check if we need to build
+    NEED_BUILD=false
+
     if [ -z "$WHEEL" ]; then
-        echo "❌ No wheel found. Run 'just build' first."
-        exit 1
+        echo "ℹ️  No wheel found - will build"
+        NEED_BUILD=true
+    else
+        # Get version from wheel filename (e.g., svg2fbf-0.1.2a12-py3-none-any.whl)
+        WHEEL_VERSION=$(basename "$WHEEL" | sed 's/svg2fbf-\(.*\)-py3.*/\1/')
+        echo "Found wheel: $WHEEL_VERSION"
+
+        # Get current project version
+        PROJECT_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+        echo "Project version: $PROJECT_VERSION"
+
+        # Check if versions match
+        if [ "$WHEEL_VERSION" != "$PROJECT_VERSION" ]; then
+            echo "ℹ️  Version mismatch - will build"
+            NEED_BUILD=true
+        else
+            # Check for changes in src/ since last commit
+            if git diff --quiet HEAD -- src/; then
+                echo "✓ No code changes since last version"
+                NEED_BUILD=false
+            else
+                echo "ℹ️  Code changes detected in src/ - will build"
+                NEED_BUILD=true
+            fi
+        fi
+    fi
+
+    # Build if needed
+    if [ "$NEED_BUILD" = true ]; then
+        echo ""
+        echo "🔨 Building..."
+        just build
+        echo ""
+        # Update WHEEL to the newly built one
+        WHEEL=$(ls -t dist/svg2fbf-*.whl 2>/dev/null | head -1)
+    else
+        echo ""
+        echo "⏭️  Skipping build (using existing wheel)"
+        echo ""
     fi
 
     # Uninstall existing
+    echo "🗑️  Uninstalling existing tool..."
     uv tool uninstall svg2fbf 2>/dev/null || true
 
-    # Install new
+    # Install
+    echo "📦 Installing: $WHEEL"
     uv tool install "$WHEEL" --python {{python}}
 
-    echo "✅ Installed: $WHEEL"
+    echo ""
+    echo "✅ Installation complete!"
     echo ""
     echo "Commands available:"
     echo "  - svg2fbf"
     echo "  - svg-repair-viewbox"
+    echo ""
+    echo "📦 Verifying installation..."
+    INSTALLED_VERSION=$(~/.local/share/uv/tools/svg2fbf/bin/svg2fbf --version 2>/dev/null || echo "ERROR")
+    if [ "$INSTALLED_VERSION" = "ERROR" ]; then
+        echo "⚠️  Could not verify installation"
+    else
+        echo "✅ Installed version: $INSTALLED_VERSION"
+    fi
 
 # Full rebuild and reinstall (default: alpha bump)
 reinstall type="alpha" python="3.10":
