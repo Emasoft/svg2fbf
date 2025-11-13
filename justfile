@@ -23,6 +23,7 @@
 #   just promote-to-review       # Merge testing → review (bugs fixed)
 #   just promote-to-stable       # Merge review → master (ready for release)
 #   just sync-main               # Sync main branch with master (keep identical)
+#   just sync_all                # Sync all branches from current branch (with confirmation)
 #   just release                 # Release all 4 channels to GitHub (no PyPI)
 #   just publish                 # Release all + publish stable to PyPI
 #   just changelog               # Generate/update CHANGELOG.md from git history
@@ -942,6 +943,79 @@ sync-main:
     echo ""
     echo "✅ main is now synced with master"
     echo "   (main and master are identical)"
+
+# Sync all branches from current branch (with confirmation)
+sync_all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Get current branch
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    # Define all branches to sync
+    ALL_BRANCHES=("dev" "testing" "review" "master" "main")
+
+    echo "🔄 Sync All Branches"
+    echo "═══════════════════════════════════════════════"
+    echo ""
+    echo "Current branch: $CURRENT_BRANCH"
+    echo ""
+    echo "This will sync the following branches from $CURRENT_BRANCH:"
+    echo ""
+
+    # Show which branches will be synced (exclude current branch)
+    for branch in "${ALL_BRANCHES[@]}"; do
+        if [ "$branch" != "$CURRENT_BRANCH" ]; then
+            echo "  • $branch ← $CURRENT_BRANCH (force sync)"
+        fi
+    done
+
+    echo ""
+    echo "⚠️  WARNING: This will FORCE-SYNC all branches to match $CURRENT_BRANCH!"
+    echo "   All other branches will be reset to the current state of $CURRENT_BRANCH."
+    echo ""
+    read -p "Are you sure you want to continue? (yes/no): " -r
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+        echo "❌ Sync cancelled"
+        exit 0
+    fi
+
+    echo "🚀 Starting sync..."
+    echo ""
+
+    # Sync each branch
+    for branch in "${ALL_BRANCHES[@]}"; do
+        # Skip current branch
+        if [ "$branch" = "$CURRENT_BRANCH" ]; then
+            echo "⏭️  Skipping $branch (current branch)"
+            continue
+        fi
+
+        echo "📤 Syncing $branch from $CURRENT_BRANCH..."
+
+        # Checkout the target branch
+        git checkout "$branch"
+
+        # Force sync to current branch state
+        git reset --hard "$CURRENT_BRANCH"
+
+        # Push with force-with-lease
+        git push origin "$branch" --force-with-lease
+
+        echo "  ✅ $branch synced"
+        echo ""
+    done
+
+    # Return to original branch
+    echo "🔙 Returning to $CURRENT_BRANCH..."
+    git checkout "$CURRENT_BRANCH"
+
+    echo ""
+    echo "✅ All branches synced successfully!"
+    echo ""
+    echo "All branches are now at the same commit as $CURRENT_BRANCH"
 
 # ============================================================================
 # Branch Promotions & Releases
