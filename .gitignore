@@ -24,6 +24,7 @@ tests/pyproject.toml
 CLAUDE.md
 **/CLAUDE.md
 .claude/
+ccpm/  # Private CCPM plugin - keep local only
 
 # Logs and temporary files
 logs/
