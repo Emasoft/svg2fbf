@@ -387,6 +387,8 @@ Now hooks survive .git folder deletion and can be easily reinstalled.
 - Add built wheel for main branch (0.1.2a15)
 - Merge main: Track dist/ wheels in each branch
 - Merge branch 'main' into dev
+- Release alpha 0.1.2a16
+- Add built wheel for alpha 0.1.2a16
 
 ### Documentation
 
