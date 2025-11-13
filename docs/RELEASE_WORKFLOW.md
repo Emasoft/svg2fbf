@@ -42,6 +42,8 @@ git checkout dev
 git push origin dev
 ```
 
+**Note:** CI/CD is **disabled** on `dev` branch. Developers manually decide when to run tests and checks.
+
 When feature is complete and ready for testing:
 ```bash
 just promote-to-testing
@@ -67,6 +69,8 @@ git checkout testing
 git push origin testing
 ```
 
+**Note:** CI/CD is **disabled** on `testing` branch. Tests are expected to fail here - that's the point! Only when all tests pass should you promote to review.
+
 When all bugs are fixed and ready for review:
 ```bash
 just promote-to-review
@@ -80,6 +84,8 @@ git checkout review
 # ... final checks, documentation review ...
 ```
 
+**Note:** CI/CD is **enabled** on `review` branch. All tests must pass before merging to master.
+
 When review is approved and ready for production:
 ```bash
 just promote-to-stable
@@ -88,6 +94,34 @@ just promote-to-stable
 ### 4. Stable Release (master branch)
 
 The `master` branch contains production-ready code.
+
+**Note:** CI/CD is **enabled** on `master` and `main` branches. All checks must pass.
+
+## CI/CD Behavior by Branch
+
+Understanding when automated checks run:
+
+| Branch   | CI/CD Status | Pre-commit Hooks | Rationale                                    |
+|----------|--------------|------------------|----------------------------------------------|
+| `dev`    | **Disabled** | Manual           | Active development, expected breakage        |
+| `testing`| **Disabled** | Manual           | Bug hunting, tests expected to fail          |
+| `review` | **Enabled**  | Available        | Final QA, must be stable before release      |
+| `master` | **Enabled**  | Available        | Production code, strict enforcement          |
+| `main`   | **Enabled**  | Available        | Mirror of master, strict enforcement         |
+
+**Why disable CI on dev/testing?**
+- `dev`: Developers iterate quickly, breakage is normal
+- `testing`: Purpose is to find bugs - tests should fail!
+- Manual testing: Developers run `just test`, `just lint` when ready
+- Promotion gates: `review` and `master` enforce all checks
+
+**Manual Testing on dev/testing:**
+```bash
+# When you want to check your work on dev/testing:
+just test          # Run tests
+just lint          # Check linting
+just check         # Run all checks
+```
 
 ## Release Process
 
