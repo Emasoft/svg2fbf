@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add colored CLI help and fix Python DOM unlink bug
 
+### Other
+
+- Release stable 0.1.3
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.3
+
 ## [0.1.2] - 2025-11-13
 
 ### Added
