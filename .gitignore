@@ -4,7 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 build/
-dist/
+# dist/ - Now tracked so each branch has its versioned wheel
 wheels/
 *.egg-info
 *.egg
