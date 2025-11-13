@@ -287,9 +287,19 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 gh repo clone Emasoft/svg2fbf
 cd svg2fbf
 
+# Checkout the branch you want to work on
+git checkout dev        # for alpha development (most common)
+# git checkout testing  # for beta testing/debugging
+# git checkout review   # for rc review
+# git checkout master   # for stable releases
+
+# Alternative: Clone and checkout in one command
+# gh repo clone Emasoft/svg2fbf -- -b dev
+
 # Alternative: standard git clone
 # git clone https://github.com/Emasoft/svg2fbf.git
 # cd svg2fbf
+# git checkout dev
 
 # Create virtual environment with Python 3.12
 uv venv --python 3.12

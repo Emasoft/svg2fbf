@@ -76,9 +76,20 @@ PyPI and GitHub releases exclude test sessions to keep downloads small. Use the 
 gh repo clone Emasoft/svg2fbf
 cd svg2fbf
 
+# If you want to work on a specific branch (dev, testing, review):
+git checkout dev        # for alpha development
+# git checkout testing  # for beta testing
+# git checkout review   # for rc review
+# git checkout master   # for stable releases
+
+# Alternative: Clone and checkout in one command
+# gh repo clone Emasoft/svg2fbf -- -b dev
+# cd svg2fbf
+
 # Alternative: standard git clone
 # git clone https://github.com/Emasoft/svg2fbf.git
 # cd svg2fbf
+# git checkout dev
 ```
 
 **Why clone vs install from PyPI?**
