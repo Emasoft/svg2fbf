@@ -112,19 +112,24 @@ This eliminates the need for expensive programming teams, simplifies hiring, and
 | **Can use in closed-source commercial products?** | ✅ YES (Apache 2.0 allows commercial use) | ✅ YES (MIT license allows commercial use) | ❌ NO, GPL-3.0 requires source disclosure³⁹ | ✅ YES (MIT license allows commercial use) | ✅ YES (subscription includes commercial rights) | ✅ YES (W3C standard, no restrictions) | ✅ YES (W3C standard, no restrictions) | ✅ YES (W3C standard, no restrictions) | ✅ YES (BSD license allows commercial use) |
 | **Can distribute output files freely?** | ✅ YES! (SVG files are yours, distribute anywhere) | ✅ YES⁴⁰ (JSON files are yours, distribute freely) | ✅ YES (files are yours) | ✅ YES (but viewers need Rive runtime)⁴¹ | ✅ YES (output files are yours) | ✅ YES (SVG files, no restrictions) | ✅ YES (SVG+CSS files, no restrictions) | ✅ YES (but requires runtime environment) | ✅ YES (.abc files are yours, distribute freely) |
 
-**📝 Note on Alembic:** Alembic (.abc) is included in this comparison because it's sometimes suggested for exporting animations from OpenToonz and other animation tools. **Alembic IS valuable for interoperability** - it enables OpenToonz to exchange layered scene data (both 2D and 3D, including z-depth for parallax scrolling effects) with professional animation and VFX tools like Blender, Maya, and Houdini. This makes it excellent for cross-application workflows in animation production pipelines.
+**📝 Note on Alembic:** Alembic (.abc) is included in this comparison because it's sometimes suggested for exporting animations from OpenToonz and other animation tools. **Alembic IS valuable for interoperability** - it's a **scene hierarchy editing format** that enables OpenToonz to exchange layered scene hierarchies (both 2D and 3D, including z-depth for parallax scrolling effects) with professional animation and VFX tools like Blender, Maya, and Houdini. This makes it excellent for cross-application workflows in animation production pipelines.
 
-However, **Alembic is NOT a true alternative to FBF.SVG as a standard vector video format**. Alembic is a scene interchange format designed specifically for professional VFX/animation production pipelines (sponsored by Lucasfilm and Sony Pictures Imageworks), not for deploying animations to end users. Key limitations for end-user deployment:
+**Important distinction: Alembic and FBF.SVG serve different purposes that don't interfere with each other:**
+
+- **Alembic** = Scene hierarchy **editing format** for interchange between professional animation tools (OpenToonz ↔ Blender ↔ Maya ↔ Houdini)
+- **FBF.SVG** = Vector video **output format** for deploying animations to end users (web, mobile, apps, games)
+
+Alembic is designed for production pipelines (sponsored by Lucasfilm and Sony Pictures Imageworks), not for end-user deployment. Key characteristics:
 
 - **Cannot be played in web browsers** - Requires specialized animation/VFX software
 - **Cannot be played in mobile apps** - No mobile playback support
-- **Not for end-user consumption** - It's a production pipeline format, not a distribution format
-- **Requires professional software** - Maya, Houdini, Blender, or similar tools needed to view/edit
-- **Scene interchange, not playback** - Designed to move data between animation tools, not to display animations to the public
+- **Not for end-user consumption** - It's a scene hierarchy editing format, not a distribution format
+- **Requires professional software** - Maya, Houdini, Blender, or similar tools needed to view/edit scene hierarchies
+- **Scene interchange, not playback** - Designed to move scene data between animation tools during production
 
-**When to use Alembic:** Exchanging animation work between professional tools (OpenToonz ↔ Blender, Maya ↔ Houdini, etc.) during production.
+**When to use Alembic:** Exchanging animation work between professional tools (OpenToonz ↔ Blender, Maya ↔ Houdini, etc.) during production/editing.
 
-**When NOT to use Alembic:** Deploying animations for web, mobile, games, or general public consumption. For these use cases, FBF.SVG, OCA (as video), or standard video export are more appropriate choices.
+**When to use FBF.SVG (or video):** Deploying finished animations for web, mobile, games, or general public consumption.
 
 ---
 
