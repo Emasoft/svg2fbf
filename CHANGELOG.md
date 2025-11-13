@@ -5,6 +5,12 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2025-11-13
+
+### Miscellaneous
+
+- Update anime_girl animation to 10 fps and remove broken files
+
 ## [0.1.7] - 2025-11-13
 
 ### Added
@@ -18,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add UTF-8 encoding to subprocess calls in Windows tests
 - Use ppp() instead of print() for viewBox error message
 
+### Other
+
+- Release stable 0.1.7
+
 ### Changed
 
 - Rename sync_all to equalize for clarity
@@ -28,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add comprehensive upgrade and uninstall instructions
 - Add comprehensive Table of Contents to README
 - Add comprehensive Table of Contents to DEVELOPMENT.md and CONTRIBUTING.md
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.7
 
 ## [0.1.6] - 2025-11-13
 
