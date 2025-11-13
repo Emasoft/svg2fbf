@@ -166,10 +166,7 @@ def pytest_addoption(parser):
         "--html-report",
         action="store_true",
         default=True,  # Now default (set in pyproject.toml)
-        help=(
-            "Generate HTML comparison report with all frames side-by-side "
-            "(disables fail-fast) - DEFAULT"
-        ),
+        help=("Generate HTML comparison report with all frames side-by-side (disables fail-fast) - DEFAULT"),
     )
     parser.addoption(
         "--no-html-report",
@@ -181,39 +178,25 @@ def pytest_addoption(parser):
         "--max-frames",
         type=int,
         default=test_config.max_frames,  # Read from pyproject.toml
-        help=(
-            f"Maximum number of frames to test in large batches "
-            f"(default: {test_config.max_frames})"
-        ),
+        help=(f"Maximum number of frames to test in large batches (default: {test_config.max_frames})"),
     )
     parser.addoption(
         "--image-tolerance",
         type=float,
         default=test_config.image_tolerance,  # Read from pyproject.toml
-        help=(
-            f"Image-level tolerance: percentage of pixels allowed to differ "
-            f"(0.0-100.0). Default: {test_config.image_tolerance}%%. "
-            f"See tests/ISSUES.md for details."
-        ),
+        help=(f"Image-level tolerance: percentage of pixels allowed to differ (0.0-100.0). Default: {test_config.image_tolerance}%%. See tests/ISSUES.md for details."),
     )
     parser.addoption(
         "--pixel-tolerance",
         type=float,
         default=test_config.pixel_tolerance,  # Read from pyproject.toml
-        help=(
-            f"Pixel-level tolerance: color difference threshold per pixel "
-            f"(0.0-1.0). Default: {test_config.pixel_tolerance} (~1 RGB value). "
-            f"See tests/ISSUES.md for details."
-        ),
+        help=(f"Pixel-level tolerance: color difference threshold per pixel (0.0-1.0). Default: {test_config.pixel_tolerance} (~1 RGB value). See tests/ISSUES.md for details."),
     )
     parser.addoption(
         "--no-keep-ratio",
         action="store_true",
         default=False,
-        help=(
-            "Don't use preserveAspectRatio attribute "
-            "(useful for animations with negative viewBox coordinates)"
-        ),
+        help=("Don't use preserveAspectRatio attribute (useful for animations with negative viewBox coordinates)"),
     )
 
     # Session management options
@@ -222,20 +205,14 @@ def pytest_addoption(parser):
         type=str,
         default=None,
         metavar="SESSION_ID",
-        help=(
-            "Save test input batch as named session for future replication "
-            "(auto-generates ID if not provided)"
-        ),
+        help=("Save test input batch as named session for future replication (auto-generates ID if not provided)"),
     )
     parser.addoption(
         "--use-session",
         type=str,
         default=None,
         metavar="SESSION_ID",
-        help=(
-            "Run test using inputs from saved session "
-            "(enables deterministic replication)"
-        ),
+        help=("Run test using inputs from saved session (enables deterministic replication)"),
     )
     parser.addoption(
         "--list-sessions",
@@ -298,27 +275,14 @@ def preserve_artifacts(request, tests_dir):
         import re
 
         if not re.match(r"^session_\d{3}_\d+frames$", session_id):
-            raise ValueError(
-                f"Invalid session_id format: '{session_id}'. "
-                f"Expected pattern: 'session_NNN_Mframes' "
-                f"(e.g., 'session_044_3frames'). "
-                f"This indicates a bug in session management or test code."
-            )
+            raise ValueError(f"Invalid session_id format: '{session_id}'. Expected pattern: 'session_NNN_Mframes' (e.g., 'session_044_3frames'). This indicates a bug in session management or test code.")
 
         # SAFEGUARD: Validate corresponding session exists in sessions/ directory
         # Why: Catch bugs where session_id doesn't match actual saved session
         sessions_dir = tests_dir / "sessions" / session_id
         if not sessions_dir.exists():
-            available = [
-                d.name for d in (tests_dir / "sessions").iterdir() if d.is_dir()
-            ]
-            raise ValueError(
-                f"Session directory does not exist: {sessions_dir}\n"
-                f"This indicates:\n"
-                f"  1. Session '{session_id}' was never saved, OR\n"
-                f"  2. Test is using wrong session_id (mismatch bug)\n"
-                f"Available sessions: {available}"
-            )
+            available = [d.name for d in (tests_dir / "sessions").iterdir() if d.is_dir()]
+            raise ValueError(f"Session directory does not exist: {sessions_dir}\nThis indicates:\n  1. Session '{session_id}' was never saved, OR\n  2. Test is using wrong session_id (mismatch bug)\nAvailable sessions: {available}")
 
         # Create results directory: tests/results/<session_id>/<timestamp>/
         # Why: Group all runs of same input together for easy comparison
@@ -470,9 +434,7 @@ def test_session(request, session_manager):
                 return self.data["metadata"]
             return None
 
-        def save_after_test(
-            self, frame_count, input_batch_dir, test_config, svg_sources
-        ):
+        def save_after_test(self, frame_count, input_batch_dir, test_config, svg_sources):
             """
             Save session after test completes
 

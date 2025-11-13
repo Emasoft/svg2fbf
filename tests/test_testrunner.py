@@ -173,9 +173,7 @@ class TestConfigLoading:
     def test_testconfig_format_frame_filename(self, tmp_path):
         """TestConfig.format_frame_filename produces correct filenames"""
         pyproject = tmp_path / "pyproject.toml"
-        config_data = {
-            "tool": {"svg2fbf": {"test": {"frame_number_format": "frame{:05d}.svg"}}}
-        }
+        config_data = {"tool": {"svg2fbf": {"test": {"frame_number_format": "frame{:05d}.svg"}}}}
         with open(pyproject, "wb") as f:
             tomli_w.dump(config_data, f)
 
@@ -210,17 +208,13 @@ class TestConstants:
             "___fbftest[0]___",  # Wrong case
         ]
         for suffix in invalid_suffixes:
-            assert not FBFTEST_SUFFIX_PATTERN.search(suffix), (
-                f"Should not match: {suffix}"
-            )
+            assert not FBFTEST_SUFFIX_PATTERN.search(suffix), f"Should not match: {suffix}"
 
     def test_fbftest_suffix_format_produces_valid_suffix(self):
         """FBFTEST_SUFFIX_FORMAT produces valid, matchable suffixes"""
         for i in range(10):
             suffix = FBFTEST_SUFFIX_FORMAT.format(i)
-            assert FBFTEST_SUFFIX_PATTERN.search(suffix), (
-                f"Generated suffix should match pattern: {suffix}"
-            )
+            assert FBFTEST_SUFFIX_PATTERN.search(suffix), f"Generated suffix should match pattern: {suffix}"
 
     def test_frame_number_patterns_all_compiled(self):
         """FRAME_NUMBER_PATTERNS contains compiled regex patterns"""
@@ -247,9 +241,7 @@ class TestConstants:
 
         # Should not be strictly ascending (some have same priority)
         # but should be logical
-        assert priorities[0] <= priorities[-1], (
-            "First priority should be <= last priority"
-        )
+        assert priorities[0] <= priorities[-1], "First priority should be <= last priority"
 
     def test_frame_number_patterns_contain_critical_patterns(self):
         """FRAME_NUMBER_PATTERNS contains all critical numbering patterns"""
@@ -396,16 +388,12 @@ class TestExtractNumberCandidates:
     def test_extract_number_candidates_respects_priority(self):
         """extract_number_candidates respects pattern priority"""
         # File with both underscore and dash patterns
-        candidates = extract_number_candidates_from_filename(
-            "frame_00001-backup_00002.svg"
-        )
+        candidates = extract_number_candidates_from_filename("frame_00001-backup_00002.svg")
 
         if candidates:
             # First candidate should be higher priority (lower number)
             first_priority = candidates[0][1]
-            second_priority = (
-                candidates[1][1] if len(candidates) > 1 else first_priority
-            )
+            second_priority = candidates[1][1] if len(candidates) > 1 else first_priority
             assert first_priority <= second_priority
 
 

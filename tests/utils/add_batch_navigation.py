@@ -39,9 +39,7 @@ def add_navigation_to_reports(report_paths: list[Path]) -> None:
             html_content = f.read()
 
         # Build navigation HTML with circular navigation
-        nav_html = _build_navigation_html(
-            idx=idx, total=total_reports, report_paths=report_paths
-        )
+        nav_html = _build_navigation_html(idx=idx, total=total_reports, report_paths=report_paths)
 
         # Replace the navigation placeholder with actual navigation
         # Look for <div id='batch-navigation'></div> and replace it
@@ -84,9 +82,7 @@ def _build_navigation_html(idx: int, total: int, report_paths: list[Path]) -> st
 
     # First button - always goes to first page, disabled if already at first
     if idx == 0:
-        parts.append(
-            "<span class='nav-disabled' title='Already at first'>⏮ First</span>"
-        )
+        parts.append("<span class='nav-disabled' title='Already at first'>⏮ First</span>")
     else:
         parts.append(f"<a href='{to_file_url(first_report)}'>⏮ First</a>")
 
@@ -96,10 +92,7 @@ def _build_navigation_html(idx: int, total: int, report_paths: list[Path]) -> st
         parts.append(f"<a href='{to_file_url(prev_report)}'>← Prev</a>")
     else:
         # At first page, wrap to last page (circular)
-        parts.append(
-            f"<a href='{to_file_url(last_report)}' "
-            f"title='Go to last (circular)'>← Prev</a>"
-        )
+        parts.append(f"<a href='{to_file_url(last_report)}' title='Go to last (circular)'>← Prev</a>")
 
     # Next button - circular (goes to first if at last)
     if idx < total - 1:
@@ -107,10 +100,7 @@ def _build_navigation_html(idx: int, total: int, report_paths: list[Path]) -> st
         parts.append(f"<a href='{to_file_url(next_report)}'>Next →</a>")
     else:
         # At last page, wrap to first page (circular)
-        parts.append(
-            f"<a href='{to_file_url(first_report)}' "
-            f"title='Go to first (circular)'>Next →</a>"
-        )
+        parts.append(f"<a href='{to_file_url(first_report)}' title='Go to first (circular)'>Next →</a>")
 
     # Last button - always goes to last page, disabled if already at last
     if idx == total - 1:

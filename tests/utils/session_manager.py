@@ -57,9 +57,7 @@ class TestSession:
             frame_count=data["frame_count"],
             timestamp=data["timestamp"],
             input_batch_dir=Path(data["input_batch_dir"]),
-            uv_lock_path=Path(data["uv_lock_path"])
-            if data.get("uv_lock_path")
-            else None,
+            uv_lock_path=Path(data["uv_lock_path"]) if data.get("uv_lock_path") else None,
             metadata=data.get("metadata", {}),
         )
 
@@ -169,9 +167,7 @@ class SessionManager:
         shutil.copytree(input_batch_dir, session_batch_dir)
 
         # Copy uv.lock from project root
-        project_root = (
-            self.sessions_root.parent.parent
-        )  # tests/sessions/ -> tests/ -> project_root/
+        project_root = self.sessions_root.parent.parent  # tests/sessions/ -> tests/ -> project_root/
         uv_lock_source = project_root / "uv.lock"
         uv_lock_dest = None
 

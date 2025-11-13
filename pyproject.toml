@@ -144,7 +144,7 @@ default_frames = 2
 recursive = false  # Default: scan root level only (not subdirectories)
 
 [tool.ruff]
-line-length = 88            # Enforce Black-like width for readable, consistent diffs
+line-length = 320           # Wide line length for detailed SVG manipulation code
 target-version = "py310"    # Adjust to your lowest supported Python (py38/py39/py310/py311/...)
 fix = true                  # Enable auto-fix by default (top-level setting!)
 

@@ -18,9 +18,7 @@ def check_command_exists(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-def run_command(
-    cmd: list[str], description: str, check: bool = True, cwd: str | None = None
-) -> tuple[bool, str]:
+def run_command(cmd: list[str], description: str, check: bool = True, cwd: str | None = None) -> tuple[bool, str]:
     """
     Run a shell command and return success status and output.
 
@@ -99,9 +97,7 @@ def install_nodejs(package_manager: str) -> tuple[bool, str]:
     print("📦 Installing Node.js...")
 
     if package_manager == "brew":
-        success, output = run_command(
-            ["brew", "install", "node"], "brew install node", check=False
-        )
+        success, output = run_command(["brew", "install", "node"], "brew install node", check=False)
 
     elif package_manager == "apt":
         # Update package list first
@@ -134,14 +130,10 @@ def install_nodejs(package_manager: str) -> tuple[bool, str]:
         )
 
     elif package_manager == "choco":
-        success, output = run_command(
-            ["choco", "install", "nodejs", "-y"], "choco install", check=False
-        )
+        success, output = run_command(["choco", "install", "nodejs", "-y"], "choco install", check=False)
 
     elif package_manager == "winget":
-        success, output = run_command(
-            ["winget", "install", "OpenJS.NodeJS"], "winget install", check=False
-        )
+        success, output = run_command(["winget", "install", "OpenJS.NodeJS"], "winget install", check=False)
 
     else:
         return False, f"Unsupported package manager: {package_manager}"
@@ -149,15 +141,12 @@ def install_nodejs(package_manager: str) -> tuple[bool, str]:
     if success:
         # Verify installation
         if check_command_exists("node") and check_command_exists("npm"):
-            node_version = subprocess.run(
-                ["node", "--version"], capture_output=True, text=True
-            ).stdout.strip()
+            node_version = subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip()
             return True, f"✅ Node.js installed successfully ({node_version})"
         else:
             return (
                 False,
-                "⚠️  Node.js installed but not found in PATH. "
-                "Please restart your terminal.",
+                "⚠️  Node.js installed but not found in PATH. Please restart your terminal.",
             )
 
     return False, f"❌ Failed to install Node.js:\n{output}"
@@ -201,9 +190,7 @@ def install_puppeteer(scripts_dir: Path | None = None) -> tuple[bool, str]:
 
     # Fallback: try global install
     print("   Attempting global install...")
-    success, output = run_command(
-        ["npm", "install", "-g", "puppeteer"], "npm install puppeteer", check=False
-    )
+    success, output = run_command(["npm", "install", "-g", "puppeteer"], "npm install puppeteer", check=False)
 
     if success:
         return True, "✅ Puppeteer installed globally"
@@ -285,9 +272,7 @@ def setup_dependencies(silent: bool = False) -> bool:
 
     else:
         if not silent:
-            node_version = subprocess.run(
-                ["node", "--version"], capture_output=True, text=True
-            ).stdout.strip()
+            node_version = subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip()
             print(f"✅ Node.js already installed ({node_version})")
             print()
 
@@ -364,15 +349,9 @@ if __name__ == "__main__":
     # Can be run standalone for testing
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Install dependencies for svg-repair-viewbox"
-    )
-    parser.add_argument(
-        "--check", action="store_true", help="Only check if dependencies are installed"
-    )
-    parser.add_argument(
-        "--silent", action="store_true", help="Silent mode (minimal output)"
-    )
+    parser = argparse.ArgumentParser(description="Install dependencies for svg-repair-viewbox")
+    parser.add_argument("--check", action="store_true", help="Only check if dependencies are installed")
+    parser.add_argument("--silent", action="store_true", help="Silent mode (minimal output)")
 
     args = parser.parse_args()
 

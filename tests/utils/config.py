@@ -61,15 +61,8 @@ class ConfigHelper:
             data = tomllib.load(f)
 
         # Extract test configuration
-        if (
-            "tool" not in data
-            or "svg2fbf" not in data["tool"]
-            or "test" not in data["tool"]["svg2fbf"]
-        ):
-            raise ValueError(
-                "Missing [tool.svg2fbf.test] section in pyproject.toml. "
-                "Please add test configuration to pyproject.toml"
-            )
+        if "tool" not in data or "svg2fbf" not in data["tool"] or "test" not in data["tool"]["svg2fbf"]:
+            raise ValueError("Missing [tool.svg2fbf.test] section in pyproject.toml. Please add test configuration to pyproject.toml")
 
         self._config = data["tool"]["svg2fbf"]["test"]
 

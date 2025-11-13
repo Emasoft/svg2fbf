@@ -183,9 +183,7 @@ def test_frame_rendering_accuracy(
         print(f"   Batch directory: {batch_dir}")
         print("   Verifying input consistency with saved session...")
 
-        for i, (saved_path, current_file) in enumerate(
-            zip(svg_sources, frame_files, strict=False)
-        ):
+        for i, (saved_path, current_file) in enumerate(zip(svg_sources, frame_files, strict=False)):
             # Compute hash of saved SVG (from metadata)
             if saved_path.exists():
                 with open(saved_path, "rb") as f:
@@ -193,9 +191,7 @@ def test_frame_rendering_accuracy(
                 saved_input_hashes.append(saved_hash)
             else:
                 # Original file deleted - can't verify
-                saved_hash = (
-                    "DELETED"  # FIXED: Define saved_hash in else block for comparison
-                )
+                saved_hash = "DELETED"  # FIXED: Define saved_hash in else block for comparison
                 saved_input_hashes.append(saved_hash)
 
             # Compute hash of current batch file (copied to tmp)
@@ -204,30 +200,14 @@ def test_frame_rendering_accuracy(
             current_input_hashes.append(current_hash)
 
             match_status = "✓" if saved_hash == current_hash else "✗"
-            print(
-                f"       Frame {i + 1}: {match_status} "
-                f"(saved={saved_hash}, current={current_hash})"
-            )
+            print(f"       Frame {i + 1}: {match_status} (saved={saved_hash}, current={current_hash})")
 
         # SAFEGUARD: Fail if input files don't match
         # Why: Catch bugs where wrong files were loaded or corrupted
         if saved_input_hashes != current_input_hashes:
-            mismatches = [
-                i + 1
-                for i, (s, c) in enumerate(
-                    zip(saved_input_hashes, current_input_hashes, strict=False)
-                )
-                if s != c
-            ]
+            mismatches = [i + 1 for i, (s, c) in enumerate(zip(saved_input_hashes, current_input_hashes, strict=False)) if s != c]
             raise ValueError(
-                f"CRITICAL BUG: Input batch files don't match saved session!\n"
-                f"Session: {session_id}\n"
-                f"Mismatched frames: {mismatches}\n"
-                f"This indicates:\n"
-                f"  1. Saved session files were modified/corrupted, OR\n"
-                f"  2. Wrong session was loaded\n"
-                f"Saved hashes:  {saved_input_hashes}\n"
-                f"Current hashes: {current_input_hashes}"
+                f"CRITICAL BUG: Input batch files don't match saved session!\nSession: {session_id}\nMismatched frames: {mismatches}\nThis indicates:\n  1. Saved session files were modified/corrupted, OR\n  2. Wrong session was loaded\nSaved hashes:  {saved_input_hashes}\nCurrent hashes: {current_input_hashes}"
             )
 
         print(f"   ✓ All {len(frame_files)} input files match saved session\n")
@@ -267,11 +247,7 @@ def test_frame_rendering_accuracy(
         copy = Path(batch_info["frame_files"][i])
         orig_size = orig.stat().st_size if orig.exists() else 0
         copy_size = copy.stat().st_size if copy.exists() else 0
-        match = (
-            "✓ MATCH"
-            if orig_size == copy_size
-            else f"✗ MISMATCH ({orig_size} vs {copy_size})"
-        )
+        match = "✓ MATCH" if orig_size == copy_size else f"✗ MISMATCH ({orig_size} vs {copy_size})"
         print(f"           Frame {i + 1}: {match}")
 
     # Use svg2fbf_frame_processor to calculate dimensions and transforms
@@ -280,16 +256,12 @@ def test_frame_rendering_accuracy(
     print("   [INFO] Using svg2fbf_frame_processor for dimension/transform calculation")
     # CRITICAL: Use same precision for transform calculation as FBF generation
     # Why: Precision mismatch causes accumulated rounding errors
-    frame_processor = SVG2FBFFrameProcessor(
-        digits=TEST_PRECISION_DIGITS, cdigits=TEST_PRECISION_CDIGITS
-    )
+    frame_processor = SVG2FBFFrameProcessor(digits=TEST_PRECISION_DIGITS, cdigits=TEST_PRECISION_CDIGITS)
 
     # Process first frame to establish canonical dimensions
     # Why: svg2fbf uses first frame's viewBox as canonical for entire animation
     first_svg_path = batch_info["frame_files"][0]
-    first_width, first_height, first_viewbox, _, _ = frame_processor.process_frame(
-        first_svg_path
-    )
+    first_width, first_height, first_viewbox, _, _ = frame_processor.process_frame(first_svg_path)
 
     print("   [DEBUG] First frame dimensions (from svg2fbf):")
     print(f"           Width:   {first_width}")
@@ -314,29 +286,17 @@ def test_frame_rendering_accuracy(
         # Why: Prevent bug where --use-session creates new session instead
         # of reusing existing
         if not session_id:
-            raise ValueError(
-                "CRITICAL BUG: session_id is None when replaying saved session! "
-                "This indicates saved_metadata is missing session_id field. "
-                "Check session metadata structure."
-            )
+            raise ValueError("CRITICAL BUG: session_id is None when replaying saved session! This indicates saved_metadata is missing session_id field. Check session metadata structure.")
 
         # SAFEGUARD: Validate session_id matches expected pattern
         # Why: Catch corruption or invalid session_id early
         import re
 
         if not re.match(r"^session_\d{3}_\d+frames$", session_id):
-            raise ValueError(
-                f"CRITICAL BUG: Invalid session_id format: '{session_id}'. "
-                f"Expected pattern: 'session_NNN_Mframes' "
-                f"(e.g., 'session_044_3frames'). "
-                f"This indicates session metadata corruption."
-            )
+            raise ValueError(f"CRITICAL BUG: Invalid session_id format: '{session_id}'. Expected pattern: 'session_NNN_Mframes' (e.g., 'session_044_3frames'). This indicates session metadata corruption.")
 
         print(f"\n♻️  Replaying existing session: {session_id}")
-        print(
-            f"   Results will be saved to: "
-            f"tests/results/{session_id}/<new_timestamp>/\n"
-        )
+        print(f"   Results will be saved to: tests/results/{session_id}/<new_timestamp>/\n")
     else:
         # Generating new inputs: save as new session
         # Why: New inputs need new session_id to preserve input folder for future replay
@@ -344,9 +304,7 @@ def test_frame_rendering_accuracy(
             frame_count=frame_count,
             input_batch_dir=batch_dir,
             test_config={
-                "width": int(
-                    first_width
-                ),  # Use actual SVG dimensions, not fixed 1920x1080
+                "width": int(first_width),  # Use actual SVG dimensions, not fixed 1920x1080
                 "height": int(first_height),
                 "fps": TEST_FPS,
                 "animation_type": TEST_ANIMATION_TYPE,
@@ -367,9 +325,7 @@ def test_frame_rendering_accuracy(
                 frame_count=frame_count,
                 input_batch_dir=batch_dir,
                 test_config={
-                    "width": int(
-                        first_width
-                    ),  # Use actual SVG dimensions, not fixed 1920x1080
+                    "width": int(first_width),  # Use actual SVG dimensions, not fixed 1920x1080
                     "height": int(first_height),
                     "fps": TEST_FPS,
                     "animation_type": TEST_ANIMATION_TYPE,
@@ -387,11 +343,7 @@ def test_frame_rendering_accuracy(
         import re
 
         if not re.match(r"^session_\d{3}_\d+frames$", session_id):
-            raise ValueError(
-                f"CRITICAL BUG: Session manager generated invalid session_id: "
-                f"'{session_id}'. Expected pattern: 'session_NNN_Mframes'. "
-                f"This indicates a bug in SessionManager.save_session()."
-            )
+            raise ValueError(f"CRITICAL BUG: Session manager generated invalid session_id: '{session_id}'. Expected pattern: 'session_NNN_Mframes'. This indicates a bug in SessionManager.save_session().")
 
         print(f"\n💾 Session: {session_id}")
         print(f"   Location: tests/sessions/{session_id}/")
@@ -400,13 +352,8 @@ def test_frame_rendering_accuracy(
     # SAFEGUARD: Final validation that session_id is set
     # Why: Absolute fail-safe to prevent None session_id reaching
     # preserve_artifacts
-    assert session_id is not None, (
-        "CRITICAL BUG: session_id is None after session management! "
-        "This should be impossible."
-    )
-    assert isinstance(session_id, str) and len(session_id) > 0, (
-        f"CRITICAL BUG: session_id is invalid: {repr(session_id)}"
-    )
+    assert session_id is not None, "CRITICAL BUG: session_id is None after session management! This should be impossible."
+    assert isinstance(session_id, str) and len(session_id) > 0, f"CRITICAL BUG: session_id is invalid: {repr(session_id)}"
 
     # SAFEGUARD: Store initial session_id for immutability verification
     # Why: Catch bugs where session_id accidentally changes mid-test
@@ -421,13 +368,7 @@ def test_frame_rendering_accuracy(
             location: Where in the test this check is happening (for error message)
         """
         if session_id != INITIAL_SESSION_ID:
-            raise RuntimeError(
-                f"CRITICAL BUG: session_id changed mid-test at {location}!\n"
-                f"Initial:  {INITIAL_SESSION_ID}\n"
-                f"Current:  {session_id}\n"
-                f"This indicates a catastrophic bug in test code that modifies "
-                f"session_id."
-            )
+            raise RuntimeError(f"CRITICAL BUG: session_id changed mid-test at {location}!\nInitial:  {INITIAL_SESSION_ID}\nCurrent:  {session_id}\nThis indicates a catastrophic bug in test code that modifies session_id.")
 
     def preserve_artifacts_with_verification(location: str, **kwargs):
         """
@@ -451,9 +392,7 @@ def test_frame_rendering_accuracy(
         session_results_dir = tests_dir / "results" / INITIAL_SESSION_ID
 
         if session_results_dir.exists():
-            existing_timestamps = [
-                d for d in session_results_dir.iterdir() if d.is_dir()
-            ]
+            existing_timestamps = [d for d in session_results_dir.iterdir() if d.is_dir()]
             timestamp_count_before = len(existing_timestamps)
         else:
             timestamp_count_before = 0
@@ -464,58 +403,30 @@ def test_frame_rendering_accuracy(
 
         # SAFEGUARD 3: Verify session_id in kwargs matches INITIAL_SESSION_ID
         if "session_id" in kwargs and kwargs["session_id"] != INITIAL_SESSION_ID:
-            raise RuntimeError(
-                f"CRITICAL BUG: preserve_artifacts called with wrong "
-                f"session_id!\n"
-                f"Expected (INITIAL): {INITIAL_SESSION_ID}\n"
-                f"Received (kwargs):  {kwargs['session_id']}\n"
-                f"Location: {location}"
-            )
+            raise RuntimeError(f"CRITICAL BUG: preserve_artifacts called with wrong session_id!\nExpected (INITIAL): {INITIAL_SESSION_ID}\nReceived (kwargs):  {kwargs['session_id']}\nLocation: {location}")
 
         # Call actual preserve_artifacts
         result_dir = preserve_artifacts(**kwargs)
 
         # SAFEGUARD 4: Verify timestamp folder count increased by 1
-        existing_timestamps_after = [
-            d for d in session_results_dir.iterdir() if d.is_dir()
-        ]
+        existing_timestamps_after = [d for d in session_results_dir.iterdir() if d.is_dir()]
         timestamp_count_after = len(existing_timestamps_after)
 
         if timestamp_count_after != timestamp_count_before + 1:
             raise RuntimeError(
-                f"CRITICAL BUG: Timestamp folder count did not increase by 1!\n"
-                f"Before: {timestamp_count_before}\n"
-                f"After:  {timestamp_count_after}\n"
-                f"Expected: {timestamp_count_before + 1}\n"
-                f"Location: {location}\n"
-                f"Session: {INITIAL_SESSION_ID}\n"
-                f"This indicates preserve_artifacts() failed to create new "
-                f"timestamped folder."
+                f"CRITICAL BUG: Timestamp folder count did not increase by 1!\nBefore: {timestamp_count_before}\nAfter:  {timestamp_count_after}\nExpected: {timestamp_count_before + 1}\nLocation: {location}\nSession: {INITIAL_SESSION_ID}\nThis indicates preserve_artifacts() failed to create new timestamped folder."
             )
 
         # SAFEGUARD 5: Verify result_dir is in correct session directory
         if not str(result_dir).startswith(str(session_results_dir)):
-            raise RuntimeError(
-                f"CRITICAL BUG: Results saved to wrong session directory!\n"
-                f"Expected parent: {session_results_dir}\n"
-                f"Actual path:     {result_dir}\n"
-                f"Location: {location}"
-            )
+            raise RuntimeError(f"CRITICAL BUG: Results saved to wrong session directory!\nExpected parent: {session_results_dir}\nActual path:     {result_dir}\nLocation: {location}")
 
         # SAFEGUARD 6: Verify new timestamp folder exists and is a directory
         if not result_dir.exists() or not result_dir.is_dir():
-            raise RuntimeError(
-                f"CRITICAL BUG: Result directory does not exist or is not a "
-                f"directory!\n"
-                f"Path: {result_dir}\n"
-                f"Location: {location}"
-            )
+            raise RuntimeError(f"CRITICAL BUG: Result directory does not exist or is not a directory!\nPath: {result_dir}\nLocation: {location}")
 
         print(f"   ✓ New timestamp folder created: {result_dir.name}")
-        print(
-            f"   ✓ Timestamp folder count: {timestamp_count_before} → "
-            f"{timestamp_count_after}"
-        )
+        print(f"   ✓ Timestamp folder count: {timestamp_count_before} → {timestamp_count_after}")
         print("   ✓ All integrity checks passed\n")
 
         return result_dir
@@ -547,47 +458,24 @@ def test_frame_rendering_accuracy(
             # Subsequent frame: calculate transform using svg2fbf's logic
             # This calls properlySizeDoc() which transforms the frame to match
             # first frame dimensions
-            width, height, viewbox, transform, _ = frame_processor.process_frame(
-                svg_file, first_frame_dimensions=first_frame_dimensions
-            )
+            width, height, viewbox, transform, _ = frame_processor.process_frame(svg_file, first_frame_dimensions=first_frame_dimensions)
 
             # SAFEGUARD: Verify subsequent frame has EXACTLY the first frame's
             # dimensions
             # Why: FBF animations require all frames to share the same
             # resolution/viewBox
             if width != first_width:
-                raise RuntimeError(
-                    f"CRITICAL BUG: Frame {i + 1} has wrong width!\n"
-                    f"Expected (first frame): {first_width}\n"
-                    f"Got (frame {i + 1}):      {width}\n"
-                    f"Frame processor MUST return first frame's width for all "
-                    f"subsequent frames!"
-                )
+                raise RuntimeError(f"CRITICAL BUG: Frame {i + 1} has wrong width!\nExpected (first frame): {first_width}\nGot (frame {i + 1}):      {width}\nFrame processor MUST return first frame's width for all subsequent frames!")
             if height != first_height:
-                raise RuntimeError(
-                    f"CRITICAL BUG: Frame {i + 1} has wrong height!\n"
-                    f"Expected (first frame): {first_height}\n"
-                    f"Got (frame {i + 1}):      {height}\n"
-                    f"Frame processor MUST return first frame's height for all "
-                    f"subsequent frames!"
-                )
+                raise RuntimeError(f"CRITICAL BUG: Frame {i + 1} has wrong height!\nExpected (first frame): {first_height}\nGot (frame {i + 1}):      {height}\nFrame processor MUST return first frame's height for all subsequent frames!")
             if viewbox != first_viewbox:
-                raise RuntimeError(
-                    f"CRITICAL BUG: Frame {i + 1} has wrong viewBox!\n"
-                    f"Expected (first frame): {first_viewbox}\n"
-                    f"Got (frame {i + 1}):      {viewbox}\n"
-                    f"Frame processor MUST return first frame's viewBox for all "
-                    f"subsequent frames!"
-                )
+                raise RuntimeError(f"CRITICAL BUG: Frame {i + 1} has wrong viewBox!\nExpected (first frame): {first_viewbox}\nGot (frame {i + 1}):      {viewbox}\nFrame processor MUST return first frame's viewBox for all subsequent frames!")
 
         print(f"   [DEBUG] Frame {i + 1}:")
         print(f"           Width:       {width}")
         print(f"           Height:      {height}")
         print(f"           ViewBox:     {viewbox}")
-        print(
-            f"           Transform:   "
-            f"{transform if transform else '(none - first frame)'}"
-        )
+        print(f"           Transform:   {transform if transform else '(none - first frame)'}")
 
         # Render with the viewBox from process_frame()
         # (includes properlySizeDoc() transformations)
@@ -676,13 +564,9 @@ def test_frame_rendering_accuracy(
 
     # Check svg2fbf succeeded
     # Why: Can't test output if generation failed
-    assert result.returncode == 0, (
-        f"svg2fbf failed:\n  stdout: {result.stdout}\n  stderr: {result.stderr}"
-    )
+    assert result.returncode == 0, f"svg2fbf failed:\n  stdout: {result.stdout}\n  stderr: {result.stderr}"
 
-    assert fbf_output_file.exists(), (
-        f"svg2fbf succeeded but output file not created: {fbf_output_file}"
-    )
+    assert fbf_output_file.exists(), f"svg2fbf succeeded but output file not created: {fbf_output_file}"
 
     print(f"   ✓ FBF animation generated: {fbf_output_file.name}\n")
 
@@ -701,9 +585,7 @@ def test_frame_rendering_accuracy(
 
     # Check all frames captured
     # Why: Can't compare if frames missing
-    assert len(output_pngs) == frame_count, (
-        f"Expected {frame_count} output frames, got {len(output_pngs)}"
-    )
+    assert len(output_pngs) == frame_count, f"Expected {frame_count} output frames, got {len(output_pngs)}"
 
     print(f"   ✓ All {frame_count} animation frames captured\n")
 
@@ -736,12 +618,8 @@ def test_frame_rendering_accuracy(
         # identically
         # Example: Both input and output have truncated seagull → pixel match
         # but WRONG result
-        input_has_issue, input_issue_info = (
-            image_comparator.detect_empty_or_truncated_content(input_png)
-        )
-        output_has_issue, output_issue_info = (
-            image_comparator.detect_empty_or_truncated_content(output_png)
-        )
+        input_has_issue, input_issue_info = image_comparator.detect_empty_or_truncated_content(input_png)
+        output_has_issue, output_issue_info = image_comparator.detect_empty_or_truncated_content(output_png)
 
         # FAIL IMMEDIATELY if either image has rendering issues
         if input_has_issue:
@@ -837,9 +715,7 @@ truncated content!
         diff_gray_path = None
         if generate_html_report:
             diff_gray_path = output_frames_dir / f"diff_gray_{i + 1:04d}.png"
-            image_comparator.generate_grayscale_diff_map(
-                input_png, output_png, diff_gray_path
-            )
+            image_comparator.generate_grayscale_diff_map(input_png, output_png, diff_gray_path)
 
         # Store comparison result
         # Why: Need for HTML report generation
@@ -913,9 +789,7 @@ Frame {i + 1}/{frame_count} FAILED pixel-perfect comparison!
                 # Why: Visual diff helps identify patterns
                 if request.config.getoption("--render-diffs"):
                     diff_image_path = output_frames_dir / f"diff_frame_{i + 1:04d}.png"
-                    image_comparator.generate_diff_image(
-                        input_png, output_png, diff_image_path
-                    )
+                    image_comparator.generate_diff_image(input_png, output_png, diff_image_path)
                     error_msg += f"\n📊 Diff image saved: {diff_image_path}\n"
 
                 # Preserve artifacts before failing (for debugging/replication)
@@ -933,10 +807,7 @@ Frame {i + 1}/{frame_count} FAILED pixel-perfect comparison!
             else:
                 # HTML report mode: Continue collecting failures
                 # Why: Need to generate comprehensive report with all frames
-                print(
-                    f"   ✗ Frame {i + 1}/{frame_count} FAILED "
-                    f"({diff_info.get('diff_percentage', 0.0):.2f}% diff)"
-                )
+                print(f"   ✗ Frame {i + 1}/{frame_count} FAILED ({diff_info.get('diff_percentage', 0.0):.2f}% diff)")
         else:
             # Frame matched!
             print(f"   ✓ Frame {i + 1}/{frame_count} matched")
@@ -950,12 +821,8 @@ Frame {i + 1}/{frame_count} FAILED pixel-perfect comparison!
 
         test_config = {
             "frame_count": frame_count,
-            "width": int(
-                first_width
-            ),  # Use first frame's actual width (viewport matches SVG)
-            "height": int(
-                first_height
-            ),  # Use first frame's actual height (viewport matches SVG)
+            "width": int(first_width),  # Use first frame's actual width (viewport matches SVG)
+            "height": int(first_height),  # Use first frame's actual height (viewport matches SVG)
             "svg_width": first_width,  # First frame's actual SVG width
             "svg_height": first_height,  # First frame's actual SVG height
             "fps": TEST_FPS,
@@ -1038,10 +905,7 @@ def test_svg_pool_not_empty(batch_generator):
     """
     pool_size = batch_generator.get_svg_pool_size()
 
-    assert pool_size > 0, (
-        "No valid SVG files found in examples/ folder. Check that examples/ "
-        "exists and contains valid SVG files."
-    )
+    assert pool_size > 0, "No valid SVG files found in examples/ folder. Check that examples/ exists and contains valid SVG files."
 
     print(f"\n✓ SVG pool contains {pool_size} valid SVGs\n")
 
@@ -1065,9 +929,7 @@ def test_puppeteer_setup(puppeteer_renderer, tmp_path):
 
     output_png = tmp_path / "test.png"
 
-    success = puppeteer_renderer.render_svg_to_png(
-        svg_path=test_svg, output_png_path=output_png, width=800, height=600
-    )
+    success = puppeteer_renderer.render_svg_to_png(svg_path=test_svg, output_png_path=output_png, width=800, height=600)
 
     assert success, "Puppeteer failed to render simple test SVG"
     assert output_png.exists(), "Puppeteer did not create output PNG"
