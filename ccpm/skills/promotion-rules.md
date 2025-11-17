@@ -249,7 +249,7 @@ Each branch maps to a release channel with different audiences:
 | master  | stable  | Production users      | `uv tool install svg2fbf`        |
 | main    | (mirror)| Default branch        | Same as master                   |
 
-**Note**: Prerelease versions require exact version specification (e.g., `@0.1.11a1`). See `ccpm/agent-skills/uv-tool-management.md` for complete uv syntax reference.
+**Note**: Prerelease versions require exact version specification (e.g., `@0.1.11a1`). See `ccpm/agent-skills/uv-comprehensive-guide.md` for complete uv reference.
 
 **Agent responsibilities**:
 - ✅ Understand which channel code is targeting
