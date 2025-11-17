@@ -18,12 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ui:** Replace duplicate header with import results
 - Change splat button animation from loop to ping-pong once
 
+### Other
+
+- Release alpha 0.1.10a1
+
 ### Documentation
 
 - **README:** Add FBF.SVG official logo and update .gitignore
 - Add comprehensive AI agent workflow documentation
 - Add onion skin header image to animation examples
 - Correct branch workflow understanding and add hotfix backport
+
+### Miscellaneous
+
+- Update uv.lock for alpha 0.1.10a1
 
 ## [0.1.9] - 2025-11-13
 
