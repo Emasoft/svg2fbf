@@ -30,11 +30,11 @@ FBF.SVG (Frame-by-Frame SVG) is a standardized format for creating vector-based 
 ### Installation
 
 ```bash
-# Install svg2fbf using pip
-pip install svg2fbf
+# Recommended: Install as uv tool (globally available)
+uv tool install svg2fbf
 
-# Or using uv (faster)
-uv pip install svg2fbf
+# Or using pip
+pip install svg2fbf
 
 # Verify installation
 svg2fbf --version
