@@ -371,57 +371,70 @@ just promote-to-stable    # review → master (approved)
 just sync-main            # master → main (manual sync)
 ```
 
-### Hotfix Backport Command
+### Commit Porting Commands
 
-When you make a hotfix on `master` or `main`, you can safely backport it to development branches:
+There are two commands for porting commits between branches:
+
+1. **`just backport-hotfix`** - Specifically for backporting from master/main to development branches
+2. **`just port-commit`** - General-purpose commit porting between any branches
+
+#### 1. Backport Hotfix (master/main → dev/testing/review)
+
+When you make a hotfix on `master` or `main`, backport it to development branches:
 
 ```bash
-# Backport a hotfix commit from master to dev
+# Checkout target development branch
 git checkout dev
-just backport-hotfix master
 
-# Or use a specific commit hash
-just backport-hotfix a1b2c3d
+# Run backport-hotfix (no arguments - sources from master/main automatically)
+just backport-hotfix
 
-# Or use a branch name
-just backport-hotfix origin/master
+# It will:
+# 1. Auto-detect master or main as source
+# 2. Show commits in master/main NOT in current branch
+# 3. Let you select which commit to backport
+# 4. Check for conflicts
+# 5. Apply if safe
 ```
 
 **What it does:**
-1. ✅ Shows commit details (message, author, date)
-2. ✅ Lists files that would be changed
-3. ✅ **Checks for merge conflicts** (dry-run)
-4. ✅ Shows diff summary
-5. ✅ **Asks for your confirmation** before proceeding
-6. ✅ Cherry-picks the commit if safe
+1. ✅ Auto-detects source branch (main or master)
+2. ✅ Shows numbered list of commits available for backport
+3. ✅ Lets you select which commit to backport
+4. ✅ Checks for duplicate commits (same message + author)
+5. ✅ Shows commit details and files affected
+6. ✅ **Checks for merge conflicts** (dry-run)
+7. ✅ Shows diff summary
+8. ✅ **Asks for confirmation** before proceeding
+9. ✅ Cherry-picks the commit if safe
 
 **Safety features:**
-- 🔒 Only works on `dev`, `testing`, or `review` branches (prevents accidents)
+- 🔒 Only works on `dev`, `testing`, or `review` branches
 - 🔍 **Detects conflicts BEFORE applying** changes
+- 🔍 **Detects duplicate commits** before applying
 - ⚠️ **Stops if conflicts detected** - provides recommendations
-- 💡 Explains why conflicts might occur:
-  - Hotfix conflicts with new code
-  - Bug was fixed differently in dev
-  - Code was removed/replaced in dev
 - ✋ Requires "yes" confirmation (not just "y")
 
-**Example: Backporting a Security Fix**
+**Example:**
 ```bash
-# You made a security fix on master
-git checkout master
-git log --oneline -1
-# a1b2c3d security: Fix XSS vulnerability in parser
-
-# Now backport to dev so future development includes the fix
 git checkout dev
-just backport-hotfix a1b2c3d
+just backport-hotfix
 
 # Output:
-# 🔄 Backport Hotfix
+# 🔄 Backport Hotfix from master/main
 # Current branch: dev
-# Hotfix source: a1b2c3d
+# Source branch: main
 #
-# Commit Details:
+# 🔍 Finding commits in main not in dev...
+#
+# Commits available for backport:
+#  1. a1b2c3d security: Fix XSS vulnerability in parser
+#  2. b2c3d4e fix: Correct animation timing
+#  3. c3d4e5f chore: Update dependencies
+#
+# Enter commit number to backport (or 'q' to quit): 1
+#
+# Selected Commit:
 #   Hash: a1b2c3d
 #   Message: security: Fix XSS vulnerability in parser
 #   Author: Developer Name
@@ -435,29 +448,162 @@ just backport-hotfix a1b2c3d
 #
 # 📊 Changes summary:
 #  src/parser.py | 5 +++--
-#  1 file changed, 3 insertions(+), 2 deletions(-)
 #
 # ⚠️  This will cherry-pick the hotfix commit into dev
 # Do you want to proceed? (yes/no): yes
 #
 # 🚀 Cherry-picking commit...
 # ✅ Hotfix backported successfully!
-#
-# Next steps:
-# 1. Review the changes: git show HEAD
-# 2. Run tests: just test
-# 3. Push when ready: git push origin dev
 ```
 
 **When to use:**
-- ✅ Hotfix applied to `master` needs to be in development branches
-- ✅ Security patches that affect all branches
-- ✅ Critical bug fixes that were made directly on `master`
+- ✅ Hotfix applied to `master`/`main` needs to be in development branches
+- ✅ Security patches from stable that affect development
+- ✅ Critical bug fixes made directly on `master`/`main`
 
 **When NOT to use:**
-- ❌ Normal feature development (use `just promote-*` instead)
-- ❌ If the code in dev has changed significantly
-- ❌ If dev already has a different fix for the same bug
+- ❌ Normal feature development (use `just promote-*`)
+- ❌ Porting commits between development branches (use `just port-commit`)
+
+#### 2. Port Commit (general-purpose porting)
+
+Port commits from ANY branch to ANY other branch(es):
+
+```bash
+# Checkout source branch with the commit you want to port
+git checkout dev
+
+# Run port-commit
+just port-commit
+
+# It will:
+# 1. Let you select which branch to compare with
+# 2. Show commits in current branch NOT in that branch
+# 3. Let you select which commit to port
+# 4. Let you select which target branch(es) to port to
+# 5. Check for conflicts on each target
+# 6. Ask for confirmation for each target
+# 7. Apply to all selected targets
+```
+
+**What it does:**
+1. ✅ Works from ANY branch
+2. ✅ Shows all available branches
+3. ✅ Lets you compare with any branch
+4. ✅ Shows commits missing in comparison branch
+5. ✅ Lets you select which commit to port
+6. ✅ Lets you select target branch(es) (multiple allowed)
+7. ✅ Checks each target for:
+   - Duplicate commits (same message + author)
+   - Files affected
+   - Merge conflicts (dry-run)
+8. ✅ Asks for confirmation for EACH target branch
+9. ✅ Returns to original branch when done
+
+**Safety features:**
+- 🔒 Works on any branch (more flexible than backport-hotfix)
+- 🔍 **Detects conflicts BEFORE applying** to each target
+- 🔍 **Detects duplicate commits** on each target
+- ⚠️ **Per-target confirmation** - you can skip problematic branches
+- 🔄 **Automatic branch creation** - creates local branch from remote if needed
+- 🔙 **Returns to original branch** when done
+- ✋ Requires "yes" confirmation for each target (not just "y")
+
+**Example:**
+```bash
+git checkout dev
+just port-commit
+
+# Output:
+# 🔄 Port Commit from dev
+#
+# Available branches:
+#  1. testing
+#  2. review
+#  3. master
+#  4. main
+#
+# Enter branch number to compare with (or 'q' to quit): 1
+#
+# Comparing dev with testing
+#
+# 🔍 Finding commits in dev not in testing...
+#
+# Commits available for porting:
+#  1. a1b2c3d feat: Add new dashboard
+#  2. b2c3d4e fix: Correct button styling
+#  3. c3d4e5f docs: Update README
+#
+# Enter commit number to port (or 'q' to quit): 1
+#
+# Selected Commit:
+#   Hash: a1b2c3d
+#   Message: feat: Add new dashboard
+#   Author: Developer Name
+#   Date: 2025-11-17
+#
+# Port this commit to which branch(es)?
+#
+# Available target branches:
+#  1. testing
+#  2. review
+#  3. master
+#  4. main
+#
+# Enter branch numbers separated by spaces (e.g., '1 3 5')
+# Or 'all' for all branches, or 'q' to quit
+# > 1 2
+#
+# Will port commit to: testing review
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Processing branch: testing
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+# 📁 Files that would be changed:
+#   src/dashboard.py
+#   src/templates/dashboard.html
+#
+# 🔍 Checking for merge conflicts...
+# ✅ No conflicts detected - safe to merge
+#
+# 📊 Changes summary:
+#  src/dashboard.py           | 45 +++++++++++++++++++++++++++++
+#  src/templates/dashboard.html | 23 +++++++++++++++
+#  2 files changed, 68 insertions(+)
+#
+# ⚠️  This will cherry-pick the commit into testing
+# Do you want to proceed? (yes/no/skip): yes
+#
+# 🚀 Cherry-picking commit to testing...
+# ✅ Commit ported to testing successfully!
+#
+# [Similar output for review branch...]
+#
+# ✅ Port operation complete
+# Back on branch: dev
+```
+
+**When to use:**
+- ✅ Port feature from dev to testing when ready for testing
+- ✅ Port bug fix from testing back to dev
+- ✅ Port commit to multiple branches at once
+- ✅ Selective porting (not full promotion)
+
+**When NOT to use:**
+- ❌ Normal sequential promotion (use `just promote-*`)
+- ❌ Backporting from master/main (use `just backport-hotfix` - it's simpler)
+
+#### Comparison: backport-hotfix vs port-commit
+
+| Feature | backport-hotfix | port-commit |
+|---------|----------------|-------------|
+| **Source** | master/main only (auto-detected) | Any branch (you select) |
+| **Target** | Current dev/testing/review only | Any branch(es) (you select) |
+| **Multi-target** | ❌ Single target (current branch) | ✅ Multiple targets allowed |
+| **Use case** | Hotfixes from stable → development | Any commit between any branches |
+| **Simplicity** | ⭐⭐⭐ Very simple (no args) | ⭐⭐ More steps (more flexible) |
+| **Safety checks** | ✅ Yes (conflicts, duplicates) | ✅ Yes (conflicts, duplicates, per-target) |
 
 ### Branch Equalization Command
 

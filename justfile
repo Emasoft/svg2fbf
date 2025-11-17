@@ -1062,19 +1062,17 @@ equalize:
     echo ""
     echo "All branches are now at the same commit as $CURRENT_BRANCH"
 
-# Backport hotfix from master/main to dev/testing/review (interactive, safe)
-backport-hotfix commit_or_branch:
+# Backport hotfix from master/main to current dev/testing/review branch (interactive, safe)
+backport-hotfix:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    COMMIT_OR_BRANCH="{{commit_or_branch}}"
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-    echo "🔄 Backport Hotfix"
+    echo "🔄 Backport Hotfix from master/main"
     echo "═══════════════════════════════════════════════"
     echo ""
     echo "Current branch: $CURRENT_BRANCH"
-    echo "Hotfix source: $COMMIT_OR_BRANCH"
     echo ""
 
     # Validate current branch is dev, testing, or review
@@ -1082,13 +1080,57 @@ backport-hotfix commit_or_branch:
         echo "❌ Error: Can only backport to dev, testing, or review branches"
         echo "Current branch: $CURRENT_BRANCH"
         echo ""
-        echo "Usage: git checkout dev && just backport-hotfix <commit-or-branch>"
+        echo "Usage: git checkout dev && just backport-hotfix"
         exit 1
     fi
 
-    # Resolve commit hash
-    if ! COMMIT_HASH=$(git rev-parse --verify "$COMMIT_OR_BRANCH^{commit}" 2>/dev/null); then
-        echo "❌ Error: Cannot find commit or branch: $COMMIT_OR_BRANCH"
+    # Determine which stable branch to source from (prefer main, fallback to master)
+    if git rev-parse --verify main >/dev/null 2>&1; then
+        SOURCE_BRANCH="main"
+    elif git rev-parse --verify master >/dev/null 2>&1; then
+        SOURCE_BRANCH="master"
+    else
+        echo "❌ Error: Cannot find main or master branch"
+        exit 1
+    fi
+
+    echo "Source branch: $SOURCE_BRANCH"
+    echo ""
+
+    # Fetch latest
+    git fetch origin "$SOURCE_BRANCH" --quiet
+
+    # Find commits in source that are NOT in current branch
+    echo "🔍 Finding commits in $SOURCE_BRANCH not in $CURRENT_BRANCH..."
+    echo ""
+
+    # Get list of commits
+    COMMITS=$(git log --oneline "$CURRENT_BRANCH..$SOURCE_BRANCH" --no-merges)
+
+    if [ -z "$COMMITS" ]; then
+        echo "✅ No commits to backport - $CURRENT_BRANCH is up to date with $SOURCE_BRANCH"
+        exit 0
+    fi
+
+    echo "Commits available for backport:"
+    echo ""
+    git log --oneline --no-merges "$CURRENT_BRANCH..$SOURCE_BRANCH" | nl -w2 -s". "
+    echo ""
+
+    # Ask user to select a commit
+    read -p "Enter commit number to backport (or 'q' to quit): " -r
+    echo ""
+
+    if [[ $REPLY == "q" ]]; then
+        echo "❌ Backport cancelled"
+        exit 0
+    fi
+
+    # Get the selected commit hash
+    COMMIT_HASH=$(git log --oneline --no-merges "$CURRENT_BRANCH..$SOURCE_BRANCH" | sed -n "${REPLY}p" | awk '{print $1}')
+
+    if [ -z "$COMMIT_HASH" ]; then
+        echo "❌ Error: Invalid selection"
         exit 1
     fi
 
@@ -1097,12 +1139,24 @@ backport-hotfix commit_or_branch:
     COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$COMMIT_HASH")
     COMMIT_DATE=$(git log -1 --pretty=format:"%ad" --date=short "$COMMIT_HASH")
 
-    echo "Commit Details:"
+    echo "Selected Commit:"
     echo "  Hash: $COMMIT_HASH"
     echo "  Message: $COMMIT_MESSAGE"
     echo "  Author: $COMMIT_AUTHOR"
     echo "  Date: $COMMIT_DATE"
     echo ""
+
+    # Check if commit already exists (by checking commit message and author)
+    if git log --all --pretty=format:"%s|%an" | grep -q "^${COMMIT_MESSAGE}|${COMMIT_AUTHOR}$"; then
+        echo "⚠️  WARNING: A commit with same message and author already exists in $CURRENT_BRANCH"
+        echo "This might be a duplicate. Continue anyway?"
+        read -p "(yes/no): " -r
+        echo ""
+        if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+            echo "❌ Backport cancelled"
+            exit 0
+        fi
+    fi
 
     # Show what files would be affected
     echo "📁 Files that would be changed:"
@@ -1115,9 +1169,6 @@ backport-hotfix commit_or_branch:
 
     # Check for conflicts (dry-run)
     echo "🔍 Checking for merge conflicts..."
-
-    # Create a temporary test merge
-    git fetch origin "$CURRENT_BRANCH" --quiet
 
     # Try merge in dry-run mode (using merge-tree)
     if git merge-tree $(git merge-base HEAD "$COMMIT_HASH") HEAD "$COMMIT_HASH" | grep -q "^<<<<<"; then
@@ -1134,7 +1185,7 @@ backport-hotfix commit_or_branch:
         echo "3. The code that was fixed may have been removed/replaced in $CURRENT_BRANCH"
         echo ""
         echo "Options:"
-        echo "  - Cherry-pick manually and resolve conflicts"
+        echo "  - Cherry-pick manually and resolve conflicts: git cherry-pick $COMMIT_HASH"
         echo "  - Check if the bug still exists in $CURRENT_BRANCH"
         echo "  - Skip this backport if the code changed significantly"
         exit 1
@@ -1177,6 +1228,281 @@ backport-hotfix commit_or_branch:
         echo "To resolve and continue: fix conflicts, then: git cherry-pick --continue"
         exit 1
     fi
+
+# Port commit from current branch to selected target branch(es) (interactive, safe)
+port-commit:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    echo "🔄 Port Commit from $CURRENT_BRANCH"
+    echo "═══════════════════════════════════════════════"
+    echo ""
+
+    # Get list of all branches (local and remote, excluding current)
+    ALL_BRANCHES=$(git branch -a | grep -v "^*" | grep -v "HEAD" | sed 's/remotes\/origin\///' | sed 's/^[* ] //' | sort -u | grep -v "^${CURRENT_BRANCH}$")
+
+    if [ -z "$ALL_BRANCHES" ]; then
+        echo "❌ Error: No other branches found"
+        exit 1
+    fi
+
+    echo "Available branches:"
+    echo ""
+    echo "$ALL_BRANCHES" | nl -w2 -s". "
+    echo ""
+
+    # Ask user to select target branch
+    read -p "Enter branch number to compare with (or 'q' to quit): " -r
+    echo ""
+
+    if [[ $REPLY == "q" ]]; then
+        echo "❌ Port cancelled"
+        exit 0
+    fi
+
+    # Get the selected branch
+    TARGET_BRANCH=$(echo "$ALL_BRANCHES" | sed -n "${REPLY}p")
+
+    if [ -z "$TARGET_BRANCH" ]; then
+        echo "❌ Error: Invalid selection"
+        exit 1
+    fi
+
+    echo "Comparing $CURRENT_BRANCH with $TARGET_BRANCH"
+    echo ""
+
+    # Fetch latest
+    git fetch origin "$TARGET_BRANCH" --quiet 2>/dev/null || true
+
+    # Find commits in current branch that are NOT in target branch
+    echo "🔍 Finding commits in $CURRENT_BRANCH not in $TARGET_BRANCH..."
+    echo ""
+
+    # Get list of commits
+    COMMITS=$(git log --oneline "$TARGET_BRANCH..$CURRENT_BRANCH" --no-merges 2>/dev/null)
+
+    if [ -z "$COMMITS" ]; then
+        echo "✅ No commits to port - $TARGET_BRANCH has all commits from $CURRENT_BRANCH"
+        exit 0
+    fi
+
+    echo "Commits available for porting:"
+    echo ""
+    git log --oneline --no-merges "$TARGET_BRANCH..$CURRENT_BRANCH" | nl -w2 -s". "
+    echo ""
+
+    # Ask user to select a commit
+    read -p "Enter commit number to port (or 'q' to quit): " -r
+    echo ""
+
+    if [[ $REPLY == "q" ]]; then
+        echo "❌ Port cancelled"
+        exit 0
+    fi
+
+    # Get the selected commit hash
+    COMMIT_HASH=$(git log --oneline --no-merges "$TARGET_BRANCH..$CURRENT_BRANCH" | sed -n "${REPLY}p" | awk '{print $1}')
+
+    if [ -z "$COMMIT_HASH" ]; then
+        echo "❌ Error: Invalid selection"
+        exit 1
+    fi
+
+    # Get commit details
+    COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" "$COMMIT_HASH")
+    COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$COMMIT_HASH")
+    COMMIT_DATE=$(git log -1 --pretty=format:"%ad" --date=short "$COMMIT_HASH")
+
+    echo "Selected Commit:"
+    echo "  Hash: $COMMIT_HASH"
+    echo "  Message: $COMMIT_MESSAGE"
+    echo "  Author: $COMMIT_AUTHOR"
+    echo "  Date: $COMMIT_DATE"
+    echo ""
+
+    # Now ask which branches to port to
+    echo "Port this commit to which branch(es)?"
+    echo ""
+    echo "Available target branches:"
+    AVAILABLE_TARGETS=$(git branch -a | grep -v "^*" | grep -v "HEAD" | sed 's/remotes\/origin\///' | sed 's/^[* ] //' | sort -u | grep -v "^${CURRENT_BRANCH}$")
+    echo "$AVAILABLE_TARGETS" | nl -w2 -s". "
+    echo ""
+    echo "Enter branch numbers separated by spaces (e.g., '1 3 5')"
+    echo "Or 'all' for all branches, or 'q' to quit"
+    read -p "> " -r
+    echo ""
+
+    if [[ $REPLY == "q" ]]; then
+        echo "❌ Port cancelled"
+        exit 0
+    fi
+
+    # Build list of target branches
+    if [[ $REPLY == "all" ]]; then
+        TARGET_BRANCHES=($AVAILABLE_TARGETS)
+    else
+        TARGET_BRANCHES=()
+        for num in $REPLY; do
+            branch=$(echo "$AVAILABLE_TARGETS" | sed -n "${num}p")
+            if [ -n "$branch" ]; then
+                TARGET_BRANCHES+=("$branch")
+            fi
+        done
+    fi
+
+    if [ ${#TARGET_BRANCHES[@]} -eq 0 ]; then
+        echo "❌ Error: No valid branches selected"
+        exit 1
+    fi
+
+    echo "Will port commit to: ${TARGET_BRANCHES[*]}"
+    echo ""
+
+    # Process each target branch
+    for branch in "${TARGET_BRANCHES[@]}"; do
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Processing branch: $branch"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+
+        # Check if branch exists locally
+        if ! git rev-parse --verify "$branch" >/dev/null 2>&1; then
+            # Try to create from remote
+            if git rev-parse --verify "origin/$branch" >/dev/null 2>&1; then
+                echo "Creating local branch $branch from origin/$branch..."
+                git branch "$branch" "origin/$branch"
+            else
+                echo "⚠️  WARNING: Branch $branch not found locally or remotely - skipping"
+                echo ""
+                continue
+            fi
+        fi
+
+        # Checkout target branch
+        git checkout "$branch" --quiet
+
+        # Check if commit already exists
+        if git log --all --pretty=format:"%s|%an" | grep -q "^${COMMIT_MESSAGE}|${COMMIT_AUTHOR}$"; then
+            echo "⚠️  WARNING: A commit with same message and author already exists in $branch"
+            echo "This might be a duplicate. Continue anyway?"
+            read -p "(yes/no/skip): " -r
+            echo ""
+            if [[ $REPLY == "skip" ]]; then
+                echo "⏭️  Skipping $branch"
+                echo ""
+                continue
+            elif [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+                echo "❌ Port to $branch cancelled"
+                echo ""
+                continue
+            fi
+        fi
+
+        # Show what files would be affected
+        echo "📁 Files that would be changed:"
+        git diff --name-only "$branch" "$COMMIT_HASH" | head -20
+        FILE_COUNT=$(git diff --name-only "$branch" "$COMMIT_HASH" | wc -l | tr -d ' ')
+        if [ "$FILE_COUNT" -gt 20 ]; then
+            echo "... and $((FILE_COUNT - 20)) more files"
+        fi
+        echo ""
+
+        # Check for conflicts (dry-run)
+        echo "🔍 Checking for merge conflicts..."
+
+        # Try merge in dry-run mode (using merge-tree)
+        if git merge-tree $(git merge-base HEAD "$COMMIT_HASH") HEAD "$COMMIT_HASH" | grep -q "^<<<<<"; then
+            echo "⚠️  WARNING: Merge conflicts detected!"
+            echo ""
+            echo "Conflicting files:"
+            git merge-tree $(git merge-base HEAD "$COMMIT_HASH") HEAD "$COMMIT_HASH" | grep -B2 "^<<<<<" | grep "^+++ " | sed 's/^+++ b\//  - /' | sort -u
+            echo ""
+            echo "❌ Cannot safely port to $branch - conflicts detected"
+            echo ""
+            echo "Recommendations:"
+            echo "1. The commit may conflict with code in $branch"
+            echo "2. The change may have been applied differently in $branch"
+            echo "3. The code may have been removed/replaced in $branch"
+            echo ""
+            echo "Options:"
+            echo "  - Cherry-pick manually and resolve conflicts: git checkout $branch && git cherry-pick $COMMIT_HASH"
+            echo "  - Skip this branch"
+            echo ""
+            read -p "Skip this branch? (yes/no): " -r
+            echo ""
+            if [[ $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+                echo "⏭️  Skipping $branch"
+                echo ""
+                continue
+            else
+                echo "❌ Port to $branch cancelled"
+                echo ""
+                continue
+            fi
+        fi
+
+        echo "✅ No conflicts detected - safe to merge"
+        echo ""
+
+        # Show the diff summary
+        echo "📊 Changes summary:"
+        git diff --stat "$branch" "$COMMIT_HASH"
+        echo ""
+
+        # Ask for confirmation
+        echo "⚠️  This will cherry-pick the commit into $branch"
+        echo ""
+        read -p "Do you want to proceed? (yes/no/skip): " -r
+        echo ""
+
+        if [[ $REPLY == "skip" ]]; then
+            echo "⏭️  Skipping $branch"
+            echo ""
+            continue
+        elif [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+            echo "❌ Port to $branch cancelled"
+            echo ""
+            continue
+        fi
+
+        # Perform the cherry-pick
+        echo "🚀 Cherry-picking commit to $branch..."
+        if git cherry-pick "$COMMIT_HASH"; then
+            echo ""
+            echo "✅ Commit ported to $branch successfully!"
+            echo ""
+        else
+            echo ""
+            echo "❌ Cherry-pick failed"
+            echo ""
+            echo "To abort: git cherry-pick --abort"
+            echo "To resolve and continue: fix conflicts, then: git cherry-pick --continue"
+            echo ""
+            read -p "Abort cherry-pick? (yes/no): " -r
+            if [[ $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+                git cherry-pick --abort
+                echo "Cherry-pick aborted"
+            fi
+            echo ""
+        fi
+    done
+
+    # Return to original branch
+    git checkout "$CURRENT_BRANCH" --quiet
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "✅ Port operation complete"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Back on branch: $CURRENT_BRANCH"
+    echo ""
+    echo "Next steps:"
+    echo "1. Review changes on each branch: git checkout <branch> && git show HEAD"
+    echo "2. Run tests on each branch: git checkout <branch> && just test"
+    echo "3. Push when ready: git push origin <branch>"
 
 # ============================================================================
 # Branch Promotions & Releases
