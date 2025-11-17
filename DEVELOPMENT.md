@@ -605,6 +605,235 @@ just port-commit
 | **Simplicity** | ⭐⭐⭐ Very simple (no args) | ⭐⭐ More steps (more flexible) |
 | **Safety checks** | ✅ Yes (conflicts, duplicates) | ✅ Yes (conflicts, duplicates, per-target) |
 
+---
+
+## Hotfix Workflow for Critical Issues
+
+### When to Work Directly on Master (Exception to "Always Dev First")
+
+**Normal workflow**: ALL development happens in `dev` branch first
+
+**Hotfix exception**: Work directly on `master` when:
+
+1. ✅ **Critical bug in production/stable** that needs immediate fix
+2. ✅ **Security vulnerability** affecting current stable release
+3. ✅ **Emergency patch** needed for stable users ASAP
+4. ✅ **Code in dev has diverged** - the buggy code was changed/removed in dev
+5. ✅ **Issue labeled `priority:critical`** or `priority:blocker`
+
+### Decision Tree
+
+```
+Is this issue critical/security and affects stable?
+  │
+  ├─ YES → Work on master first
+  │   └─ After fixing:
+  │       ├─ Does dev still have the vulnerable code?
+  │       │   ├─ YES → Backport to dev using `just backport-hotfix`
+  │       │   └─ NO → Dev already fixed/removed it, document and close
+  │       └─ Push to master → Release patch version
+  │
+  └─ NO → Follow normal workflow
+      └─ Work on dev → promote through pipeline
+```
+
+### Hotfix Process (Step-by-Step)
+
+#### 1. Verify This Is Actually a Hotfix Situation
+
+```bash
+# Check issue labels
+gh issue view <number> --json labels
+
+# Ask yourself:
+# - Is this affecting production users RIGHT NOW?
+# - Is this a security vulnerability?
+# - Can this wait for normal dev → testing → review → master pipeline?
+
+# If NOT truly critical → work on dev instead!
+```
+
+#### 2. Work Directly on Master
+
+```bash
+# Switch to master
+git checkout master
+git pull origin master
+
+# Create the fix
+# ... edit files ...
+
+# Commit with clear message
+git commit -m "fix(critical): Patch XSS vulnerability in stable #<issue>
+
+Security fix for production release.
+This bypasses normal dev pipeline because:
+- Critical security issue affecting stable users
+- Dev branch already refactored this code
+
+Fixes #<issue>"
+
+# Push to master
+git push origin master
+```
+
+#### 3. Decide If Dev Needs the Fix
+
+**Check if dev has the same vulnerable code:**
+
+```bash
+git checkout dev
+
+# Search for the vulnerable code pattern
+# If found → dev needs the fix
+# If not found → dev already fixed it differently
+
+# Example:
+grep -r "vulnerable_function" src/
+# Found → backport needed
+# Not found → dev is safe
+```
+
+#### 4a. If Dev Needs the Fix → Backport
+
+```bash
+git checkout dev
+just backport-hotfix
+
+# Select the hotfix commit from the list
+# Review the changes
+# Confirm to apply
+
+# Test the backport
+just test
+
+# Push to dev
+git push origin dev
+```
+
+#### 4b. If Dev Doesn't Need the Fix → Document
+
+```bash
+# Add comment to issue explaining dev is not affected
+gh issue comment <number> --body "✅ Hotfix applied to master (v0.1.9).
+
+Dev branch is not affected because the vulnerable code was refactored in commit abc123."
+
+# Close the issue
+gh issue close <number> --reason "completed"
+```
+
+#### 5. Release Patch Version
+
+```bash
+# On master branch
+git checkout master
+
+# Bump patch version and release
+just release patch
+
+# This will:
+# - Bump version (e.g., 0.1.8 → 0.1.9)
+# - Generate changelog
+# - Create git tag
+# - Publish to PyPI
+```
+
+### Example: Security Hotfix Workflow
+
+```bash
+# Issue #456: XSS vulnerability in parser (priority:critical)
+
+# 1. Verify it's critical
+gh issue view 456 --json labels,title
+# Labels: bug, security, priority:critical, component:parser
+# Title: "XSS vulnerability in SVG attribute parsing"
+# ✅ This is truly critical
+
+# 2. Work on master
+git checkout master
+git pull origin master
+
+# Fix the vulnerability
+# Edit src/parser.py
+vim src/parser.py
+
+# Commit
+git commit -m "fix(critical): Sanitize SVG attributes to prevent XSS #456
+
+Security fix for production release.
+Escapes user-provided attribute values before rendering.
+
+This bypasses normal dev pipeline because:
+- Critical security vulnerability affecting stable users
+- Needs immediate patch release
+
+Fixes #456"
+
+# Push
+git push origin master
+
+# 3. Check if dev needs it
+git checkout dev
+grep -r "dangerous_parse_attributes" src/
+# Not found → dev already uses safe_parse_attributes()
+
+# 4. Document that dev is safe
+gh issue comment 456 --body "✅ Security hotfix applied to master.
+
+**Patch released**: v0.1.9 (includes XSS fix)
+
+**Dev branch status**: ✅ Not affected
+Dev already uses \`safe_parse_attributes()\` which escapes values correctly.
+
+No backport needed."
+
+# Close issue
+gh issue close 456 --reason "completed"
+
+# 5. Release patch
+git checkout master
+just release patch
+# Version: 0.1.8 → 0.1.9
+# Published to PyPI
+```
+
+### When NOT to Use Hotfix Workflow
+
+❌ **DON'T use hotfix workflow for:**
+- Non-critical bugs (use dev → testing → review → master)
+- New features (ALWAYS start in dev)
+- Refactoring (ALWAYS start in dev)
+- "Nice to have" fixes (use normal pipeline)
+- Anything that can wait a few days (use normal pipeline)
+
+✅ **Only use hotfix workflow for:**
+- Security vulnerabilities
+- Data loss bugs
+- Crash bugs affecting all users
+- Compliance issues (GDPR, legal requirements)
+
+### Hotfix Commands Quick Reference
+
+```bash
+# Work on master for critical issue
+git checkout master
+# ... make fix ...
+git commit -m "fix(critical): Description #<issue>"
+git push origin master
+
+# Backport to dev if needed
+git checkout dev
+just backport-hotfix
+# Select commit, review, confirm
+
+# Release patch
+git checkout master
+just release patch
+```
+
+---
+
 ### Branch Equalization Command
 
 The `just equalize` command synchronizes ALL branches to match the current branch. This is different from promotion, which follows the sequential dev→testing→review→master pipeline.
