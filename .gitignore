@@ -26,6 +26,10 @@ CLAUDE.md
 .claude/
 ccpm/  # Private CCPM plugin - keep local only
 
+# CCPM agent worktrees and logs (created in ~/.cache/ but list here for clarity)
+.cache/svg2fbf-worktrees/
+.cache/svg2fbf-audit-logs/
+
 # Logs and temporary files
 logs/
 *.log

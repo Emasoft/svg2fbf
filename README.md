@@ -34,6 +34,7 @@
 - [About FBF.SVG Format](#about-fbfsvg-format)
   - [Design Principles](#design-principles)
   - [Format Specification & Schema](#format-specification--schema)
+- [FBF.SVG Format Official Logo](#fbf-svg-format-official-logo)
 - [Comparison to Other Web Vector Animation Formats](#comparison-to-other-web-vector-animation-formats)
   - [FBF.SVG vs. The Competition: Web & Mobile](#-fbfsvg-vs-the-competition-web--mobile)
   - [The Verdict](#-the-verdict)
@@ -124,6 +125,13 @@ The specification defines two conformance levels:
 - **FBF.SVG Full** - Adds comprehensive RDF/XML metadata
 
 The **svg2fbf** tool generates FBF.SVG Full conformant documents.
+
+---
+
+## FBF.SVG Official Logo:
+<p align="center">
+  <img src="assets/fbf_svg_logo_plain_white_glyphs.svg" alt="FBF.SVG Official Logo" width="100%" style="max-width: 400px; height: auto;"/>
+</p>
 
 ---
 
