@@ -25,7 +25,7 @@
 				<fbf:frameCount>11</fbf:frameCount>
 				<fbf:fps>4.0</fbf:fps>
 				<fbf:duration>2.75</fbf:duration>
-				<fbf:playbackMode>pingpong_loop</fbf:playbackMode>
+				<fbf:playbackMode>pingpong_once</fbf:playbackMode>
 				<fbf:width>100%</fbf:width>
 				<fbf:height>100%</fbf:height>
 				<fbf:viewBox>0.0 0.0 44.0 44.0</fbf:viewBox>
@@ -34,7 +34,7 @@
 				<fbf:firstFrameHeight>0</fbf:firstFrameHeight>
 				<fbf:generator>svg2fbf</fbf:generator>
 				<fbf:generatorVersion>0.1.9</fbf:generatorVersion>
-				<fbf:generatedDate>2025-11-17T16:36:22.633978+00:00</fbf:generatedDate>
+				<fbf:generatedDate>2025-11-17T16:40:23.045234+00:00</fbf:generatedDate>
 				<fbf:formatVersion>1.0</fbf:formatVersion>
 				<fbf:precisionDigits>28</fbf:precisionDigits>
 				<fbf:precisionCDigits>28</fbf:precisionCDigits>
@@ -251,7 +251,7 @@ ___________________________________________________________________</desc>
 			<!--	ANIMATED GROUP	 -->
 			<g id="ANIMATED_GROUP">
 				<use id="PROSKENION" overflow="visible" xlink:href="#FRAME00001">
-					<animate attributeName="xlink:href" begin="click" calcMode="discrete" dur="2.75s" repeatCount="indefinite" values="#FRAME00001;#FRAME00002;#FRAME00003;#FRAME00004;#FRAME00005;#FRAME00006;#FRAME00007;#FRAME00008;#FRAME00009;#FRAME00010;#FRAME00011;#FRAME00010;#FRAME00009;#FRAME00008;#FRAME00007;#FRAME00006;#FRAME00005;#FRAME00004;#FRAME00003;#FRAME00002;#FRAME00001"/>
+					<animate attributeName="xlink:href" begin="click" calcMode="discrete" dur="2.75s" repeatCount="1" values="#FRAME00001;#FRAME00002;#FRAME00003;#FRAME00004;#FRAME00005;#FRAME00006;#FRAME00007;#FRAME00008;#FRAME00009;#FRAME00010;#FRAME00011;#FRAME00010;#FRAME00009;#FRAME00008;#FRAME00007;#FRAME00006;#FRAME00005;#FRAME00004;#FRAME00003;#FRAME00002;#FRAME00001"/>
 				</use>
 			</g>
 			<!--	END OF ANIMATED GROUP	-->

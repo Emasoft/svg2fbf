@@ -25,7 +25,7 @@ generation_parameters:
   output_path: examples/splat_button/fbf_output
   filename: splat_button.fbf.svg
   speed: 4.0
-  animation_type: pingpong_loop
+  animation_type: pingpong_once
   play_on_click: true
   quiet: false
   # Optional generation parameters:
