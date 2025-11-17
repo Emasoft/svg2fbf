@@ -5,12 +5,36 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10a1] - 2025-11-17
+
+### Added
+
+- Split commit porting into two specialized commands
+- Add critical hotfix workflow for agents
+- Add auto-triage GitHub Actions workflow
+
+### Fixed
+
+- **ui:** Replace duplicate header with import results
+- Change splat button animation from loop to ping-pong once
+
+### Documentation
+
+- **README:** Add FBF.SVG official logo and update .gitignore
+- Add comprehensive AI agent workflow documentation
+- Add onion skin header image to animation examples
+- Correct branch workflow understanding and add hotfix backport
+
 ## [0.1.9] - 2025-11-13
 
 ### Fixed
 
 - Ensure release notes files are always deleted
 - Ensure release script always operates from project root
+
+### Other
+
+- Release stable 0.1.9
 
 ### Changed
 
@@ -20,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Miscellaneous
 
 - Ignore temporary release notes files
+- Update uv.lock for stable 0.1.9
 
 ## [0.1.8] - 2025-11-13
 
