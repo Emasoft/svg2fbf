@@ -241,13 +241,15 @@ git commit -m "Merge <source> into <target>: resolve conflicts in <files>"
 
 Each branch maps to a release channel with different audiences:
 
-| Branch  | Channel | Audience              | Installation                    |
+| Branch  | Channel | Audience              | Installation (Example)           |
 |---------|---------|------------------------|----------------------------------|
-| dev     | alpha   | Developers only       | `uv tool install svg2fbf --prerelease allow` |
-| testing | beta    | QA testers            | `uv tool install svg2fbf --prerelease allow` |
-| review  | rc      | Release candidates    | `uv tool install svg2fbf --prerelease allow` |
+| dev     | alpha   | Developers only       | `uv tool install svg2fbf@0.1.11a1` |
+| testing | beta    | QA testers            | `uv tool install svg2fbf@0.1.11b1` |
+| review  | rc      | Release candidates    | `uv tool install svg2fbf@0.1.11rc1` |
 | master  | stable  | Production users      | `uv tool install svg2fbf`        |
 | main    | (mirror)| Default branch        | Same as master                   |
+
+**Note**: Prerelease versions require exact version specification (e.g., `@0.1.11a1`). See `ccpm/agent-skills/uv-tool-management.md` for complete uv syntax reference.
 
 **Agent responsibilities**:
 - ✅ Understand which channel code is targeting
