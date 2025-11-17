@@ -1062,6 +1062,122 @@ equalize:
     echo ""
     echo "All branches are now at the same commit as $CURRENT_BRANCH"
 
+# Backport hotfix from master/main to dev/testing/review (interactive, safe)
+backport-hotfix commit_or_branch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    COMMIT_OR_BRANCH="{{commit_or_branch}}"
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    echo "🔄 Backport Hotfix"
+    echo "═══════════════════════════════════════════════"
+    echo ""
+    echo "Current branch: $CURRENT_BRANCH"
+    echo "Hotfix source: $COMMIT_OR_BRANCH"
+    echo ""
+
+    # Validate current branch is dev, testing, or review
+    if [[ ! "$CURRENT_BRANCH" =~ ^(dev|testing|review)$ ]]; then
+        echo "❌ Error: Can only backport to dev, testing, or review branches"
+        echo "Current branch: $CURRENT_BRANCH"
+        echo ""
+        echo "Usage: git checkout dev && just backport-hotfix <commit-or-branch>"
+        exit 1
+    fi
+
+    # Resolve commit hash
+    if ! COMMIT_HASH=$(git rev-parse --verify "$COMMIT_OR_BRANCH^{commit}" 2>/dev/null); then
+        echo "❌ Error: Cannot find commit or branch: $COMMIT_OR_BRANCH"
+        exit 1
+    fi
+
+    # Get commit details
+    COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s" "$COMMIT_HASH")
+    COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$COMMIT_HASH")
+    COMMIT_DATE=$(git log -1 --pretty=format:"%ad" --date=short "$COMMIT_HASH")
+
+    echo "Commit Details:"
+    echo "  Hash: $COMMIT_HASH"
+    echo "  Message: $COMMIT_MESSAGE"
+    echo "  Author: $COMMIT_AUTHOR"
+    echo "  Date: $COMMIT_DATE"
+    echo ""
+
+    # Show what files would be affected
+    echo "📁 Files that would be changed:"
+    git diff --name-only "$CURRENT_BRANCH" "$COMMIT_HASH" | head -20
+    FILE_COUNT=$(git diff --name-only "$CURRENT_BRANCH" "$COMMIT_HASH" | wc -l | tr -d ' ')
+    if [ "$FILE_COUNT" -gt 20 ]; then
+        echo "... and $((FILE_COUNT - 20)) more files"
+    fi
+    echo ""
+
+    # Check for conflicts (dry-run)
+    echo "🔍 Checking for merge conflicts..."
+
+    # Create a temporary test merge
+    git fetch origin "$CURRENT_BRANCH" --quiet
+
+    # Try merge in dry-run mode (using merge-tree)
+    if git merge-tree $(git merge-base HEAD "$COMMIT_HASH") HEAD "$COMMIT_HASH" | grep -q "^<<<<<"; then
+        echo "⚠️  WARNING: Merge conflicts detected!"
+        echo ""
+        echo "Conflicting files:"
+        git merge-tree $(git merge-base HEAD "$COMMIT_HASH") HEAD "$COMMIT_HASH" | grep -B2 "^<<<<<" | grep "^+++ " | sed 's/^+++ b\//  - /' | sort -u
+        echo ""
+        echo "❌ Cannot safely backport this hotfix"
+        echo ""
+        echo "Recommendations:"
+        echo "1. The hotfix may conflict with new code in $CURRENT_BRANCH"
+        echo "2. The bug may have been fixed differently in $CURRENT_BRANCH"
+        echo "3. The code that was fixed may have been removed/replaced in $CURRENT_BRANCH"
+        echo ""
+        echo "Options:"
+        echo "  - Cherry-pick manually and resolve conflicts"
+        echo "  - Check if the bug still exists in $CURRENT_BRANCH"
+        echo "  - Skip this backport if the code changed significantly"
+        exit 1
+    fi
+
+    echo "✅ No conflicts detected - safe to merge"
+    echo ""
+
+    # Show the diff summary
+    echo "📊 Changes summary:"
+    git diff --stat "$CURRENT_BRANCH" "$COMMIT_HASH"
+    echo ""
+
+    # Ask for confirmation
+    echo "⚠️  This will cherry-pick the hotfix commit into $CURRENT_BRANCH"
+    echo ""
+    read -p "Do you want to proceed? (yes/no): " -r
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+        echo "❌ Backport cancelled"
+        exit 0
+    fi
+
+    # Perform the cherry-pick
+    echo "🚀 Cherry-picking commit..."
+    if git cherry-pick "$COMMIT_HASH"; then
+        echo ""
+        echo "✅ Hotfix backported successfully!"
+        echo ""
+        echo "Next steps:"
+        echo "1. Review the changes: git show HEAD"
+        echo "2. Run tests: just test"
+        echo "3. Push when ready: git push origin $CURRENT_BRANCH"
+    else
+        echo ""
+        echo "❌ Cherry-pick failed (this shouldn't happen - we checked for conflicts!)"
+        echo ""
+        echo "To abort: git cherry-pick --abort"
+        echo "To resolve and continue: fix conflicts, then: git cherry-pick --continue"
+        exit 1
+    fi
+
 # ============================================================================
 # Branch Promotions & Releases
 # ============================================================================

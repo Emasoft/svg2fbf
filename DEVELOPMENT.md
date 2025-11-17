@@ -7,6 +7,10 @@ For contribution guidelines, pull request process, and code of conduct, see [CON
 ## Table of Contents
 
 - [⚠️ AI Agent Workflow Warning](#️-ai-agent-workflow-warning)
+  - [🚫 Dangerous Operations - NEVER Do These](#-dangerous-operations---never-do-these)
+  - [✅ Safe Agent Operations](#-safe-agent-operations)
+  - [📋 Required Agent Workflow](#-required-agent-workflow)
+  - [🛡️ CCPM Plugin (Recommended for AI Agents)](#️-ccpm-plugin-recommended-for-ai-agents)
 - [Branch Workflow & Development Stages](#branch-workflow--development-stages)
   - [Development Pipeline Overview](#development-pipeline-overview)
   - [Branch Workflow Table](#branch-workflow-table)
@@ -18,6 +22,7 @@ For contribution guidelines, pull request process, and code of conduct, see [CON
     - [Key Differences](#key-differences)
     - [Example Scenarios](#example-scenarios)
     - [Safety Features](#safety-features)
+    - [Auto-Generated Commits Are Safe to Lose](#auto-generated-commits-are-safe-to-lose)
   - [Release Commands](#release-commands)
   - [Installing Released Versions](#installing-released-versions)
   - [Common Development Patterns](#common-development-patterns)
@@ -110,7 +115,55 @@ Agents **ARE allowed** to:
 - ✅ Run tests, linting, and formatting
 - ✅ Create **Draft PRs** (not ready for merge)
 - ✅ Request human review
-- ✅ Fix bugs reported in testing
+
+### 📋 Required Agent Workflow
+
+**ALL agents MUST follow this workflow:**
+
+1. **Develop new features in `dev` branch**
+   ```bash
+   git checkout dev
+   # ... develop feature ...
+   git commit -m "feat: Add new feature"
+   git push origin dev
+   ```
+
+2. **Promote to `testing` ONLY when feature is COMPLETE**
+   ```bash
+   # Feature must be fully implemented before promotion
+   just promote-to-testing
+   ```
+
+3. **Debug and fix bugs in `testing` branch**
+   ```bash
+   git checkout testing
+   # ... fix bugs found during testing ...
+   git commit -m "fix: Fix edge case"
+   git push origin testing
+   ```
+
+4. **Promote to `review` ONLY when ALL bugs are FIXED**
+   ```bash
+   # All tests must pass before promotion
+   just promote-to-review
+   ```
+
+5. **Human reviews and approves in `review` branch**
+   - Agents wait for human approval
+   - Human runs `just promote-to-stable` when approved
+
+**⚠️ CRITICAL RULES:**
+- **NEVER skip stages** - Must go dev → testing → review → master sequentially
+- **dev is ALWAYS ahead** - This is correct and expected!
+- **Don't equalize branches** - Use promotion commands for normal workflow
+- **Each branch has different code** - This is the purpose of the pipeline!
+
+> **💡 KEY CONCEPT**: The dev branch being ahead of testing/review/master is **CORRECT AND EXPECTED**!
+>
+> - You can develop features in dev while stable is being released
+> - You can develop features in dev while hotfixes are applied to master
+> - The branches are **supposed** to have different code
+> - This is **not a problem** - it's the **design** of the 5-branch workflow!
 
 ### 🛡️ CCPM Plugin (Recommended for AI Agents)
 
@@ -318,6 +371,94 @@ just promote-to-stable    # review → master (approved)
 just sync-main            # master → main (manual sync)
 ```
 
+### Hotfix Backport Command
+
+When you make a hotfix on `master` or `main`, you can safely backport it to development branches:
+
+```bash
+# Backport a hotfix commit from master to dev
+git checkout dev
+just backport-hotfix master
+
+# Or use a specific commit hash
+just backport-hotfix a1b2c3d
+
+# Or use a branch name
+just backport-hotfix origin/master
+```
+
+**What it does:**
+1. ✅ Shows commit details (message, author, date)
+2. ✅ Lists files that would be changed
+3. ✅ **Checks for merge conflicts** (dry-run)
+4. ✅ Shows diff summary
+5. ✅ **Asks for your confirmation** before proceeding
+6. ✅ Cherry-picks the commit if safe
+
+**Safety features:**
+- 🔒 Only works on `dev`, `testing`, or `review` branches (prevents accidents)
+- 🔍 **Detects conflicts BEFORE applying** changes
+- ⚠️ **Stops if conflicts detected** - provides recommendations
+- 💡 Explains why conflicts might occur:
+  - Hotfix conflicts with new code
+  - Bug was fixed differently in dev
+  - Code was removed/replaced in dev
+- ✋ Requires "yes" confirmation (not just "y")
+
+**Example: Backporting a Security Fix**
+```bash
+# You made a security fix on master
+git checkout master
+git log --oneline -1
+# a1b2c3d security: Fix XSS vulnerability in parser
+
+# Now backport to dev so future development includes the fix
+git checkout dev
+just backport-hotfix a1b2c3d
+
+# Output:
+# 🔄 Backport Hotfix
+# Current branch: dev
+# Hotfix source: a1b2c3d
+#
+# Commit Details:
+#   Hash: a1b2c3d
+#   Message: security: Fix XSS vulnerability in parser
+#   Author: Developer Name
+#   Date: 2025-11-17
+#
+# 📁 Files that would be changed:
+#   src/parser.py
+#
+# 🔍 Checking for merge conflicts...
+# ✅ No conflicts detected - safe to merge
+#
+# 📊 Changes summary:
+#  src/parser.py | 5 +++--
+#  1 file changed, 3 insertions(+), 2 deletions(-)
+#
+# ⚠️  This will cherry-pick the hotfix commit into dev
+# Do you want to proceed? (yes/no): yes
+#
+# 🚀 Cherry-picking commit...
+# ✅ Hotfix backported successfully!
+#
+# Next steps:
+# 1. Review the changes: git show HEAD
+# 2. Run tests: just test
+# 3. Push when ready: git push origin dev
+```
+
+**When to use:**
+- ✅ Hotfix applied to `master` needs to be in development branches
+- ✅ Security patches that affect all branches
+- ✅ Critical bug fixes that were made directly on `master`
+
+**When NOT to use:**
+- ❌ Normal feature development (use `just promote-*` instead)
+- ❌ If the code in dev has changed significantly
+- ❌ If dev already has a different fix for the same bug
+
 ### Branch Equalization Command
 
 The `just equalize` command synchronizes ALL branches to match the current branch. This is different from promotion, which follows the sequential dev→testing→review→master pipeline.
@@ -358,14 +499,35 @@ If you continue, these commits will be LOST!
 - ✅ **Windows CI fixes** or other infrastructure updates needed on all branches
 - ✅ **After manual hotfix** that bypassed the normal promotion flow
 - ✅ **Synchronizing after recovery** from divergent branch states
-- ✅ **When all branches should be at the SAME commit** (like after a release)
+- ✅ **Discarding auto-generated release commits** to sync all branches to latest manual work (see "Auto-Generated Commits Are Safe to Lose" below)
 
-**Use `just promote-*` when:**
-- ✅ **Normal feature development** - Let features flow through the pipeline
+**Use `just promote-*` when (NORMAL WORKFLOW):**
+- ✅ **ALL feature development** - This is the standard workflow!
 - ✅ **Following the quality gates** - Testing catches bugs, review approves
-- ✅ **Different code on different branches is expected** - That's the point!
-- ✅ **Maintaining development workflow** - dev ahead of testing is normal
+- ✅ **Branches are SUPPOSED to diverge** - dev ahead of testing is CORRECT!
+- ✅ **Maintaining development workflow** - dev is always ahead
 - ✅ **Want to preserve branch-specific work** - Don't lose commits
+
+**⚠️ IMPORTANT - Normal Branch State:**
+```
+dev      ← ALWAYS AHEAD with new features in development
+  ↓
+testing  ← Complete features being debugged
+  ↓
+review   ← Bug-free features awaiting approval
+  ↓
+master   ← Stable releases only
+  ↓
+main     ← Mirror of master
+```
+
+**The dev branch should ALWAYS be ahead of other branches!**
+- Agents develop new features in `dev`
+- Promote to `testing` ONLY when feature is complete
+- Promote to `review` ONLY when all bugs are fixed
+- Promote to `master` ONLY when review passes
+
+**Equalize is for EMERGENCIES ONLY, not normal workflow!**
 
 #### Key Differences
 
@@ -431,6 +593,28 @@ just promote-to-review
 # review now has the bug fix
 ```
 
+**❌ WRONG Scenario: Dev Ahead of Master After Release**
+```bash
+# After a release, you see:
+git log main..dev --oneline
+# a1b2c3d feat: Add new dashboard UI
+# b2c3d4e feat: Improve performance
+# c3d4e5f docs: Update README
+
+# ❌ WRONG - Don't equalize to "sync" branches!
+# just equalize  # DON'T DO THIS!
+
+# ✅ CORRECT - This is normal! dev is supposed to be ahead!
+# Just continue developing or promote when ready:
+just promote-to-testing  # When dashboard UI feature is complete
+```
+
+**Why it's wrong:**
+- dev being ahead with new features is **CORRECT**!
+- Those commits are **real work** that shouldn't be lost
+- The branches are **supposed** to have different code
+- Use promotion to move features forward when ready
+
 #### Safety Features
 
 The `just equalize` command includes several safety features:
@@ -440,6 +624,82 @@ The `just equalize` command includes several safety features:
 - 📡 **Fetches before checking** - Ensures you have latest remote state
 - 🔒 **Force-with-lease** - Won't overwrite if remote changed since last fetch
 - ✋ **Requires "yes"** - Typing just "y" won't work, must type full "yes"
+
+#### Auto-Generated Commits Are Safe to Lose
+
+**⚠️ IMPORTANT**: Some commits are auto-generated and safe to discard during `just equalize`:
+
+**Auto-Generated Release Commits:**
+When you see warnings about commits like:
+```
+⚠️  dev has 2 commit(s) not in main
+    Latest: chore: Update uv.lock for alpha 0.1.9a1
+⚠️  testing has 2 commit(s) not in main
+    Latest: chore: Update uv.lock for beta 0.1.9b1
+⚠️  review has 2 commit(s) not in main
+    Latest: chore: Update uv.lock for rc 0.1.9rc1
+```
+
+These are **automatically generated** by `just release` or `just publish` and include:
+- `CHANGELOG.md` - Auto-generated from git history via `git-cliff`
+- `pyproject.toml` - Version number updates
+- `uv.lock` - Lock file updates
+
+**Safe to Equalize Protocol:**
+
+1. **Check what commits will be lost:**
+   ```bash
+   git log main..dev --oneline     # Check dev commits
+   git log main..testing --oneline # Check testing commits
+   git log main..review --oneline  # Check review commits
+   ```
+
+2. **If you ONLY see these patterns, it's SAFE to equalize:**
+   - ✅ `Release alpha/beta/rc X.Y.Z`
+   - ✅ `chore: Update uv.lock for alpha/beta/rc X.Y.Z`
+   - ✅ `chore(release): update CHANGELOG for X.Y.Z`
+
+3. **These will be REGENERATED automatically** on next release:
+   ```bash
+   # After equalization, next release will recreate:
+   just release   # Regenerates CHANGELOG.md, versions, uv.lock for all channels
+   just publish   # Same + publishes stable to PyPI
+   ```
+
+**Why This Works:**
+- The release script (`scripts/release.sh`) fully regenerates `CHANGELOG.md` from git history
+- Version numbers are calculated from git tags
+- Lock files are regenerated from dependencies
+- **No manual work is lost** - only auto-generated files
+
+**Example: Safe Equalization**
+```bash
+# main has your latest documentation/feature work
+git checkout main
+
+# Other branches have auto-generated release commits from last release
+git log main..dev --oneline
+# f4fe0e7 chore: Update uv.lock for alpha 0.1.9a1
+# ebfaca3 Release alpha 0.1.9a1
+
+# ✅ SAFE - These are auto-generated, equalize from main
+just equalize
+
+# Later, when you release again, they'll be recreated:
+just release
+# Regenerates CHANGELOG.md, updates versions, creates new release commits
+```
+
+**When NOT Safe to Equalize:**
+If you see commits like:
+- ❌ `feat: Add new feature`
+- ❌ `fix: Critical bug fix`
+- ❌ `refactor: Improve performance`
+
+These are **manual work** - equalization would **lose real code changes**!
+
+**Simple Rule:**
+> Only release-related commits (`Release X.Y.Z`, `Update uv.lock`, `update CHANGELOG`) are safe to lose. Everything else is manual work that should be preserved.
 
 ### Release Commands
 
