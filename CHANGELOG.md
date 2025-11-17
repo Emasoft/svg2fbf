@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - Merge dev into testing - feature complete, ready for testing
+- Release beta 0.1.10b1
 
 ### Documentation
 
@@ -28,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add comprehensive AI agent workflow documentation
 - Add onion skin header image to animation examples
 - Correct branch workflow understanding and add hotfix backport
+
+### Miscellaneous
+
+- Update uv.lock for beta 0.1.10b1
 
 ## [0.1.9] - 2025-11-13
 
