@@ -1,0 +1,101 @@
+# GitHub Branch Protection Configuration
+# This file defines branch protection rules for this repository
+# Apply with: python scripts/apply-branch-protection.py
+
+# Branch protection rules
+branches:
+  # Main branch (default/public branch, mirror of master)
+  main:
+    enabled: true
+    enforce_admins: true
+    required_pull_request_reviews:
+      required_approving_review_count: 0
+      dismiss_stale_reviews: false
+      require_code_owner_reviews: false
+    required_status_checks:
+      strict: true
+      contexts: []  # Add check names like: ["CI / test", "Quality / ruff"]
+    required_conversation_resolution: true
+    allow_force_pushes: false
+    allow_deletions: false
+    restrictions: null  # null = no restrictions, or specify users/teams
+
+  # Master branch (production/stable, published to PyPI)
+  master:
+    enabled: true
+    enforce_admins: false  # Allow admins to bypass in emergencies
+    required_pull_request_reviews:
+      required_approving_review_count: 1
+      dismiss_stale_reviews: true
+      require_code_owner_reviews: false
+    required_status_checks:
+      strict: true
+      contexts: []  # Add: ["CI / test (3.10)", "CI / test (3.11)", etc.]
+    required_conversation_resolution: true
+    allow_force_pushes: false
+    allow_deletions: false
+    restrictions: null
+
+  # Review branch (release candidate, CI must pass)
+  review:
+    enabled: true
+    enforce_admins: false
+    required_pull_request_reviews: null  # No PR required (promoted via merge)
+    required_status_checks:
+      strict: true
+      contexts: []  # Add CI check names if available
+    required_conversation_resolution: false
+    allow_force_pushes: false
+    allow_deletions: false
+    restrictions: null
+
+  # Testing branch (beta testing)
+  testing:
+    enabled: true
+    enforce_admins: false
+    required_pull_request_reviews: null
+    required_status_checks: null  # No CI required for beta
+    required_conversation_resolution: false
+    allow_force_pushes: false
+    allow_deletions: false
+    restrictions: null
+
+  # Dev branch (active development, allow force push for rebasing)
+  dev:
+    enabled: true
+    enforce_admins: false
+    required_pull_request_reviews: null
+    required_status_checks: null
+    required_conversation_resolution: false
+    allow_force_pushes: true  # Allow interactive rebase
+    allow_deletions: false  # But prevent accidental deletion
+    restrictions: null
+
+# Repository settings (optional)
+repository:
+  # Require 2FA for collaborators
+  require_2fa: false
+
+  # Default branch
+  default_branch: main
+
+  # Security features
+  security:
+    dependabot_alerts: true
+    dependabot_security_updates: true
+    secret_scanning: true
+    secret_scanning_push_protection: true
+
+# CODEOWNERS configuration (optional)
+# If enabled, creates .github/CODEOWNERS file
+codeowners:
+  enabled: false
+  patterns:
+    - pattern: "*"
+      owners: []  # Add usernames like: ["@username"]
+    - pattern: "ccpm/**"
+      owners: []
+    - pattern: ".github/workflows/**"
+      owners: []
+    - pattern: "scripts/**"
+      owners: []
