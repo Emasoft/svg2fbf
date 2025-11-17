@@ -585,10 +585,7 @@ uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
 If you encounter issues, perform a clean reinstall:
 
 ```bash
-# Method 1: Use --force flag
-uv tool install svg2fbf --force
-
-# Method 2: Uninstall then install
+# Recommended: Uninstall then install (clean reinstall)
 uv tool uninstall svg2fbf
 uv tool install svg2fbf --python 3.10
 ```
