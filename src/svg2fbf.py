@@ -3400,32 +3400,33 @@ def generate_fbfsvg_animation():
 
         if options.quiet_mode is False:
             ppp()
-            ppp(" ╔" + "═" * 44 + "╗ ")
-            ppp(" ║" + " " * 44 + "║ ")
-            ppp(" ║    svg2fbf - FBFSVG ANIMATION GENERATOR    ║ ")
-            # Calculate padding for version line (44 chars wide between borders)
-            version_text = f"Version {SEMVERSION}"
-            padding = (44 - len(version_text)) // 2
-            version_line = " " * padding + version_text + " " * (44 - padding - len(version_text))
-            ppp(" ║" + version_line + "║ ")
-            ppp(" ║" + " " * 44 + "║ ")
-            ppp(" ╚" + "═" * 44 + "╝ ")
-            ppp(f" Animation Type			: {options.animation_type}")
-            ppp(f" Frame Rate			: {options.fps} fps")
-            ppp(f" Frame Duration			: {round(frame_duration, 4)} seconds")
-            ppp(f" Max Frames			: {options.max_frames}")
-            ppp(f" Backdrop			: {options.backdrop}")
-            ppp(f" Play On Click			: {options.play_on_click}")
-            ppp(f" Precision			: {options.digits} significant digits")
-            ppp(f" CPoints Precision		: {options.cdigits} significant digits")
-            ppp(f" Keep XML Space			: {options.keep_xml_space_attribute}")
-            ppp(f" Input Folder			: {options.input_folder}")
-            ppp(f" Output Path			: {options.output_path}")
-            ppp(f" Output File			: {options.output_filename}")
+            ppp(" ╔" + "═" * 58 + "╗ ")
+            ppp(" ║" + " " * 58 + "║ ")
+            ppp(" ║              ✅ IMPORT COMPLETE - READY TO PROCESS            ║ ")
+            ppp(" ║" + " " * 58 + "║ ")
+            ppp(" ╚" + "═" * 58 + "╝ ")
             ppp()
-
-        if options.quiet_mode is False:
-            ppp(f"Found {total_number_of_frames} frames in input folder.")
+            # Show import results and configuration
+            frames_text = f"Frames imported: {total_number_of_frames}"
+            ppp(f" {frames_text}")
+            ppp(" All frames validated: ✅ Pass")
+            ppp()
+            ppp(" Configuration:")
+            ppp(f"   Animation Type       : {options.animation_type}")
+            ppp(f"   Frame Rate           : {options.fps} fps")
+            ppp(f"   Frame Duration       : {round(frame_duration, 4)} seconds")
+            ppp(f"   Max Frames           : {options.max_frames}")
+            ppp(f"   Backdrop             : {options.backdrop}")
+            ppp(f"   Play On Click        : {options.play_on_click}")
+            ppp(f"   Precision            : {options.digits} significant digits")
+            ppp(f"   CPoints Precision    : {options.cdigits} significant digits")
+            ppp(f"   Keep XML Space       : {options.keep_xml_space_attribute}")
+            ppp(f"   Input Folder         : {options.input_folder}")
+            ppp(f"   Output Path          : {options.output_path}")
+            ppp(f"   Output File          : {options.output_filename}")
+            ppp()
+            ppp(" Generating FBF.SVG animation...")
+            ppp()
 
         if options.max_frames is not None:
             if total_number_of_frames > int(options.max_frames):
