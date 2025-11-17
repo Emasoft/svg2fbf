@@ -5,6 +5,34 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10b3] - 2025-11-17
+
+### Fixed
+
+- Remove empty test.yml workflow causing CI failures
+
+### Documentation
+
+- Add UV tool management documentation and fix incorrect syntax
+- Add comprehensive UV command reference
+- Update uv reference in promotion-rules.md
+- Replace with concise UV command reference
+- Minor clarification in UV reference note
+- Fix UV command reference with command-specific options
+- Fix incorrect uv syntax in project documentation
+- Remove --force flag recommendation (can leave remnants)
+- Update GETTING_STARTED.md with correct uv installation
+
+## [0.1.10b2] - 2025-11-17
+
+### Other
+
+- Release beta 0.1.10b2
+
+### Miscellaneous
+
+- Update uv.lock for beta 0.1.10b2
+
 ## [0.1.10b1] - 2025-11-17
 
 ### Added
