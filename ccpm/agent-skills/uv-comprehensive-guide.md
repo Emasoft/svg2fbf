@@ -1,268 +1,360 @@
 # UV Command Reference
 
-Complete, concise reference for all uv commands. For detailed docs: https://docs.astral.sh/uv/
+Complete reference with command-specific options. Docs: https://docs.astral.sh/uv/
 
 ---
 
-## Core Commands
+## Tool Management
 
-| Command | Description |
-|---------|-------------|
-| `uv init [project] [--lib\|--app\|--script]` | Create new project |
-| `uv add <pkg> [--dev\|--optional\|--group]` | Add dependency |
-| `uv remove <pkg> [--dev\|--group]` | Remove dependency |
-| `uv sync [--frozen\|--locked\|--no-dev\|--all-extras]` | Sync environment to lockfile |
-| `uv lock [--upgrade\|--offline]` | Update lockfile |
-| `uv run <cmd\|script> [-m module] [--with pkg]` | Run command in project env |
-| `uv build [--sdist\|--wheel] [-o dir]` | Build distributions |
-| `uv publish [--token] [--index] [--dry-run]` | Upload to index (PyPI) |
+### `uv tool install <pkg>[@version]`
+Install command-line tool.
+- `-w, --with <pkg>` - Install with additional packages
+- `--with-requirements <file>` - Install with packages from file
+- `-e, --editable` - Install as editable
+- `--with-editable <path>` - Include editable package
+- `--with-executables-from <pkg>` - Use executables from this package
+- `--force` - Force reinstall
+- `--python <version>` - Python version to use
+
+**Examples:**
+```bash
+uv tool install svg2fbf                    # Latest
+uv tool install svg2fbf@0.1.11             # Specific version
+uv tool install svg2fbf@0.1.10a1           # Prerelease (exact version required)
+uv tool install ruff --with ruff-lsp       # With additional package
+```
+
+❌ NO `--extra` flag (use `--with` instead)
+❌ NO `--upgrade` flag (use `uv tool upgrade` instead)
+
+### `uv tool upgrade <pkg>`
+Upgrade installed tool.
+- `--all` - Upgrade all tools
+
+### `uv tool run <pkg>` (or `uvx`)
+Run tool without installing.
+
+### Other: `list`, `uninstall`, `update-shell`, `dir`
+
+---
+
+## Project Management
+
+### `uv init [path]`
+Create new project.
+- `--name <name>` - Project name
+- `--lib` - Library project
+- `--app` - Application project
+- `--script` - Script file
+- `--bare` - Only pyproject.toml
+- `--package` / `--no-package` - Setup as package
+- `--build-backend <backend>` - uv|hatch|flit|pdm|poetry|setuptools|maturin|scikit
+- `--vcs <vcs>` - git|none
+- `--python <version>` - Python version
+
+### `uv add <pkg>`
+Add dependency.
+- `--dev` - Add to dev dependencies
+- `--optional <extra>` - Add to optional dependencies
+- `--group <group>` - Add to dependency group
+- `--editable` - Add as editable
+- `--raw` - Add as provided (no version constraint)
+- `--bounds <type>` - Version specifier: lower|major|minor|exact
+- `--rev <commit>` - Git commit
+- `--tag <tag>` - Git tag
+- `--branch <branch>` - Git branch
+- `--extra <extra>` - Enable extras for THIS dependency
+- `-r, --requirements <file>` - Add from file
+- `--package <pkg>` - Add to workspace package
+- `--script <script>` - Add to Python script
+- `--no-sync` - Don't sync after adding
+
+**Examples:**
+```bash
+uv add requests                           # Add package
+uv add "ruff>=0.8"                        # With version constraint
+uv add --dev pytest                       # Dev dependency
+uv add --group test pytest coverage       # Dependency group
+uv add --optional viz matplotlib          # Optional dependency
+uv add sqlalchemy --extra asyncio         # With extras for sqlalchemy
+uv add my-pkg --editable ./local-pkg      # Editable local package
+uv add pkg --git https://github.com/o/r   # From Git
+```
+
+### `uv remove <pkg>`
+Remove dependency.
+- `--dev` - Remove from dev dependencies
+- `--optional <extra>` - Remove from optional
+- `--group <group>` - Remove from group
+- `--package <pkg>` - Remove from workspace package
+
+### `uv sync`
+Sync environment to lockfile.
+- `--extra <extra>` - Include optional dependency extra
+- `--all-extras` - Include all extras
+- `--no-extra <extra>` - Exclude extra (with --all-extras)
+- `--dev` / `--no-dev` / `--only-dev` - Dev dependencies
+- `--group <group>` / `--no-group <group>` / `--only-group <group>` / `--all-groups` - Dependency groups
+- `--no-install-project` - Don't install project itself
+- `--no-install-workspace` - Don't install workspace members
+- `--frozen` - Don't update lockfile
+- `--locked` - Assert lockfile unchanged
+- `--inexact` - Don't remove extraneous packages
+- `--check` - Check if synced
+
+**Examples:**
+```bash
+uv sync                          # Sync all
+uv sync --no-dev                 # Skip dev deps
+uv sync --all-extras             # Include all extras
+uv sync --group test --group docs  # Specific groups
+uv sync --frozen                 # Don't update lock
+```
+
+### `uv lock`
+Update lockfile.
+- `--check` - Check if up-to-date
+- `--check-exists` - Assert uv.lock exists
+- `--dry-run` - Don't write lockfile
+
+### `uv run <cmd|script>`
+Run command/script in project environment.
+- `-m, --module` - Run Python module
+- `--extra <extra>` - Include optional extra
+- `--all-extras` - Include all extras
+- `--dev` / `--no-dev` / `--only-dev` - Dev dependencies
+- `--group <group>` / `--only-group <group>` / `--all-groups` - Dependency groups
+- `-w, --with <pkg>` - Temporary additional packages
+- `--with-editable <path>` - Temporary editable package
+- `--with-requirements <file>` - Temporary packages from file
+- `--isolated` - Isolated environment
+- `--no-sync` - Don't sync before running
+- `--env-file <file>` - Load .env file
+- `-s, --script` - Treat as Python script
+- `--package <pkg>` - Run in workspace package
+
+**Examples:**
+```bash
+uv run script.py                      # Run script
+uv run -m pytest                      # Run module
+uv run --with requests script.py      # With temporary package
+uv run --all-extras pytest            # With all extras
+uv run --isolated test.py             # Isolated environment
+```
 
 ---
 
 ## Version Management
 
-| Command | Description |
-|---------|-------------|
-| `uv version` | Show project version |
-| `uv version <value>` | Set version (e.g., `0.2.0`) |
-| `uv version --bump <type>` | Bump version (major/minor/patch/stable/alpha/beta/rc/post/dev) |
-| `uv version --short` | Show version only |
-| `uv version --dry-run` | Show new version without writing |
+### `uv version [value]`
+Read or update project version.
+- `--bump <type>` - Bump version: major|minor|patch|stable|alpha|beta|rc|post|dev
+- `--short` - Show version only
+- `--dry-run` - Don't write to pyproject.toml
+- `--package <pkg>` - Update workspace package
 
 **Examples:**
 ```bash
-uv version                  # Show: 0.1.9
-uv version 0.2.0            # Set to 0.2.0
-uv version --bump patch     # 0.1.9 → 0.1.10
-uv version --bump minor     # 0.1.9 → 0.2.0
-uv version --bump major     # 0.1.9 → 1.0.0
-uv version --bump alpha     # 0.1.9 → 0.1.10a0
-uv version --bump stable    # 0.1.10a1 → 0.1.10
+uv version                   # Show: 0.1.9
+uv version 0.2.0             # Set to 0.2.0
+uv version --bump patch      # 0.1.9 → 0.1.10
+uv version --bump minor      # 0.1.9 → 0.2.0
+uv version --bump major      # 0.1.9 → 1.0.0
+uv version --bump alpha      # 0.1.9 → 0.1.10a0
+uv version --bump beta       # 0.1.10a1 → 0.1.10b0
+uv version --bump rc         # 0.1.10b1 → 0.1.10rc0
+uv version --bump stable     # 0.1.10rc1 → 0.1.10
 ```
 
 ---
 
-## Tool Management (`uv tool`)
+## Build & Publish
 
-| Command | Description |
-|---------|-------------|
-| `uv tool install <pkg>[@version]` | Install CLI tool |
-| `uv tool upgrade <pkg> [--all]` | Upgrade tool(s) |
-| `uv tool run <pkg> <args>` (or `uvx`) | Run tool without installing |
-| `uv tool list` | List installed tools |
-| `uv tool uninstall <pkg>` | Uninstall tool |
-| `uv tool update-shell` | Add tool dir to PATH |
-| `uv tool dir` | Show tools directory |
+### `uv build [path]`
+Build distributions (sdist and wheel).
+- `--sdist` - Build source distribution only
+- `--wheel` - Build wheel only
+- `-o, --out-dir <dir>` - Output directory (default: dist/)
+- `--package <pkg>` - Build workspace package
+- `--all-packages` - Build all workspace packages
+- `--clear` - Clear output directory first
+- `--no-build-logs` - Hide build backend logs
+- `-b, --build-constraints <file>` - Constrain build dependencies
 
 **Examples:**
 ```bash
-uv tool install svg2fbf              # Latest
-uv tool install svg2fbf@0.1.11       # Specific
-uv tool install svg2fbf@0.1.10a1     # Prerelease
-uv tool upgrade svg2fbf              # Upgrade
-uvx svg2fbf --version                # Run once
+uv build                     # Build sdist + wheel
+uv build --sdist             # Source distribution only
+uv build --wheel             # Wheel only
+uv build -o releases/        # Custom output directory
+uv build --package my-pkg    # Specific workspace package
 ```
 
-**❌ WRONG:** `uv tool install --upgrade pkg` or `uv tool install pkg --prerelease allow`
-**✅ CORRECT:** `uv tool upgrade pkg` or `uv tool install pkg@version`
-
----
-
-## Pip Interface (`uv pip`)
-
-| Command | Description |
-|---------|-------------|
-| `uv pip install <pkg> [-r file] [-e .] [--system]` | Install packages |
-| `uv pip uninstall <pkg> [-r file]` | Uninstall packages |
-| `uv pip list [--outdated]` | List packages |
-| `uv pip show <pkg>` | Show package info |
-| `uv pip freeze [> file]` | Output installed packages |
-| `uv pip tree [--invert] [--depth N]` | Show dependency tree |
-| `uv pip check` | Verify dependencies |
-| `uv pip compile <in-file> [-o out-file] [--upgrade]` | Compile requirements |
-| `uv pip sync <req-file> [--exact]` | Sync to requirements |
+### `uv publish [files...]`
+Upload distributions to PyPI.
+- `-t, --token <token>` - PyPI token (env: UV_PUBLISH_TOKEN)
+- `-u, --username <user>` - Username
+- `-p, --password <pass>` - Password
+- `--index <name>` - Named index from config
+- `--publish-url <url>` - Upload endpoint URL
+- `--check-url <url>` - Check for existing files
+- `--trusted-publishing <mode>` - automatic|always|never
+- `--dry-run` - Don't upload
 
 **Examples:**
 ```bash
-uv pip install requests
-uv pip install -r requirements.txt
-uv pip install -e .
-uv pip compile requirements.in -o requirements.txt
-uv pip sync requirements.txt
-uv pip tree
-uv pip check
+uv publish                                 # Publish dist/*
+uv publish --token $UV_PUBLISH_TOKEN       # With token
+uv publish dist/pkg-0.1.0*                 # Specific files
+uv publish --publish-url https://test.pypi.org/legacy/  # Test PyPI
+uv publish --dry-run                       # Preview
 ```
 
 ---
 
-## Python Version Management (`uv python`)
+## Pip Interface
 
-| Command | Description |
-|---------|-------------|
-| `uv python list [--only-installed]` | List Python versions |
-| `uv python install <version>` | Install Python |
-| `uv python upgrade [<version>]` | Upgrade Python version(s) |
-| `uv python find [<version>]` | Find Python executable |
-| `uv python pin <version>` | Pin Python for project |
-| `uv python uninstall <version>` | Uninstall Python |
-| `uv python update-shell` | Add Python dir to PATH |
-| `uv python dir` | Show Python install dir |
+### `uv pip install <pkg>`
+- `-r, --requirements <file>` - Install from file
+- `-e, --editable <path>` - Editable install
+- `--extra <extra>` - Include optional extras
+- `--all-extras` - Include all extras
+- `--system` - Install to system Python (not recommended)
+- `--target <dir>` - Install to directory
+- `--reinstall` - Force reinstall
+- `--upgrade` / `-U` - Allow upgrades
 
-**Examples:**
-```bash
-uv python install 3.12
-uv python list --only-installed
-uv python pin 3.12
-uv python find 3.12
-```
+### `uv pip compile <in-file>`
+Compile requirements.in → requirements.txt (replaces pip-compile).
+- `-o, --output-file <file>` - Output file
+- `--extra <extra>` - Include optional extras
+- `--all-extras` - Include all extras
+- `-U, --upgrade` - Allow package upgrades
+- `-P, --upgrade-package <pkg>` - Upgrade specific package
+- `--python-version <ver>` - Target Python version
+- `--python-platform <platform>` - Target platform
 
----
+### `uv pip sync <req-file>`
+Sync environment to requirements.txt (replaces pip-sync).
+- `--exact` - Remove extraneous packages
+- `--python-version <ver>` - Target Python version
 
-## Environment Management
-
-| Command | Description |
-|---------|-------------|
-| `uv venv [name] [--python ver] [--system-site-packages]` | Create virtual environment |
-
-**Examples:**
-```bash
-uv venv                      # Create .venv
-uv venv --python 3.12        # Specific Python
-source .venv/bin/activate    # Activate (bash/zsh)
-```
+### Other: `uninstall`, `list`, `show`, `freeze`, `tree`, `check`
 
 ---
 
-## Utility Commands
+## Python Management
 
-### Export
-```bash
-uv export [-o file] [--no-dev] [--format requirements-txt]
-```
+### `uv python install <version>`
+Install Python version.
+- Multiple versions: `uv python install 3.11 3.12`
 
-### Tree
-```bash
-uv tree [--invert] [--depth N] [--dev]
-```
+### `uv python upgrade [version]`
+Upgrade Python installations.
 
-### Format
-```bash
-uv format [paths] [--check]
-```
+### `uv python pin <version>`
+Pin Python version for project.
 
-### Cache
-| Command | Description |
-|---------|-------------|
-| `uv cache clean [pkg]` | Clean cache |
-| `uv cache prune` | Prune unreachable objects |
-| `uv cache dir` | Show cache directory |
-| `uv cache size` | Show cache size |
+### Other: `list`, `find`, `uninstall`, `update-shell`, `dir`
 
-### Authentication
-| Command | Description |
-|---------|-------------|
-| `uv auth login <index>` | Login to index |
-| `uv auth logout <index>` | Logout from index |
-| `uv auth token <index>` | Show auth token |
-| `uv auth dir` | Show credentials directory |
+---
 
-### Self Management
-| Command | Description |
-|---------|-------------|
-| `uv self update` | Update uv itself |
-| `uv self version` | Show uv version |
-| `uv --version` | Show uv version (short) |
+## Utilities
 
-### Shell Completion
-```bash
-uv generate-shell-completion <shell>  # bash|zsh|fish|powershell|elvish|nushell
-```
+### `uv export`
+Export lockfile to alternate format.
+- `--format <fmt>` - requirements.txt | pylock.toml
+- `-o, --output-file <file>` - Output file
+- `--no-dev` - Exclude dev dependencies
+- `--extra <extra>` / `--all-extras` - Extras
+- `--package <pkg>` - Export workspace package
+
+### `uv tree`
+Display dependency tree.
+- `-d, --depth <N>` - Max depth (default: 255)
+- `--invert` - Show reverse dependencies
+- `--prune <pkg>` - Prune package
+- `--package <pkg>` - Show specific package
+- `--outdated` - Show latest versions
+- `--show-sizes` - Show wheel sizes
+
+### `uv format [paths]`
+Format Python code (uses Ruff).
+- `--check` - Check without applying
+- `--diff` - Show diff without applying
+- `--version <ver>` - Ruff version to use
+
+### `uv cache`
+- `clean [pkg]` - Clean cache
+- `prune` - Remove unreachable objects
+- `dir` - Show cache directory
+- `size` - Show cache size
+
+### `uv auth`
+- `login <index>` - Login to index
+- `logout <index>` - Logout
+- `token <index>` - Show token
+- `dir` - Show credentials directory
+
+### `uv venv [name]`
+Create virtual environment.
+- `--python <version>` - Python version
+- `--system-site-packages` - Include system packages
+
+### `uv self`
+- `update` - Update uv itself
+- `version` - Show uv version
+
+### `uv generate-shell-completion <shell>`
+bash|zsh|fish|powershell|elvish|nushell
 
 ---
 
 ## Global Options
 
-Apply to all commands:
-
-| Option | Description |
-|--------|-------------|
-| `-q, --quiet` | Quiet output |
-| `-v, --verbose` | Verbose output |
-| `--color <never\|always\|auto>` | Color mode |
-| `--offline` | No network access |
-| `--no-cache` | Disable cache |
-| `--cache-dir <dir>` | Custom cache directory |
-| `--directory <dir>` | Change working directory |
-| `--project <dir>` | Specify project directory |
-| `--config-file <file>` | Custom uv.toml path |
-| `--no-config` | Ignore config files |
-| `--no-progress` | Hide progress bars |
-| `--python <version>` | Specify Python version |
-| `--managed-python` | Require uv-managed Python |
-| `--no-python-downloads` | Disable auto Python downloads |
+All commands support:
+- `-q, --quiet` - Quiet output
+- `-v, --verbose` - Verbose output
+- `--color <mode>` - never|always|auto
+- `--offline` - No network
+- `--no-cache` - Disable cache
+- `--cache-dir <dir>` - Custom cache
+- `--directory <dir>` - Working directory
+- `--project <dir>` - Project directory
+- `--python <version>` - Python version
+- `--no-progress` - Hide progress
 
 ---
 
-## Common Workflows
+## Key Differences
 
-### New Project
-```bash
-uv init my-project --python 3.12
-cd my-project
-uv add requests pydantic
-uv add --dev pytest ruff mypy
-uv sync
-uv run pytest
-```
-
-### Existing Project
-```bash
-git clone repo && cd repo
-uv sync
-uv run python main.py
-```
-
-### Build & Publish
-```bash
-uv version --bump patch
-uv build
-uv publish --token $UV_PUBLISH_TOKEN
-```
-
-### Tool Installation (svg2fbf)
-```bash
-uv tool install svg2fbf              # Install
-uv tool upgrade svg2fbf              # Upgrade
-uv tool install svg2fbf@0.1.11a1     # Prerelease
-uvx svg2fbf examples/test.yaml       # Try once
-```
+| Feature | uv tool install | uv add | uv sync | uv run |
+|---------|----------------|--------|---------|--------|
+| Extras | ❌ (use `--with`) | ✅ `--extra` (for dep) | ✅ `--extra` (from project) | ✅ `--extra` |
+| Dev deps | ❌ | ✅ `--dev` | ✅ `--dev/--no-dev` | ✅ `--dev` |
+| Groups | ❌ | ✅ `--group` | ✅ `--group` | ✅ `--group` |
+| Temp packages | ✅ `--with` | ❌ | ❌ | ✅ `--with` |
+| Editable | ✅ `--editable` | ✅ `--editable` | ✅ `--no-editable` | ❌ |
+| Git source | ❌ | ✅ `--rev/--tag/--branch` | ❌ | ❌ |
 
 ---
 
-## Important Notes
+## Common Errors
 
-1. **Tool install:** Use `uv tool install` (first time) or `uv tool upgrade` (upgrade existing)
-2. **Prerelease versions:** Must specify exact version with `@version` (e.g., `@0.1.10a1`)
-3. **No `--upgrade` flag:** The command is `upgrade`, not a flag to `install`
-4. **No `--prerelease` flag:** Use exact version specification instead
-5. **`uvx` = `uv tool run`:** Shorthand for temporary execution
-6. **Lock files:** Commit `uv.lock` to version control
-7. **Version bumping:** Use `uv version --bump <type>` for semantic versioning
-8. **pip compile:** Replaces `pip-compile` from pip-tools
-9. **pip sync:** Replaces `pip-sync` from pip-tools
-
----
-
-## Environment Variables
-
+❌ **WRONG:**
 ```bash
-UV_INDEX=https://pypi.org/simple
-UV_PYTHON=3.12
-UV_NO_CACHE=1
-UV_CACHE_DIR=/custom/cache
-UV_PUBLISH_TOKEN=pypi-...
-UV_NO_PROGRESS=1
-UV_OFFLINE=1
+uv tool install svg2fbf --extra viz        # NO --extra for tools!
+uv tool install --upgrade svg2fbf          # NO --upgrade flag!
+uv tool install svg2fbf --prerelease allow # Wrong syntax!
+uv version --bump 0.2.0                    # --bump takes TYPE not value!
+```
+
+✅ **CORRECT:**
+```bash
+uv tool install svg2fbf --with viz-package  # Use --with for additional packages
+uv tool upgrade svg2fbf                     # Use upgrade command
+uv tool install svg2fbf@0.1.10a1            # Exact version for prereleases
+uv version --bump minor                     # Use semantic type
 ```
 
 ---
@@ -273,18 +365,24 @@ UV_OFFLINE=1
 |------|---------|
 | Install tool | `uv tool install pkg` |
 | Upgrade tool | `uv tool upgrade pkg` |
-| Run tool once | `uvx pkg` |
+| Tool + extras | `uv tool install pkg --with extra-pkg` |
+| Run once | `uvx pkg` |
 | New project | `uv init` |
 | Add dep | `uv add pkg` |
+| Add dev dep | `uv add --dev pkg` |
+| Add with extras | `uv add sqlalchemy --extra asyncio` |
 | Remove dep | `uv remove pkg` |
-| Sync | `uv sync` |
+| Sync (no dev) | `uv sync --no-dev` |
+| Sync with extras | `uv sync --all-extras` |
 | Lock | `uv lock` |
-| Run | `uv run script.py` |
+| Run with extras | `uv run --all-extras pytest` |
+| Run with temp pkg | `uv run --with requests script.py` |
+| Bump version | `uv version --bump patch` |
 | Build | `uv build` |
-| Publish | `uv publish` |
-| Pip install | `uv pip install pkg` |
-| Pip compile | `uv pip compile in -o out` |
+| Publish | `uv publish --token $TOKEN` |
+| Pip compile | `uv pip compile requirements.in` |
+| Pip sync | `uv pip sync requirements.txt` |
 | Create venv | `uv venv` |
 | Install Python | `uv python install 3.12` |
-| Bump version | `uv version --bump patch` |
+| Format code | `uv format` |
 | Update uv | `uv self update` |
