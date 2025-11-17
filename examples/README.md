@@ -1,5 +1,7 @@
 # FBF.SVG Examples
 
+![SVG Animation Examples](../assets/svg_animation_examples_header_onion_skin.webp)
+
 This directory contains validated FBF.SVG animation examples.
 
 ## Structure
