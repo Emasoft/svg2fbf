@@ -1293,16 +1293,16 @@ Install svg2fbf globally as a uv tool from your local development folder:
 
 ```bash
 # Install from current directory as editable tool
-uv tool install --dev .
+uv tool install --editable .
 
 # Or install from a specific local directory
-uv tool install --dev /path/to/svg2fbf
+uv tool install --editable /path/to/svg2fbf
 
 # Run from anywhere
 svg2fbf --version
 ```
 
-The `--dev` flag creates an editable installation, so changes to the code take effect immediately.
+The `--editable` flag creates an editable installation, so changes to the code take effect immediately.
 
 ### Option 3: Build and Install from Wheel (Development Build)
 
