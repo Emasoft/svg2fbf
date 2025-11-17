@@ -561,23 +561,23 @@ svg2fbf --version
 
 ```bash
 # Upgrade from PyPI (recommended)
-uv tool install --upgrade svg2fbf
+uv tool upgrade svg2fbf
 
-# Or upgrade from GitHub master branch
-uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@master --python 3.10
+# Or reinstall from GitHub master branch
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python 3.10
 ```
 
 #### Upgrade to Specific Release Channel
 
 ```bash
-# Upgrade to release candidate (rc)
-uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@review --python 3.10
+# Reinstall with release candidate (rc)
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python 3.10
 
-# Upgrade to beta
-uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.10
+# Reinstall with beta
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.10
 
-# Upgrade to alpha (bleeding edge)
-uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
+# Reinstall with alpha (bleeding edge)
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
 ```
 
 #### Force Reinstall (Clean Upgrade)
@@ -585,8 +585,8 @@ uv tool install --upgrade git+https://github.com/Emasoft/svg2fbf.git@dev --pytho
 If you encounter issues, perform a clean reinstall:
 
 ```bash
-# Method 1: Use --reinstall flag
-uv tool install --reinstall svg2fbf
+# Method 1: Use --force flag
+uv tool install svg2fbf --force
 
 # Method 2: Uninstall then install
 uv tool uninstall svg2fbf
