@@ -5,23 +5,44 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11b1] - 2025-11-18
+
+### Added
+
+- Add generic GitHub branch protection with YAML config [**BREAKING**]
+
+### Fixed
+
+- Improve ccpm/ gitignore pattern
+
+### Changed
+
+- Separate CCPM plugin from svg2fbf project
+
+### Documentation
+
+- Add GitHub branch protection guide and setup script
+
 ## [0.1.10a3] - 2025-11-17
 
 ### Fixed
 
 - Remove empty test.yml workflow causing CI failures
 
+### Other
+
+- Release alpha 0.1.10a3
+
 ### Documentation
 
-- Add UV tool management documentation and fix incorrect syntax
 - Add comprehensive UV command reference
-- Update uv reference in promotion-rules.md
-- Replace with concise UV command reference
-- Minor clarification in UV reference note
-- Fix UV command reference with command-specific options
 - Fix incorrect uv syntax in project documentation
 - Remove --force flag recommendation (can leave remnants)
 - Update GETTING_STARTED.md with correct uv installation
+
+### Miscellaneous
+
+- Update uv.lock for alpha 0.1.10a3
 
 ## [0.1.10a2] - 2025-11-17
 
@@ -467,62 +488,6 @@ These serve different purposes that don't interfere with each other.
 Use Alembic for interchange (OpenToonz ↔ Blender ↔ Maya ↔ Houdini).
 Use FBF.SVG for deploying to end users (web, mobile, games).
 - Update uv.lock after dependency resolution
-- Add CCPM as Claude Code plugin with manifest and documentation
-
-Created comprehensive Claude Code plugin structure for CCPM (Claude Code PM):
-
-Plugin Files Added:
-- plugin.json - Complete plugin manifest with metadata, commands, agents, rules
-- PLUGIN_README.md - Plugin-specific documentation and usage guide
-- PLUGIN_INSTALL.md - Detailed installation instructions for plugin version
-- Updated main README.md - Added note about plugin availability
-
-Plugin Manifest (plugin.json) Includes:
-- 45 registered slash commands (/pm:*, /context:*, /testing:*)
-- 4 specialized agents (parallel-worker, test-runner, file-analyzer, code-analyzer)
-- 11 operational rules (worktree, github, paths, agent coordination, etc.)
-- 17 utility scripts for PM operations
-- 1 git hook (bash-worktree-fix)
-- Dependency specifications (gh CLI >=2.0.0, git >=2.0.0)
-- Installation and configuration details
-
-CCPM Plugin Structure:
-- ccpm/plugin.json - Plugin manifest
-- ccpm/ccpm/ - Plugin content (.claude directory structure)
-  - agents/ - 4 specialized agents
-  - commands/ - 45 slash commands (pm, context, testing)
-  - rules/ - 11 operational guidelines
-  - scripts/ - 17 utility scripts
-  - hooks/ - Git workflow enhancements
-  - context/ - Context storage
-  - epics/ - PM workspace
-  - prds/ - PRD storage
-
-Features:
-- Spec-driven development workflow (PRD → Epic → Task → Code)
-- GitHub Issues integration for team collaboration
-- Git worktree isolation for parallel work
-- Multi-agent parallel execution
-- Context preservation across sessions
-- Full traceability from idea to production
-
-Installation:
-- Single command: curl -sSL https://automaze.io/ccpm/install | bash
-- Or manual: Copy ccpm/* to .claude/ directory
-- Then run: /pm:init
-
-Benefits:
-- 89% less context switching
-- 5-8 parallel tasks vs 1
-- 75% reduction in bug rates
-- Up to 3x faster feature delivery
-
-License: MIT
-Author: Automaze (automazeio)
-Homepage: https://github.com/automazeio/ccpm
-- Revert "Add CCPM as Claude Code plugin with manifest and documentation"
-
-This reverts commit d0672aa3858d335dd9c47e30d638091e55582067.
 - Add ccpm/ to .gitignore (private plugin)
 - Fix version detection to use importlib.metadata
 
