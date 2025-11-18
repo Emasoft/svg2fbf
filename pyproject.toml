@@ -8,9 +8,11 @@ build-backend = "hatchling.build"
 sources = ["src"]
 # Exclude large test data from wheel packages (93MB+ test sessions)
 # These are only available when cloning the repo, not in PyPI/GitHub releases
+# Also exclude ccpm/ (private plugin, separate project)
 exclude = [
     "tests/sessions/",
     "tests/**/*.zip",
+    "ccpm/",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
@@ -24,9 +26,11 @@ exclude = [
 
 [tool.hatch.build.targets.sdist]
 # Also exclude from source distributions
+# Also exclude ccpm/ (private plugin, separate project)
 exclude = [
     "tests/sessions/",
     "tests/**/*.zip",
+    "ccpm/",
 ]
 
 [project]
