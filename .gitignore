@@ -24,7 +24,8 @@ tests/pyproject.toml
 CLAUDE.md
 **/CLAUDE.md
 .claude/
-ccpm/  # Private CCPM plugin - keep local only
+/ccpm/  # Private CCPM plugin - keep local only
+ccpm/**
 
 # CCPM agent worktrees and logs (created in ~/.cache/ but list here for clarity)
 .cache/svg2fbf-worktrees/
