@@ -5,11 +5,26 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18b1] - 2026-01-30
+
+### Fixed
+
+- Correct stage promotion bump logic in release.sh
+
+### Other
+
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+
 ## [0.1.18a1] - 2026-01-30
 
 ### Added
 
 - Implement version release rules enforcement in release.sh
+
+### Other
+
+- Release alpha 0.1.18a1
 
 ### Documentation
 
@@ -19,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Enforce GitHub release before PyPI publish
 - Update uv.lock
+- Update uv.lock for alpha 0.1.18a1
 
 ## [0.1.17] - 2026-01-30
 
