@@ -1480,7 +1480,7 @@ wheels = [
 
 [[package]]
 name = "svg2fbf"
-version = "0.1.14"
+version = "0.1.18b1"
 source = { editable = "." }
 dependencies = [
     { name = "fonttools" },
