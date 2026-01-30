@@ -5,11 +5,22 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18] - 2026-01-30
+
+### Other
+
+- Merge review into master - ready for stable release
+
 ## [0.1.18rc1] - 2026-01-30
 
 ### Other
 
 - Merge testing into review - bugs fixed, ready for release candidate
+- Release rc 0.1.18rc1
+
+### Miscellaneous
+
+- Update uv.lock for rc 0.1.18rc1
 
 ## [0.1.18b1] - 2026-01-30
 
