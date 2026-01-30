@@ -2079,6 +2079,10 @@ of SVG files using SMIL animation.
     # Configuration file option
     parser.add_argument("--config", dest="config", help="⚙️  path to YAML configuration file containing metadata and options", default=None, metavar="FILE")
 
+    # Text-to-path conversion options
+    parser.add_argument("--text2path", action="store_true", dest="text2path", default=False, help="convert all text elements to paths using svg-text2path (requires: uv tool install svg2fbf[text2path])")
+    parser.add_argument("--text2path-strict", action="store_true", dest="text2path_strict", default=False, help="fail if any font is missing during text-to-path conversion")
+
     return parser
 
 
@@ -4383,6 +4387,74 @@ def maybe_gziped_file(filename, mode="rb"):
     return open(filename, mode)
 
 
+def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options) -> bytes:
+    """Convert text elements to paths using svg-text2path if --text2path flag is enabled.
+
+    Args:
+        svg_content: Raw SVG file content as bytes
+        filepath: Path to the SVG file (for logging)
+        options: Program options (checks text2path flag)
+
+    Returns:
+        Converted SVG content as bytes (or original if conversion disabled/unavailable)
+
+    Raises:
+        ImportError: If --text2path is used but svg-text2path is not installed
+        ValueError: If --text2path-strict is set and conversion fails
+    """
+    if not getattr(options, "text2path", False):
+        return svg_content
+
+    # Try to import svg-text2path (optional dependency)
+    try:
+        from svg_text2path import Text2PathConverter
+    except ImportError as e:
+        raise ImportError("svg-text2path is required for --text2path flag. Install with: uv tool install svg2fbf[text2path]") from e
+
+    # Decode bytes to string for conversion
+    try:
+        svg_string = svg_content.decode("utf-8")
+    except UnicodeDecodeError:
+        svg_string = svg_content.decode("utf-8", errors="replace")
+        add2log(f"WARNING: Non-UTF8 characters in {filepath}, some may be lost")
+
+    # Count text elements before conversion
+    import re
+
+    text_pattern = re.compile(r"<(text|tspan|textPath)[\s>]", re.IGNORECASE)
+    text_before = len(text_pattern.findall(svg_string))
+
+    basename = os.path.basename(filepath)
+
+    # Perform conversion
+    try:
+        converter = Text2PathConverter()
+        output_svg = converter.convert_string(svg_string)
+    except Exception as e:
+        if getattr(options, "text2path_strict", False):
+            raise ValueError(f"Text-to-path conversion failed for {basename}: {str(e)}")
+        else:
+            add2log(f"WARNING: Text-to-path conversion failed for {basename}: {str(e)}")
+            return svg_content  # Return original if conversion fails in non-strict mode
+
+    # Count text elements after conversion
+    text_after = len(text_pattern.findall(output_svg))
+
+    # Log results
+    if text_before > 0:
+        converted = text_before - text_after
+        ppp(f"  [text2path] {basename}: converted {converted}/{text_before} text elements")
+
+    # Verify no text elements remain (validation)
+    if text_after > 0:
+        if getattr(options, "text2path_strict", False):
+            raise ValueError(f"{text_after} text element(s) could not be converted in {basename}")
+        else:
+            add2log(f"WARNING: {text_after} text element(s) could not be converted in {basename}")
+
+    return output_svg.encode("utf-8")
+
+
 def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
     """Load and parse SVG file with error handling.
 
@@ -4406,6 +4478,14 @@ def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
                 in_string = f.read()
             except Exception as e:
                 raise OSError(f"Failed to read file {filepath}: {str(e)}") from e
+
+        # Convert text to paths if --text2path flag is enabled
+        # Why: Must convert before XML parsing since svg-text2path works on strings
+        try:
+            in_string = convert_text_to_paths_if_enabled(in_string, filepath, options)
+        except (ImportError, ValueError) as e:
+            add2log(f"ERROR: {str(e)}")
+            print_log_and_exit(1)
 
         try:
             doc = xml.dom.minidom.parseString(in_string)
@@ -10643,6 +10723,15 @@ def cli():
         cl_parser.error("Number of significant digits has to be larger than zero, see --help")
     if options.cdigits > options.digits:
         cl_parser.error("WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help")
+
+    # Validate text2path flags
+    if options.text2path:
+        try:
+            from svg_text2path import Text2PathConverter  # noqa: F401
+        except ImportError:
+            cl_parser.error("--text2path requires svg-text2path package. Install with: uv tool install svg2fbf[text2path]")
+    if options.text2path_strict and not options.text2path:
+        cl_parser.error("--text2path-strict requires --text2path flag")
 
     # Create output directory if it doesn't exist
     # Why: User convenience - don't force manual directory creation
