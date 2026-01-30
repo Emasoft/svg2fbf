@@ -165,6 +165,21 @@ This project uses Just to manage the common development tasks. Here is the list 
 |---------|-------------|
 | `just ci` | Run CI checks (lint, test-cov) |
 
+### Release Workflow
+
+| Command | Description |
+|---------|-------------|
+| `just release` | Create GitHub releases for all channels (no PyPI) |
+| `just publish` | Create GitHub releases + publish stable to PyPI |
+| `just changelog` | Generate/update CHANGELOG.md from git history |
+| `just release-tag <version>` | Manually create a release tag |
+| `just promote-to-testing` | Merge dev → testing (feature complete) |
+| `just promote-to-review` | Merge testing → review (bugs fixed) |
+| `just promote-to-stable` | Merge review → master (ready for release) |
+| `just sync-main` | Sync main branch with master |
+
+**Important:** The release script enforces strict version rules. See [Version Release Rules](#version-release-rules) below.
+
 ## Complete Development Workflow
 
 ### 1. Initial Setup
@@ -543,6 +558,52 @@ svg2fbf/
                     ├── package.json
                     └── node_modules/  # Puppeteer
 ```
+
+## Version Release Rules
+
+The release script (`scripts/release.sh`) enforces strict version progression rules to maintain a clean release history.
+
+### The Three Publishing Rules
+
+1. **Single Stage Rule**: Only ONE stage of any version can exist at a time
+   - Cannot have 0.1.2a1 and 0.1.2b1 simultaneously
+   - Versions progress: alpha → beta → rc → stable
+
+2. **Stage Progression Rule**: Each version stage must be LOWER than the previous version's stage
+   - After 0.1.2 (stable), next can be 0.1.3a1 (alpha)
+   - After 0.1.2rc1, next can only be alpha or beta of 0.1.3
+
+3. **RC Gateway Rule**: Alpha/beta of next version only allowed if previous version reached RC or stable
+   - Prevents orphaned pre-releases that never reach production
+
+### Branch-Stage Mapping
+
+| Branch   | Stage  | Publishes to |
+|----------|--------|--------------|
+| dev      | alpha  | GitHub only  |
+| testing  | beta   | GitHub only  |
+| review   | rc     | GitHub only  |
+| master   | stable | GitHub + PyPI|
+
+### Release Workflow Example
+
+```bash
+# 1. Promote through branches
+just promote-to-testing    # dev → testing (alpha → beta)
+just promote-to-review     # testing → review (beta → rc)
+just promote-to-stable     # review → master (rc → stable)
+
+# 2. Create releases
+just release               # GitHub only (all channels)
+just publish               # GitHub + PyPI (all channels)
+```
+
+### What Happens on Violation
+
+If you try to release a version that violates the rules:
+- The release script will abort with a clear error message
+- The version bump in pyproject.toml will be rolled back
+- No commits or tags will be created
 
 ## Reference
 

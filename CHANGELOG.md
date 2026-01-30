@@ -5,6 +5,46 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18a1] - 2026-01-30
+
+### Added
+
+- Implement version release rules enforcement in release.sh
+
+### Documentation
+
+- Add version release rules documentation and tests
+
+### Miscellaneous
+
+- Enforce GitHub release before PyPI publish
+- Update uv.lock
+
+## [0.1.17] - 2026-01-30
+
+### Fixed
+
+- Resolve CLI entry point import error
+- Correct CLI entry points for package installation
+
+### Other
+
+- Merge branch 'review'
+
+### Miscellaneous
+
+- Bump version to 0.1.16 for CLI entry point fix
+
+## [0.1.16] - 2026-01-30
+
+### Other
+
+- Release stable 0.1.16
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.16
+
 ## [0.1.15] - 2026-01-30
 
 ### Added
