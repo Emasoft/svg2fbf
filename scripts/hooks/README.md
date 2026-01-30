@@ -117,6 +117,22 @@ just validate-quick             # Quick validation
 The release script (`scripts/release.sh`) also runs validation before releasing:
 - Uses `--quick` mode (skips tests, assumes they passed before merge)
 - Ensures we never release broken code to PyPI
+- **Enforces version release rules** (see below)
+
+### Version Release Validation
+
+The release script validates version progression rules BEFORE committing:
+
+1. **Single Stage Rule**: Only ONE stage per version at any time
+2. **Stage Progression Rule**: Stage must be LOWER than previous version's stage
+3. **RC Gateway Rule**: Alpha/beta only if previous version at RC or stable
+
+If validation fails:
+- The release is aborted with a clear error message
+- The version bump in pyproject.toml is rolled back
+- No commits or tags are created
+
+For full details, see [CLAUDE.md](../../CLAUDE.md#version-release-rules-critical).
 
 ## Available Hook Types
 
