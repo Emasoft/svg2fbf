@@ -5,6 +5,35 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-01-30
+
+### Added
+
+- Make 'just equalize' auto-detect most up-to-date branch [**BREAKING**]
+- Improve merge conflict handling in just equalize
+- Add comprehensive edge case handling to just equalize
+- Add GitHub theme-aware logo display
+- Add text-to-path conversion with SVG spec compliance
+- Add production-ready text-to-path conversion tool
+- Convert all SVG text elements to paths
+- Convert remaining SVG text elements to paths
+- Add --text2path flag for text-to-path conversion
+- Add comprehensive pre-push validation hook
+
+### Fixed
+
+- Correct logo filename in README
+
+### Changed
+
+- Change equalize to use merge-based promotion chain
+
+### Documentation
+
+- Update equalize command documentation
+- Enforce pipeline rule - all PRs must target dev branch
+- Add branch protection rules and update PR checklist
+
 ## [0.1.14] - 2025-11-18
 
 ### Added
@@ -14,6 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Improve ccpm/ gitignore pattern
+
+### Other
+
+- Release stable 0.1.14
+
+Includes CCPM cleanup commits that were on dev branch:
+- GitHub branch protection configuration
+- CCPM plugin separation
+- Improved gitignore patterns
 
 ### Changed
 
