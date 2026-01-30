@@ -14,20 +14,46 @@ This directory solves that by:
 - Auto-installing via `scripts/install-hooks.sh`
 - Easy to restore if `.git/` is recreated
 
+## Current Hooks
+
+### pre-push
+
+**Purpose:** Ensure we never push broken or buggy code to GitHub.
+
+**Runs:** `scripts/validate.sh` which performs:
+1. **Ruff lint check** - Code must pass linting (no auto-fix)
+2. **Ruff format check** - Code must be properly formatted
+3. **Pytest** - All tests must pass
+4. **TruffleHog** - No secrets in code
+
+**Usage:**
+```bash
+git push              # Runs validation automatically
+git push --no-verify  # Skip validation (use sparingly!)
+```
+
+**If validation fails:**
+```bash
+just lint-fix    # Auto-fix lint issues
+just fmt         # Auto-fix formatting
+just test        # Run tests with details
+just validate    # Run full validation manually
+```
+
 ## Hook Management
 
 ### Pre-commit Framework Hooks
 
-Hooks managed by [pre-commit](https://pre-commit.com/) are defined in `.pre-commit-config.yaml` at project root. These are automatically installed by `scripts/install-hooks.sh`.
+Hooks managed by [pre-commit](https://pre-commit.com/) are defined in `.pre-commit-config.yaml` at project root. These run on the **pre-commit** stage:
 
-**Currently configured:**
-- `ruff` - Python linting
+- `ruff` - Python linting (with auto-fix)
 - `ruff-format` - Python formatting
-- `trufflehog` - Secret scanning
 
 ### Custom Hooks
 
-Custom hooks (not managed by pre-commit) go directly in this directory.
+Custom hooks (not managed by pre-commit) are in this directory:
+
+- `pre-push` - Comprehensive validation before pushing
 
 **To add a custom hook:**
 
@@ -72,44 +98,39 @@ This will:
 2. Copy custom hooks from `scripts/hooks/` to `.git/hooks/`
 3. Make them executable
 
+## Validation Script
+
+The shared validation script (`scripts/validate.sh`) can be run manually:
+
+```bash
+./scripts/validate.sh           # Full validation (lint, format, tests, secrets)
+./scripts/validate.sh --quick   # Quick validation (skip tests)
+./scripts/validate.sh --quiet   # Minimal output
+
+# Via justfile
+just validate                   # Full validation
+just validate-quick             # Quick validation
+```
+
+## Integration with Release Script
+
+The release script (`scripts/release.sh`) also runs validation before releasing:
+- Uses `--quick` mode (skips tests, assumes they passed before merge)
+- Ensures we never release broken code to PyPI
+
 ## Available Hook Types
 
 Git supports these hook types:
-- `pre-commit` - Before commit is created
+- `pre-commit` - Before commit is created (managed by pre-commit framework)
 - `prepare-commit-msg` - Before commit message editor opens
 - `commit-msg` - After commit message is written
 - `post-commit` - After commit is created
-- `pre-push` - Before push to remote
+- `pre-push` - Before push to remote (**our comprehensive hook**)
 - `post-checkout` - After checkout
 - `post-merge` - After merge
 - And more...
 
 See: https://git-scm.com/docs/githooks
-
-## Example Custom Hooks
-
-### Prevent pushing to main
-
-```bash
-# scripts/hooks/pre-push
-#!/usr/bin/env bash
-branch=$(git rev-parse --abbrev-ref HEAD)
-
-if [[ "$branch" == "main" || "$branch" == "master" ]]; then
-    echo "❌ Cannot push directly to $branch"
-    echo "   Create a feature branch instead"
-    exit 1
-fi
-```
-
-### Auto-format on commit
-
-```bash
-# scripts/hooks/pre-commit
-#!/usr/bin/env bash
-uv run ruff format src/ tests/
-git add -u
-```
 
 ## Bypassing Hooks
 
@@ -148,12 +169,20 @@ git push --no-verify
 
 Check the hook script for errors:
 ```bash
-bash -x .git/hooks/pre-commit
+bash -x .git/hooks/pre-push
+```
+
+### Validation too slow
+
+Use quick mode for faster feedback:
+```bash
+just validate-quick  # Skip tests
 ```
 
 ## Notes
 
-- Hooks in `scripts/hooks/` are backups/templates
+- Hooks in `scripts/hooks/` are templates stored in version control
 - Actual hooks run from `.git/hooks/`
 - Changes to hooks in `scripts/hooks/` require reinstallation
 - Pre-commit framework hooks are auto-updated via `.pre-commit-config.yaml`
+- Custom hooks override pre-commit hooks of the same type

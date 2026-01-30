@@ -697,6 +697,14 @@ check:
     @echo ""
     @echo "✅ All checks passed!"
 
+# Full validation (same as pre-push hook) - lint, format, tests, secrets
+validate:
+    @./scripts/validate.sh
+
+# Quick validation (skip tests) - lint, format, secrets only
+validate-quick:
+    @./scripts/validate.sh --quick
+
 # ============================================================================
 # Cleanup
 # ============================================================================

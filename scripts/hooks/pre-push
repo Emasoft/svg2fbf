@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Pre-push hook: Validate code quality before pushing to remote
+# This hook ensures we never push broken or buggy code to GitHub.
+#
+# Checks performed (via scripts/validate.sh):
+#   1. Ruff lint check (no auto-fix - must be clean already)
+#   2. Ruff format check (verify formatting is correct)
+#   3. Run pytest (all tests must pass)
+#   4. TruffleHog secret scanning
+#
+# To skip (use sparingly!):
+#   git push --no-verify
+#
+# To install:
+#   ./scripts/install-hooks.sh
+#   or: just install-hooks
+
+set -euo pipefail
+
+# Get project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Determine project root based on where hook is running from
+if [[ "$SCRIPT_DIR" == *".git/hooks"* ]]; then
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+else
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
+cd "$PROJECT_ROOT"
+
+# Verify we're in the right place
+if [[ ! -f "pyproject.toml" ]]; then
+    echo "❌ Error: pyproject.toml not found in $PROJECT_ROOT" >&2
+    echo "   Cannot run pre-push validation" >&2
+    exit 1
+fi
+
+# Run the shared validation script
+if [[ -x "$PROJECT_ROOT/scripts/validate.sh" ]]; then
+    exec "$PROJECT_ROOT/scripts/validate.sh"
+else
+    echo "❌ Error: scripts/validate.sh not found or not executable" >&2
+    echo "   Falling back to inline validation..." >&2
+
+    # Fallback: run validation inline if script is missing
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  PRE-PUSH VALIDATION"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    FAILED=0
+
+    echo "[1/4] 🔍 Lint check..."
+    uv run ruff check src/ tests/ --quiet 2>/dev/null || FAILED=1
+
+    echo "[2/4] ✨ Format check..."
+    uv run ruff format --check src/ tests/ 2>/dev/null || FAILED=1
+
+    echo "[3/4] 🧪 Tests..."
+    uv run pytest -q --tb=no 2>/dev/null || FAILED=1
+
+    echo "[4/4] 🔐 Secret scan..."
+    if command -v trufflehog &> /dev/null; then
+        if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            trufflehog git file://. --since-commit origin/main --branch HEAD --results=verified,unknown --fail --exclude-paths .trufflehog-exclude-paths.txt 2>/dev/null || FAILED=1
+        else
+            trufflehog filesystem --results=verified,unknown --fail --exclude-paths .trufflehog-exclude-paths.txt . 2>/dev/null || FAILED=1
+        fi
+    else
+        echo "⚠ trufflehog not installed (skipping)"
+    fi
+
+    if [[ $FAILED -eq 1 ]]; then
+        echo ""
+        echo "❌ VALIDATION FAILED"
+        echo "Fix issues and try again, or use: git push --no-verify"
+        exit 1
+    else
+        echo ""
+        echo "✅ VALIDATION PASSED"
+        exit 0
+    fi
+fi

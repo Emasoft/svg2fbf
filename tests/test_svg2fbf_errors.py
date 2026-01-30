@@ -13,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+# Path to the svg2fbf.py script
+SVG2FBF_SCRIPT = Path(__file__).parent.parent / "src" / "svg2fbf.py"
+
 
 class TestMissingViewBoxError:
     """Test svg2fbf detects and reports missing viewBox attribute"""
@@ -48,8 +51,7 @@ class TestMissingViewBoxError:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "src.svg2fbf",
+                str(SVG2FBF_SCRIPT),
                 f"--input_folder={tmp_path}",
                 f"--output_path={output_dir}",
                 "--filename=test.fbf.svg",
@@ -80,8 +82,7 @@ class TestMissingViewBoxError:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "src.svg2fbf",
+                str(SVG2FBF_SCRIPT),
                 f"--input_folder={tmp_path}",
                 f"--output_path={output_dir}",
                 "--filename=test.fbf.svg",
@@ -126,8 +127,7 @@ class TestMissingViewBoxError:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "src.svg2fbf",
+                str(SVG2FBF_SCRIPT),
                 f"--input_folder={tmp_path}",
                 f"--output_path={output_dir}",
                 "--filename=test.fbf.svg",
@@ -163,8 +163,7 @@ class TestMissingViewBoxError:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "src.svg2fbf",
+                str(SVG2FBF_SCRIPT),
                 f"--input_folder={tmp_path}",
                 f"--output_path={output_dir}",
                 "--filename=test.fbf.svg",
@@ -194,8 +193,7 @@ class TestViewBoxErrorGuidance:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "src.svg2fbf",
+                str(SVG2FBF_SCRIPT),
                 f"--input_folder={tmp_path}",
                 f"--output_path={output_dir}",
                 "--filename=test.fbf.svg",
@@ -222,8 +220,7 @@ class TestViewBoxErrorGuidance:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "src.svg2fbf",
+                str(SVG2FBF_SCRIPT),
                 f"--input_folder={tmp_path}",
                 f"--output_path={output_dir}",
                 "--filename=test.fbf.svg",

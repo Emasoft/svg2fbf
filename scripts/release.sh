@@ -679,7 +679,22 @@ release_channel() {
   # Abort if any pending changes are found to keep release commits clean and focused.
   ensure_clean
 
-  # Call uv version to query the project’s current version string.
+  # Run code quality validation to ensure we never release broken or buggy code.
+  # This uses the same validation as pre-push hooks for consistency.
+  # Uses --quick mode (skip tests) since we assume tests passed before merging to this branch.
+  echo "Running code quality validation..."
+  if [[ -x "$PROJECT_ROOT/scripts/validate.sh" ]]; then
+    if ! "$PROJECT_ROOT/scripts/validate.sh" --quick --quiet; then
+      echo "Error: Code quality validation failed for branch '$branch'." >&2
+      echo "Fix issues before releasing. Run: ./scripts/validate.sh" >&2
+      exit 1
+    fi
+    echo "✓ Code quality validation passed"
+  else
+    echo "Warning: scripts/validate.sh not found, skipping validation" >&2
+  fi
+
+  # Call uv version to query the project's current version string.
   # Capture the full output, which typically includes both project name and version.
   # Prepare to parse the version number from this combined string.
   local version_line
