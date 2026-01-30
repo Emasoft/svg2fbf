@@ -16,8 +16,10 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/svg2fbf.py" = "svg2fbf.py"
-"src/svg_viewbox_repair.py" = "svg_viewbox_repair.py"
+# Main CLI scripts placed inside their packages to avoid module name conflicts
+"src/svg2fbf.py" = "svg2fbf/main.py"
+"src/svg_viewbox_repair.py" = "svg_viewbox_repair/main.py"
+"src/svg_viewbox_repair/__init__.py" = "svg_viewbox_repair/__init__.py"
 "src/auto_install_deps.py" = "auto_install_deps.py"
 
 [tool.hatch.build.targets.wheel.shared-data]
@@ -97,8 +99,8 @@ Issues = "https://github.com/Emasoft/svg2fbf/issues"
 Changelog = "https://github.com/Emasoft/svg2fbf/blob/main/CHANGELOG.md"
 
 [project.scripts]
-svg2fbf = "svg2fbf:cli"
-svg-repair-viewbox = "svg_viewbox_repair:cli"
+svg2fbf = "svg2fbf.main:cli"
+svg-repair-viewbox = "svg_viewbox_repair.main:cli"
 
 [dependency-groups]
 dev = [
