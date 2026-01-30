@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Correct logo filename in README
 
+### Other
+
+- Release stable 0.1.15
+
 ### Changed
 
 - Change equalize to use merge-based promotion chain
@@ -33,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update equalize command documentation
 - Enforce pipeline rule - all PRs must target dev branch
 - Add branch protection rules and update PR checklist
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.15
 
 ## [0.1.14] - 2025-11-18
 
