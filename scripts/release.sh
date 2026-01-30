@@ -830,6 +830,25 @@ release_channel() {
     fi
   fi
 
+  # Print the GitHub release URL for verification
+  local release_url
+  release_url="$(gh release view "$tag" --json url -q '.url' 2>/dev/null || echo "")"
+  if [[ -n "$release_url" ]]; then
+    echo "$release_url"
+  fi
+
+  # CRITICAL: Verify GitHub release was created successfully BEFORE proceeding to PyPI
+  # This ensures we never publish to PyPI without a corresponding GitHub release.
+  # The release order MUST be: tag → GitHub release → PyPI publish
+  echo "Verifying GitHub release exists before PyPI publish..."
+  if ! gh release view "$tag" >/dev/null 2>&1; then
+    echo "❌ CRITICAL ERROR: GitHub release '$tag' was not created!" >&2
+    echo "❌ Cannot proceed to PyPI publish without a GitHub release." >&2
+    echo "❌ This is a safety check to ensure release order: tag → GitHub → PyPI" >&2
+    exit 1
+  fi
+  echo "✓ GitHub release '$tag' verified"
+
   # Decide whether to publish this release to PyPI based on the channel type and no_pypi flag.
   # Restrict PyPI uploading to stable releases and skip it for alpha/beta/rc.
   # Also skip PyPI if the --no-pypi flag was passed, even for stable releases.
