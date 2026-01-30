@@ -10,6 +10,8 @@ These tests verify the three publishing rules:
 import re
 from pathlib import Path
 
+import pytest
+
 
 # Path to release.sh script
 RELEASE_SCRIPT = Path(__file__).parent.parent / "scripts" / "release.sh"
@@ -238,8 +240,11 @@ class TestVersionRulesDocumentation:
     """Test that version rules are documented"""
 
     def test_claude_md_has_version_rules(self) -> None:
-        """Verify CLAUDE.md documents the version release rules"""
+        """Verify CLAUDE.md documents the version release rules (skipped on CI - file is gitignored)"""
         claude_md = Path(__file__).parent.parent / "CLAUDE.md"
+        if not claude_md.exists():
+            pytest.skip("CLAUDE.md not found (gitignored, only present in local dev)")
+
         content = claude_md.read_text()
 
         required_sections = [
