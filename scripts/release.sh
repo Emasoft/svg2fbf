@@ -478,6 +478,234 @@ if [[ ! -f pyproject.toml ]]; then
   exit 1
 fi
 
+# =============================================================================
+# VERSION RELEASE RULES ENFORCEMENT
+# =============================================================================
+# These functions enforce the three publishing rules:
+# 1. Single Stage Rule: Only ONE stage per version at any time
+# 2. Stage Progression Rule: Stage must be LOWER than previous version's stage
+# 3. RC Gateway Rule: Alpha/beta only if previous version at RC or stable
+# =============================================================================
+
+# Extract the base version (without pre-release suffix) from a full version string
+# Example: "1.2.3a1" -> "1.2.3", "1.2.3rc2" -> "1.2.3", "1.2.3" -> "1.2.3"
+get_base_version() {
+  local version="$1"
+  # Remove alpha/beta/rc suffixes
+  echo "$version" | sed -E 's/(a|b|rc)[0-9]+$//'
+}
+
+# Get the stage of a version: "alpha", "beta", "rc", or "stable"
+get_version_stage() {
+  local version="$1"
+  if [[ "$version" == *a[0-9]* ]]; then
+    echo "alpha"
+  elif [[ "$version" == *b[0-9]* ]]; then
+    echo "beta"
+  elif [[ "$version" == *rc[0-9]* ]]; then
+    echo "rc"
+  else
+    echo "stable"
+  fi
+}
+
+# Get numeric stage value for comparison (higher = more stable)
+# alpha=1, beta=2, rc=3, stable=4
+get_stage_value() {
+  local stage="$1"
+  case "$stage" in
+    alpha) echo 1 ;;
+    beta)  echo 2 ;;
+    rc)    echo 3 ;;
+    stable) echo 4 ;;
+    *) echo 0 ;;
+  esac
+}
+
+# Compare two versions and return which is greater
+# Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+compare_base_versions() {
+  local v1="$1"
+  local v2="$2"
+
+  # Use sort -V to compare versions
+  local sorted
+  sorted=$(printf '%s\n%s' "$v1" "$v2" | sort -V | head -n1)
+
+  if [[ "$v1" == "$v2" ]]; then
+    echo 0
+  elif [[ "$sorted" == "$v1" ]]; then
+    echo -1
+  else
+    echo 1
+  fi
+}
+
+# Get the latest stable version from git tags
+get_latest_stable_version() {
+  # Find tags that match vX.Y.Z (no pre-release suffix)
+  git tag -l 'v*' 2>/dev/null | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | \
+    sed 's/^v//' | sort -V | tail -n1
+}
+
+# Get all published versions for a specific base version
+get_published_stages_for_version() {
+  local base_version="$1"
+  local stages=()
+
+  # Check for each stage
+  if git tag -l "v${base_version}a*" 2>/dev/null | grep -q .; then
+    stages+=("alpha")
+  fi
+  if git tag -l "v${base_version}b*" 2>/dev/null | grep -q .; then
+    stages+=("beta")
+  fi
+  if git tag -l "v${base_version}rc*" 2>/dev/null | grep -q .; then
+    stages+=("rc")
+  fi
+  if git tag -l "v${base_version}" 2>/dev/null | grep -q .; then
+    stages+=("stable")
+  fi
+
+  echo "${stages[*]}"
+}
+
+# Validate that releasing a new version follows the three publishing rules
+# Arguments: new_version (e.g., "1.2.3a1" or "1.2.3")
+# Returns: 0 if valid, 1 if invalid (with error message)
+validate_version_release() {
+  local new_version="$1"
+  local new_base
+  local new_stage
+  local new_stage_value
+
+  new_base=$(get_base_version "$new_version")
+  new_stage=$(get_version_stage "$new_version")
+  new_stage_value=$(get_stage_value "$new_stage")
+
+  echo "Validating release: v${new_version} (base: ${new_base}, stage: ${new_stage})"
+
+  # Rule 1: Single Stage Rule - check if another stage of same base version exists
+  local existing_stages
+  existing_stages=$(get_published_stages_for_version "$new_base")
+
+  if [[ -n "$existing_stages" ]]; then
+    for existing_stage in $existing_stages; do
+      if [[ "$existing_stage" != "$new_stage" ]]; then
+        local existing_stage_value
+        existing_stage_value=$(get_stage_value "$existing_stage")
+
+        # Allow promotion (new stage > existing stage)
+        if [[ $new_stage_value -gt $existing_stage_value ]]; then
+          echo "  ✓ Promoting ${new_base} from ${existing_stage} to ${new_stage}"
+        else
+          echo "  ❌ RULE 1 VIOLATION: Cannot release ${new_stage} when ${existing_stage} exists for v${new_base}" >&2
+          echo "     A version can only exist in ONE stage at a time." >&2
+          echo "     Either promote ${existing_stage} to ${new_stage}, or archive the ${existing_stage} release." >&2
+          return 1
+        fi
+      fi
+    done
+  fi
+
+  # Rule 2 & 3: Check relationship with previous version
+  local latest_stable
+  latest_stable=$(get_latest_stable_version)
+
+  if [[ -n "$latest_stable" ]]; then
+    local cmp
+    cmp=$(compare_base_versions "$new_base" "$latest_stable")
+
+    if [[ $cmp -lt 0 ]]; then
+      echo "  ❌ RULE VIOLATION: Cannot release v${new_version} - it's older than current stable v${latest_stable}" >&2
+      return 1
+    fi
+
+    # If releasing a version greater than stable, check the RC gateway rule
+    if [[ $cmp -gt 0 && "$new_stage" != "stable" ]]; then
+      # Find the version between stable and this one
+      # For simplicity, we check if there's an RC for the immediate previous version
+      local prev_base
+      # Increment the patch of stable to get what should be the intermediate version
+      local stable_major stable_minor stable_patch
+      IFS='.' read -r stable_major stable_minor stable_patch <<< "$latest_stable"
+
+      # Check if new_base is more than one patch ahead
+      local new_major new_minor new_patch
+      IFS='.' read -r new_major new_minor new_patch <<< "$new_base"
+
+      if [[ "$new_major" == "$stable_major" && "$new_minor" == "$stable_minor" ]]; then
+        local patch_diff=$((new_patch - stable_patch))
+        if [[ $patch_diff -gt 1 ]]; then
+          # There should be an intermediate version at RC or stable
+          local intermediate_patch=$((stable_patch + 1))
+          local intermediate_base="${stable_major}.${stable_minor}.${intermediate_patch}"
+          local intermediate_stages
+          intermediate_stages=$(get_published_stages_for_version "$intermediate_base")
+
+          local has_rc_or_stable=false
+          for istage in $intermediate_stages; do
+            if [[ "$istage" == "rc" || "$istage" == "stable" ]]; then
+              has_rc_or_stable=true
+              break
+            fi
+          done
+
+          if [[ "$has_rc_or_stable" != "true" ]]; then
+            echo "  ❌ RULE 3 VIOLATION (RC Gateway): Cannot release v${new_version}" >&2
+            echo "     Version v${intermediate_base} must reach RC or stable first." >&2
+            echo "     Alpha/beta of next version requires previous version at RC or stable." >&2
+            return 1
+          fi
+        fi
+      fi
+    fi
+  fi
+
+  echo "  ✓ Version release validation passed"
+  return 0
+}
+
+# Archive (mark as pre-release) previous stage releases when promoting
+archive_previous_stages() {
+  local new_version="$1"
+  local new_base
+  local new_stage
+
+  new_base=$(get_base_version "$new_version")
+  new_stage=$(get_version_stage "$new_version")
+
+  echo "Checking for previous stages to archive for v${new_base}..."
+
+  # Find and archive previous stages
+  local stages_to_archive=()
+  case "$new_stage" in
+    beta)
+      stages_to_archive=("a")
+      ;;
+    rc)
+      stages_to_archive=("a" "b")
+      ;;
+    stable)
+      stages_to_archive=("a" "b" "rc")
+      ;;
+  esac
+
+  for suffix in "${stages_to_archive[@]}"; do
+    local pattern="v${new_base}${suffix}*"
+    local old_tags
+    old_tags=$(git tag -l "$pattern" 2>/dev/null)
+
+    for old_tag in $old_tags; do
+      if gh release view "$old_tag" >/dev/null 2>&1; then
+        echo "  Archiving: $old_tag (marking as pre-release)"
+        # Mark as pre-release to indicate it's superseded
+        gh release edit "$old_tag" --prerelease --notes "⚠️ SUPERSEDED: This release has been superseded by v${new_version}. Use the newer version instead." 2>/dev/null || true
+      fi
+    done
+  done
+}
+
 # Define the ensure_clean function that verifies a clean git working tree.
 # Check for both unstaged changes and staged but uncommitted changes.
 # Exit with an error if any such changes are present, enforcing clean releases.
@@ -539,40 +767,32 @@ compute_bump_args() {
       fi
       ;;
     # Handle beta channel bumps for beta pre-release versions.
-    # Mirror the alpha behavior but operate on beta suffixes such as "b1".
-    # Decide between bumping beta alone or bumping patch then beta.
+    # Promote from alpha to beta without bumping patch.
+    # Only bump patch when starting from stable.
     beta)
-      # Test whether the current version includes a beta suffix that looks like "bN".
-      # Use a glob pattern to detect "b" followed by digits in the version string.
-      # Use this detection to choose the correct bump strategy for beta.
       if [[ "$current_version" == *b[0-9]* ]]; then
-        # Append a directive to bump only the beta pre-release component of the version.
-        # Keep the underlying major.minor.patch numbers identical while incrementing beta.
-        # Expect uv to turn "1.2.3b1" into "1.2.3b2" as a result.
+        # Already beta: bump beta counter only (1.2.3b1 → 1.2.3b2)
+        bump+=(--bump beta)
+      elif [[ "$current_version" == *a[0-9]* ]]; then
+        # Promoting from alpha: bump to beta, keep base version (1.2.3a1 → 1.2.3b1)
         bump+=(--bump beta)
       else
-        # Append a patch bump followed by a beta bump to start a new beta sequence.
-        # Apply this when the current version is not already a beta pre-release.
-        # Expect uv to transform "1.2.3" into "1.2.4b1" for example.
+        # Starting from stable: bump patch then beta (1.2.3 → 1.2.4b1)
         bump+=(--bump patch --bump beta)
       fi
       ;;
     # Handle rc channel bumps for release candidate versions.
-    # Apply similar rules as alpha and beta but look for "rcN" suffixes.
-    # Choose whether to bump rc alone or bump patch plus rc.
+    # Promote from alpha/beta to rc without bumping patch.
+    # Only bump patch when starting from stable.
     rc)
-      # Detect whether the current version has a release candidate suffix.
-      # Use a glob pattern that picks up "rc" followed by digits anywhere in the string.
-      # Use this information to select between bumping rc or patch+rc.
       if [[ "$current_version" == *rc[0-9]* ]]; then
-        # Add a bump directive to increment only the rc pre-release component.
-        # Leave the underlying base version unchanged while stepping rc forward.
-        # Expect uv to convert "1.2.3rc1" into "1.2.3rc2" under this directive.
+        # Already rc: bump rc counter only (1.2.3rc1 → 1.2.3rc2)
+        bump+=(--bump rc)
+      elif [[ "$current_version" == *a[0-9]* || "$current_version" == *b[0-9]* ]]; then
+        # Promoting from alpha/beta: bump to rc, keep base version (1.2.3a1 → 1.2.3rc1)
         bump+=(--bump rc)
       else
-        # Add combined bump directives to increment patch and then rc.
-        # Use this when transitioning from a stable version into a new rc cycle.
-        # Expect uv to change "1.2.3" into "1.2.4rc1" under these conditions.
+        # Starting from stable: bump patch then rc (1.2.3 → 1.2.4rc1)
         bump+=(--bump patch --bump rc)
       fi
       ;;
@@ -744,6 +964,23 @@ release_channel() {
   # Help users confirm that the bump and tag naming are consistent with expectations.
   echo "Bumped version: $current_version → $new_version (tag: $tag)"
 
+  # CRITICAL: Validate version release against the three publishing rules BEFORE committing
+  # Rule 1: Single Stage Rule - only ONE stage per version at any time
+  # Rule 2: Stage Progression Rule - stage must be LOWER than previous version's stage
+  # Rule 3: RC Gateway Rule - alpha/beta only if previous version at RC or stable
+  echo ""
+  echo "Validating version release rules..."
+  if ! validate_version_release "$new_version"; then
+    echo "" >&2
+    echo "❌ VERSION RELEASE VALIDATION FAILED" >&2
+    echo "The new version ${new_version} violates one or more publishing rules." >&2
+    echo "" >&2
+    echo "Rolling back version bump in pyproject.toml..." >&2
+    git checkout -- pyproject.toml
+    exit 1
+  fi
+  echo ""
+
   # Run git-cliff-based changelog and release notes generation for the new version.
   # Call generate_changelog_and_notes to update CHANGELOG.md and create a notes file.
   # Capture the path to the notes file so GitHub release creation can use it.
@@ -848,6 +1085,11 @@ release_channel() {
     exit 1
   fi
   echo "✓ GitHub release '$tag' verified"
+
+  # Archive previous stages for this version (mark them as superseded)
+  # This ensures old alpha/beta/rc releases are clearly marked when promoting
+  # For example, when releasing 1.2.3 stable, mark 1.2.3a1, 1.2.3b1, 1.2.3rc1 as superseded
+  archive_previous_stages "$new_version"
 
   # Decide whether to publish this release to PyPI based on the channel type and no_pypi flag.
   # Restrict PyPI uploading to stable releases and skip it for alpha/beta/rc.

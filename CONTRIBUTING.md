@@ -258,6 +258,42 @@ Before submitting a PR, verify:
 - [ ] `.gitignore` properly configured
 - [ ] Environment variables used for configuration
 
+## Version Release Rules
+
+The project enforces strict version progression rules to maintain a clean release history. **A version can only exist in ONE stage at any time.**
+
+### Branch-Stage Mapping
+
+| Branch   | Stage  | Publishes to |
+|----------|--------|--------------|
+| dev      | alpha  | GitHub only  |
+| testing  | beta   | GitHub only  |
+| review   | rc     | GitHub only  |
+| master   | stable | GitHub + PyPI|
+
+### Progression Rules
+
+1. **Single Stage Rule**: Only ONE stage per version (no 0.1.2a AND 0.1.2b)
+2. **Stage Progression Rule**: Stage must be LOWER than previous version's stage
+3. **RC Gateway Rule**: Alpha/beta of next version only if previous reached RC or stable
+
+For detailed rules and examples, see **[CLAUDE.md](CLAUDE.md#version-release-rules-critical)**.
+
+### Release Workflow
+
+```bash
+# Promote through branches
+just promote-to-testing    # dev → testing
+just promote-to-review     # testing → review
+just promote-to-stable     # review → master
+
+# Create releases
+just release               # GitHub only (all channels)
+just publish               # GitHub + PyPI (stable to PyPI)
+```
+
+---
+
 ## Submitting Changes
 
 ### Pull Request Process
