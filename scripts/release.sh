@@ -767,40 +767,32 @@ compute_bump_args() {
       fi
       ;;
     # Handle beta channel bumps for beta pre-release versions.
-    # Mirror the alpha behavior but operate on beta suffixes such as "b1".
-    # Decide between bumping beta alone or bumping patch then beta.
+    # Promote from alpha to beta without bumping patch.
+    # Only bump patch when starting from stable.
     beta)
-      # Test whether the current version includes a beta suffix that looks like "bN".
-      # Use a glob pattern to detect "b" followed by digits in the version string.
-      # Use this detection to choose the correct bump strategy for beta.
       if [[ "$current_version" == *b[0-9]* ]]; then
-        # Append a directive to bump only the beta pre-release component of the version.
-        # Keep the underlying major.minor.patch numbers identical while incrementing beta.
-        # Expect uv to turn "1.2.3b1" into "1.2.3b2" as a result.
+        # Already beta: bump beta counter only (1.2.3b1 → 1.2.3b2)
+        bump+=(--bump beta)
+      elif [[ "$current_version" == *a[0-9]* ]]; then
+        # Promoting from alpha: bump to beta, keep base version (1.2.3a1 → 1.2.3b1)
         bump+=(--bump beta)
       else
-        # Append a patch bump followed by a beta bump to start a new beta sequence.
-        # Apply this when the current version is not already a beta pre-release.
-        # Expect uv to transform "1.2.3" into "1.2.4b1" for example.
+        # Starting from stable: bump patch then beta (1.2.3 → 1.2.4b1)
         bump+=(--bump patch --bump beta)
       fi
       ;;
     # Handle rc channel bumps for release candidate versions.
-    # Apply similar rules as alpha and beta but look for "rcN" suffixes.
-    # Choose whether to bump rc alone or bump patch plus rc.
+    # Promote from alpha/beta to rc without bumping patch.
+    # Only bump patch when starting from stable.
     rc)
-      # Detect whether the current version has a release candidate suffix.
-      # Use a glob pattern that picks up "rc" followed by digits anywhere in the string.
-      # Use this information to select between bumping rc or patch+rc.
       if [[ "$current_version" == *rc[0-9]* ]]; then
-        # Add a bump directive to increment only the rc pre-release component.
-        # Leave the underlying base version unchanged while stepping rc forward.
-        # Expect uv to convert "1.2.3rc1" into "1.2.3rc2" under this directive.
+        # Already rc: bump rc counter only (1.2.3rc1 → 1.2.3rc2)
+        bump+=(--bump rc)
+      elif [[ "$current_version" == *a[0-9]* || "$current_version" == *b[0-9]* ]]; then
+        # Promoting from alpha/beta: bump to rc, keep base version (1.2.3a1 → 1.2.3rc1)
         bump+=(--bump rc)
       else
-        # Add combined bump directives to increment patch and then rc.
-        # Use this when transitioning from a stable version into a new rc cycle.
-        # Expect uv to change "1.2.3" into "1.2.4rc1" under these conditions.
+        # Starting from stable: bump patch then rc (1.2.3 → 1.2.4rc1)
         bump+=(--bump patch --bump rc)
       fi
       ;;
