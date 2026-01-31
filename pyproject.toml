@@ -85,7 +85,7 @@ dependencies = [
 
 [project.optional-dependencies]
 text2path = [
-    "svg-text2path>=0.4.3; python_version >= '3.11'",
+    "svg-text2path>=0.5.0; python_version >= '3.11'",
 ]
 
 [project.license]
