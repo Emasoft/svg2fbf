@@ -48,6 +48,7 @@ For contribution guidelines, pull request process, and code of conduct, see [CON
   - [Formatting and Linting](#formatting-and-linting)
   - [Type Checking](#type-checking)
   - [Pre-commit Checks](#pre-commit-checks)
+  - [Pre-push Validation](#pre-push-validation)
 - [Version Management](#version-management)
   - [Standard Version Bumps](#standard-version-bumps)
   - [Pre-release Versions](#pre-release-versions)
@@ -1693,6 +1694,33 @@ uv run mypy svg2fbf.py
 
 # Run tests
 uv run pytest tests/
+```
+
+### Pre-push Validation
+
+The pre-push hook runs `scripts/validate.sh` which performs **5 checks**:
+
+1. **Lint check** (ruff) - Code quality
+2. **Format check** (ruff format) - Code style
+3. **Tests** (pytest) - Unit tests
+4. **Secret scan** (trufflehog) - Prevents secret leaks
+5. **Action SHA validation** - Verifies pinned GitHub Action SHAs exist
+
+Run manually:
+
+```bash
+# Full validation (all 5 checks)
+./scripts/validate.sh
+# Or:
+just validate
+
+# Quick mode (skip tests)
+./scripts/validate.sh --quick
+
+# Validate action SHAs only
+python scripts/validate_action_shas.py
+# Or:
+just validate-action-shas
 ```
 
 ## Version Management
