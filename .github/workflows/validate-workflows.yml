@@ -1,0 +1,80 @@
+name: Validate Workflows
+
+# Runs when workflow files are modified to catch issues early
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  push:
+    branches: [dev]  # Only on dev since that's where workflow changes happen first
+    paths:
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Workflow Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Validate YAML syntax
+        run: |
+          echo "🔍 Validating YAML syntax..."
+          for file in .github/workflows/*.yml .github/workflows/*.yaml; do
+            if [[ -f "$file" ]]; then
+              echo "  Checking: $file"
+              python3 -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
+            fi
+          done
+          echo "✅ All workflow YAML files are valid"
+
+      - name: Check for common issues
+        run: |
+          echo "🔍 Checking for common workflow issues..."
+
+          # Check all workflows have timeouts
+          for file in .github/workflows/*.yml; do
+            if [[ -f "$file" ]] && ! grep -q "timeout-minutes:" "$file"; then
+              echo "⚠️  Warning: $file may be missing timeout-minutes"
+            fi
+          done
+
+          # Check for unpinned actions (using @vX instead of @sha)
+          if grep -rE 'uses:\s+[^@]+@v[0-9]' .github/workflows/*.yml 2>/dev/null; then
+            echo "⚠️  Warning: Found actions using version tags instead of SHA pins"
+            echo "    Consider pinning to commit SHAs for security"
+          fi
+
+          echo "✅ Common issues check complete"
+
+      - name: Setup GitHub CLI
+        run: gh --version  # Already installed on GitHub runners
+
+      - name: Validate Action SHAs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🔍 Validating pinned action SHAs..."
+
+          # Extract and validate each pinned action
+          grep -rohE 'uses:\s*([^@\s]+)@([a-f0-9]{7,40})' .github/workflows/*.yml | while read -r line; do
+            repo=$(echo "$line" | sed -E 's/uses:\s*([^@]+)@.*/\1/')
+            sha=$(echo "$line" | sed -E 's/.*@([a-f0-9]+)/\1/')
+
+            echo "  Checking $repo@${sha:0:12}..."
+            if ! gh api "repos/$repo/git/commits/$sha" --silent 2>/dev/null; then
+              echo "❌ INVALID: $repo@$sha does not exist!"
+              exit 1
+            fi
+          done
+
+          echo "✅ All pinned action SHAs are valid"
