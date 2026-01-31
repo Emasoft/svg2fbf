@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0  # Full history for TruffleHog
 
       - name: Run TruffleHog scan
-        uses: trufflesecurity/trufflehog@a42d72ef6e036f11894cdae57460f64a65b6a495  # v3.88.26
+        uses: trufflesecurity/trufflehog@a450544f0b7c12e99bd78b4f02fe67d5c5e56711  # main
         with:
           path: ./
           # Scan full repository history for verified+unknown secrets
