@@ -26,6 +26,11 @@ This document specifies contribution guidelines for the **svg2fbf tool and relat
   - [Allowed Public Information](#allowed-public-information)
   - [Reporting Security Vulnerabilities](#reporting-security-vulnerabilities)
   - [Security Checklist for Contributors](#security-checklist-for-contributors)
+- [CI/CD Pipeline](#cicd-pipeline)
+  - [Automated Dependency Updates](#automated-dependency-updates)
+  - [GitHub Actions Security](#github-actions-security)
+  - [Workflow Validation](#workflow-validation)
+  - [CI Efficiency](#ci-efficiency)
 - [Submitting Changes](#submitting-changes)
   - [Pull Request Process](#pull-request-process)
   - [Pull Request Guidelines](#pull-request-guidelines)
@@ -178,6 +183,13 @@ Pre-commit hooks will automatically:
 - ✅ Check YAML, JSON, and TOML syntax
 - ✅ Prevent commits to protected branches
 
+Pre-push hooks run 5 validation checks via `scripts/validate.sh`:
+- ✅ Lint check (ruff)
+- ✅ Format check (ruff format)
+- ✅ Tests (pytest)
+- ✅ Secret scan (trufflehog)
+- ✅ GitHub Action SHA validation
+
 ### Never Commit Secrets
 
 **CRITICAL**: Never commit sensitive information:
@@ -252,6 +264,47 @@ Before submitting a PR, verify:
 - [ ] No large files or binaries committed
 - [ ] `.gitignore` properly configured
 - [ ] Environment variables used for configuration
+
+## CI/CD Pipeline
+
+### Automated Dependency Updates
+
+This project uses **Dependabot** for automated dependency updates:
+- Python packages (pip): Weekly on Mondays
+- GitHub Actions: Weekly, pinned to commit SHAs
+- npm packages (tests/): Weekly for Puppeteer
+
+Dependabot PRs are auto-created and require passing CI before merge.
+
+### GitHub Actions Security
+
+All GitHub Actions are **pinned to commit SHAs** (not version tags) for supply chain security:
+
+```yaml
+# ✅ Correct - pinned to SHA
+uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+# ❌ Avoid - version tag can be moved
+uses: actions/checkout@v4
+```
+
+Validate all pinned SHAs with:
+```bash
+python scripts/validate_action_shas.py
+# Or:
+just validate-action-shas
+```
+
+### Workflow Validation
+
+The `validate-workflows.yml` workflow runs on PRs that modify `.github/workflows/`:
+- Validates YAML syntax
+- Checks for common issues (missing timeouts, unpinned actions)
+- Verifies all pinned action SHAs exist via GitHub API
+
+### CI Efficiency
+
+All workflows have **concurrency controls** to cancel redundant runs, and **path filters** to skip CI on docs-only changes.
 
 ## Version Release Rules
 
