@@ -7,6 +7,9 @@ on:
     branches: [main, review, master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.10"
 
@@ -15,14 +18,15 @@ jobs:
   security-scan:
     name: Security Scan (TruffleHog)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0  # Full history for TruffleHog
 
       - name: Run TruffleHog scan
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@a42d72ef6e036f11894cdae57460f64a65b6a495  # v3.88.26
         with:
           path: ./
           # Scan full repository history for verified+unknown secrets
@@ -35,12 +39,13 @@ jobs:
   lint:
     name: Lint and Format Check
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -65,6 +70,7 @@ jobs:
   test:
     name: Test Suite
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -73,7 +79,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -81,7 +87,7 @@ jobs:
           node-version: '20'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -101,7 +107,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
           name: test-results-${{ matrix.os }}-py${{ matrix.python-version }}
           path: tests/results/
@@ -110,13 +116,14 @@ jobs:
   build:
     name: Build Package
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [security-scan, lint, test]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -131,7 +138,7 @@ jobs:
         run: uv run twine check dist/*
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
           name: dist-packages
           path: dist/
@@ -141,9 +148,10 @@ jobs:
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -151,7 +159,7 @@ jobs:
           node-version: '20'
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
 
       - name: Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
@@ -174,7 +182,7 @@ jobs:
           verbose: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
           name: coverage-html
           path: htmlcov/
