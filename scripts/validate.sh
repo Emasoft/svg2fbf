@@ -210,15 +210,53 @@ run_secret_scan() {
     fi
 }
 
+run_action_sha_validation() {
+    ((CHECKS_RUN++))
+    log_step "$CHECKS_RUN" "$TOTAL_CHECKS" "🔗" "Validating GitHub Action SHAs..."
+
+    # Only run if workflow files exist and gh CLI is available
+    if [[ ! -d ".github/workflows" ]]; then
+        log_warn "No workflow files found (skipping)"
+        return 0
+    fi
+
+    if ! command -v gh &> /dev/null; then
+        log_warn "gh CLI not installed (skipping)"
+        echo "      Install with: brew install gh"
+        return 0
+    fi
+
+    # Check if there are any pinned actions
+    if ! grep -qr '@[a-f0-9]\{7,40\}' .github/workflows/*.yml 2>/dev/null; then
+        log_pass "No pinned actions found (nothing to validate)"
+        return 0
+    fi
+
+    if python scripts/validate_action_shas.py 2>/dev/null | grep -q "All pinned action SHAs are valid"; then
+        log_pass "All action SHAs are valid"
+        return 0
+    else
+        log_fail "Invalid action SHAs detected!"
+        if [[ "$QUIET_MODE" == "false" ]]; then
+            echo ""
+            echo "      Run for details:"
+            echo "        python scripts/validate_action_shas.py --fix"
+            echo "      Or run: just validate-action-shas"
+            echo ""
+        fi
+        return 1
+    fi
+}
+
 # ============================================================================
 # Main
 # ============================================================================
 
 # Calculate total checks
 if [[ "$QUICK_MODE" == "true" ]]; then
-    TOTAL_CHECKS=3  # lint, format, secrets
+    TOTAL_CHECKS=4  # lint, format, secrets, action SHAs
 else
-    TOTAL_CHECKS=4  # lint, format, tests, secrets
+    TOTAL_CHECKS=5  # lint, format, tests, secrets, action SHAs
 fi
 
 log_header "CODE QUALITY VALIDATION"
@@ -232,6 +270,7 @@ if [[ "$QUICK_MODE" == "false" ]]; then
 fi
 
 run_secret_scan || true
+run_action_sha_validation || true
 
 # ============================================================================
 # Results
