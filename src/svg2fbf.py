@@ -2083,6 +2083,7 @@ of SVG files using SMIL animation.
     parser.add_argument("--text2path", action="store_true", dest="text2path", default=False, help="convert all text elements to paths using svg-text2path (requires: uv tool install svg2fbf[text2path])")
     parser.add_argument("--text2path-strict", action="store_true", dest="text2path_strict", default=False, help="fail if any font is missing during text-to-path conversion")
     parser.add_argument("--text2path-precision", type=int, dest="text2path_precision", default=8, metavar="N", help="decimal precision for path coordinates (default: 8 for high accuracy)")
+    parser.add_argument("--text2path-no-validate", action="store_true", dest="text2path_no_validate", default=False, help="disable SVG validation after text-to-path conversion (validation requires Bun)")
 
     return parser
 
@@ -4389,6 +4390,64 @@ def maybe_gziped_file(filename, mode="rb"):
 
 # Global FontCache for text2path conversion (reused across files for efficiency)
 _text2path_font_cache = None
+_bun_installed_checked = False
+
+
+def ensure_bun_installed():
+    """Ensure Bun is installed for SVG validation. Install if missing."""
+    global _bun_installed_checked
+    if _bun_installed_checked:
+        return True
+
+    import shutil
+    import subprocess
+    import platform
+
+    # Check if bun is already installed
+    if shutil.which("bun"):
+        _bun_installed_checked = True
+        return True
+
+    ppp("  [text2path] Bun not found, installing for SVG validation...")
+
+    try:
+        system = platform.system()
+        if system == "Darwin":
+            # macOS: prefer Homebrew if available
+            if shutil.which("brew"):
+                subprocess.run(["brew", "install", "bun"], check=True, capture_output=True)
+            else:
+                # Fallback to official installer
+                subprocess.run(["curl", "-fsSL", "https://bun.sh/install", "|", "bash"], shell=True, check=True, capture_output=True)
+        elif system == "Linux":
+            # Linux: use official installer
+            subprocess.run("curl -fsSL https://bun.sh/install | bash", shell=True, check=True, capture_output=True)
+        elif system == "Windows":
+            # Windows: use npm if available
+            if shutil.which("npm"):
+                subprocess.run(["npm", "install", "-g", "bun"], check=True, capture_output=True)
+            else:
+                add2log("WARNING: Cannot auto-install Bun on Windows without npm. Please install manually: https://bun.sh")
+                return False
+        else:
+            add2log(f"WARNING: Unknown platform {system}, cannot auto-install Bun")
+            return False
+
+        # Verify installation
+        if shutil.which("bun"):
+            _bun_installed_checked = True
+            ppp("  [text2path] Bun installed successfully")
+            return True
+        else:
+            add2log("WARNING: Bun installation completed but bun not found in PATH")
+            return False
+
+    except subprocess.CalledProcessError as e:
+        add2log(f"WARNING: Failed to install Bun: {e}")
+        return False
+    except Exception as e:
+        add2log(f"WARNING: Error installing Bun: {e}")
+        return False
 
 
 def get_text2path_font_cache():
@@ -4406,6 +4465,7 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
     """Convert text elements to paths using svg-text2path if --text2path flag is enabled.
 
     Uses svg-text2path 0.5.0+ with HarfBuzz text shaping for maximum accuracy.
+    SVG validation is enabled by default to catch conversion errors early.
 
     Args:
         svg_content: Raw SVG file content as bytes
@@ -4417,7 +4477,7 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
 
     Raises:
         ImportError: If --text2path is used but svg-text2path is not installed
-        ValueError: If --text2path-strict is set and conversion fails
+        ValueError: If conversion fails or produces invalid SVG (validation enabled)
     """
     if not getattr(options, "text2path", False):
         return svg_content
@@ -4443,6 +4503,17 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
 
     basename = os.path.basename(filepath)
 
+    # Determine if SVG validation should be enabled
+    # Default: True (validate by default for safety)
+    # Can be disabled with --text2path-no-validate
+    validate_svg = not getattr(options, "text2path_no_validate", False)
+
+    # If validation is enabled, ensure Bun is installed
+    if validate_svg:
+        if not ensure_bun_installed():
+            add2log("WARNING: Bun not available, SVG validation disabled")
+            validate_svg = False
+
     # Perform conversion with maximum accuracy settings
     try:
         # Get precision from options (default: 8 for high accuracy)
@@ -4451,16 +4522,27 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         # Create converter with optimal settings for accuracy:
         # - precision=8: Higher decimal precision for path coordinates
         # - preserve_styles=True: Keep font metadata on converted paths
+        # - validate_svg=True: Validate output SVG (default, requires Bun)
         # - Shared FontCache for efficiency across multiple files
         converter = Text2PathConverter(
             font_cache=get_text2path_font_cache(),
             precision=precision,
             preserve_styles=True,
             log_level="WARNING",
+            validate_svg=validate_svg,
         )
 
         # Use convert_string with return_result=True to get detailed conversion info
         output_svg, result = converter.convert_string(svg_string, return_result=True)
+
+        # Check validation results
+        if validate_svg:
+            if result.output_valid is False:
+                validation_issues = "; ".join(result.validation_issues) if result.validation_issues else "unknown validation error"
+                raise ValueError(f"SVG validation failed after text-to-path conversion: {validation_issues}")
+            elif result.output_valid is True:
+                pass  # Validation passed
+            # output_valid=None means validation was skipped (e.g., Bun not available)
 
         # Log missing fonts if any
         if result.missing_fonts:
@@ -4475,6 +4557,13 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         for warning in result.warnings:
             add2log(f"WARNING: [text2path] {basename}: {warning}")
 
+        # If there were errors and strict mode is enabled, fail
+        if result.errors and getattr(options, "text2path_strict", False):
+            raise ValueError(f"Text-to-path conversion had errors for {basename}: {'; '.join(result.errors)}")
+
+    except ValueError:
+        # Re-raise ValueError (validation failures) without wrapping
+        raise
     except Exception as e:
         if getattr(options, "text2path_strict", False):
             raise ValueError(f"Text-to-path conversion failed for {basename}: {str(e)}")
@@ -4488,7 +4577,8 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
     # Log results
     if text_before > 0:
         converted = text_before - text_after
-        ppp(f"  [text2path] {basename}: converted {converted}/{text_before} text elements")
+        status = "validated" if validate_svg else ""
+        ppp(f"  [text2path] {basename}: converted {converted}/{text_before} text elements {status}")
 
     # Verify no text elements remain (validation)
     if text_after > 0:
