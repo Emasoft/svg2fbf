@@ -705,6 +705,11 @@ validate:
 validate-quick:
     @./scripts/validate.sh --quick
 
+# Validate all GitHub Action SHAs in workflow files are real
+validate-action-shas:
+    @echo "🔍 Validating GitHub Action SHAs..."
+    @python scripts/validate_action_shas.py
+
 # ============================================================================
 # Cleanup
 # ============================================================================
