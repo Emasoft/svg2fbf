@@ -2082,6 +2082,7 @@ of SVG files using SMIL animation.
     # Text-to-path conversion options
     parser.add_argument("--text2path", action="store_true", dest="text2path", default=False, help="convert all text elements to paths using svg-text2path (requires: uv tool install svg2fbf[text2path])")
     parser.add_argument("--text2path-strict", action="store_true", dest="text2path_strict", default=False, help="fail if any font is missing during text-to-path conversion")
+    parser.add_argument("--text2path-precision", type=int, dest="text2path_precision", default=8, metavar="N", help="decimal precision for path coordinates (default: 8 for high accuracy)")
 
     return parser
 
@@ -2387,7 +2388,6 @@ def ppp(txt=""):
             sys.stdout.buffer.write(("\r" + txt + "\n\r").encode("utf-8"))
         except Exception:
             # Last resort: strip problematic Unicode characters
-            import unicodedata
 
             txt_ascii = "".join(c if ord(c) < 128 else "?" for c in txt)
             sys.stdout.write("\r" + txt_ascii + "\n\r")
@@ -4387,8 +4387,25 @@ def maybe_gziped_file(filename, mode="rb"):
     return open(filename, mode)
 
 
+# Global FontCache for text2path conversion (reused across files for efficiency)
+_text2path_font_cache = None
+
+
+def get_text2path_font_cache():
+    """Get or create the shared FontCache for text2path conversion."""
+    global _text2path_font_cache
+    if _text2path_font_cache is None:
+        from svg_text2path import FontCache
+
+        _text2path_font_cache = FontCache()
+        _text2path_font_cache.prewarm()  # Preload font metadata for faster lookups
+    return _text2path_font_cache
+
+
 def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options) -> bytes:
     """Convert text elements to paths using svg-text2path if --text2path flag is enabled.
+
+    Uses svg-text2path 0.5.0+ with HarfBuzz text shaping for maximum accuracy.
 
     Args:
         svg_content: Raw SVG file content as bytes
@@ -4426,10 +4443,38 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
 
     basename = os.path.basename(filepath)
 
-    # Perform conversion
+    # Perform conversion with maximum accuracy settings
     try:
-        converter = Text2PathConverter()
-        output_svg = converter.convert_string(svg_string)
+        # Get precision from options (default: 8 for high accuracy)
+        precision = getattr(options, "text2path_precision", 8)
+
+        # Create converter with optimal settings for accuracy:
+        # - precision=8: Higher decimal precision for path coordinates
+        # - preserve_styles=True: Keep font metadata on converted paths
+        # - Shared FontCache for efficiency across multiple files
+        converter = Text2PathConverter(
+            font_cache=get_text2path_font_cache(),
+            precision=precision,
+            preserve_styles=True,
+            log_level="WARNING",
+        )
+
+        # Use convert_string with return_result=True to get detailed conversion info
+        output_svg, result = converter.convert_string(svg_string, return_result=True)
+
+        # Log missing fonts if any
+        if result.missing_fonts:
+            missing_list = ", ".join(result.missing_fonts[:5])
+            if len(result.missing_fonts) > 5:
+                missing_list += f" (+{len(result.missing_fonts) - 5} more)"
+            add2log(f"WARNING: Missing fonts in {basename}: {missing_list}")
+
+        # Log conversion errors/warnings from result
+        for error in result.errors:
+            add2log(f"ERROR: [text2path] {basename}: {error}")
+        for warning in result.warnings:
+            add2log(f"WARNING: [text2path] {basename}: {warning}")
+
     except Exception as e:
         if getattr(options, "text2path_strict", False):
             raise ValueError(f"Text-to-path conversion failed for {basename}: {str(e)}")
