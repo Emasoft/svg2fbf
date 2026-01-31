@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" id="UI" width="44" height="44" viewBox="-49.78 -2.06 1251.8899999999999 678.27">
-  <ns0:title>SpaltButtonPickee_t0_START</ns0:title>
-  <ns0:rect width="44" height="44" fill="none" />
-  <ns0:path d="M3342,242.5a2.5,2.5,0,0,1,2.5,2.5v2a2.5,2.5,0,0,1-5,0v-2a2.5,2.5,0,0,1,2.5-2.5m0-1.5a4,4,0,0,0-4,4v2a4,4,0,0,0,8,0v-2a4,4,0,0,0-4-4h0Z" transform="translate(-3320 -224)" fill="#0288d1" />
-  <ns0:rect x="17" y="17" width="10" height="10" rx="1" ry="1" fill="#0288d1" />
-</ns0:svg>

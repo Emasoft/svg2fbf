@@ -59,6 +59,9 @@ tests/node_modules/
 tests/package-lock.json
 tests/invalid_svg_example_frames.json
 .pytest_cache/
+
+# Test sessions (regenerated from examples/ - do not track)
+tests/sessions/
 .coverage
 coverage.xml
 htmlcov/
