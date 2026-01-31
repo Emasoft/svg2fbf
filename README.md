@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python"></a>
   <a href="https://github.com/Emasoft/svg2fbf/releases"><img src="https://img.shields.io/github/v/release/Emasoft/svg2fbf?include_prereleases" alt="Version"></a>
 </p>
 
@@ -471,7 +471,7 @@ Complex character animation.
 
 ## Requirements
 
-- **Python**: ≥3.10
+- **Python**: ≥3.11
 - **[uv](https://github.com/astral-sh/uv)**: Package and tool manager
 
 ---
@@ -494,23 +494,23 @@ Choose the release channel that fits your needs:
 
 ```bash
 # Install from PyPI (recommended - production-ready)
-uv tool install svg2fbf --python 3.10
+uv tool install svg2fbf --python 3.11
 
 # Or install from GitHub stable branch
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python 3.11
 ```
 
 #### Pre-Release Channels
 
 ```bash
 # Release Candidate (rc) - Final testing before stable
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python 3.11
 
 # Beta - Bug fixes and testing
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.11
 
 # Alpha - Latest features (may be unstable)
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.11
 ```
 
 **Release Pipeline:**
@@ -529,17 +529,17 @@ uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
 ```bash
 # This script automatically finds and installs the latest stable release
 LATEST_URL=$(curl -s https://api.github.com/repos/Emasoft/svg2fbf/releases/latest | grep "browser_download_url.*\.whl" | cut -d '"' -f 4)
-uv tool install "$LATEST_URL" --python 3.10
+uv tool install "$LATEST_URL" --python 3.11
 ```
 
 #### Install from Local Wheel File
 
 ```bash
 # Install from local wheel in dist/ directory
-uv tool install dist/svg2fbf-*.whl --python 3.10
+uv tool install dist/svg2fbf-*.whl --python 3.11
 
 # Or with absolute path
-uv tool install /path/to/svg2fbf-*.whl --python 3.10
+uv tool install /path/to/svg2fbf-*.whl --python 3.11
 ```
 
 </details>
@@ -572,20 +572,20 @@ svg2fbf --version
 uv tool upgrade svg2fbf
 
 # Or reinstall from GitHub master branch
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python 3.11
 ```
 
 #### Upgrade to Specific Release Channel
 
 ```bash
 # Reinstall with release candidate (rc)
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python 3.11
 
 # Reinstall with beta
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python 3.11
 
 # Reinstall with alpha (bleeding edge)
-uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.10
+uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python 3.11
 ```
 
 #### Force Reinstall (Clean Upgrade)
@@ -595,7 +595,7 @@ If you encounter issues, perform a clean reinstall:
 ```bash
 # Recommended: Uninstall then install (clean reinstall)
 uv tool uninstall svg2fbf
-uv tool install svg2fbf --python 3.10
+uv tool install svg2fbf --python 3.11
 ```
 
 ### Uninstalling
