@@ -1459,7 +1459,7 @@ wheels = [
 
 [[package]]
 name = "svg-text2path"
-version = "0.4.8"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click", marker = "python_full_version >= '3.11'" },
@@ -1473,9 +1473,9 @@ dependencies = [
     { name = "svg-path", marker = "python_full_version >= '3.11'" },
     { name = "uharfbuzz", marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/84/485ccdc07ea1e6e7ca2dd02abbe810453799581bca9ff252e015fe925b1e/svg_text2path-0.4.8.tar.gz", hash = "sha256:8224d6d2a669231f97a5098168f8a3dba5ad63ca7b74e3260a30868b0c8e624b", size = 127895, upload-time = "2026-01-30T08:40:51.187Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/75/82a3af15de2c7112e7a6923f2fa17a685b4df4f94282b70e03a61bc60ecb/svg_text2path-0.5.0.tar.gz", hash = "sha256:2ee5d46dc926385b33142e9b7a11bcdae54575f98f5fe74f50a9e01422e7bcfc", size = 137412, upload-time = "2026-01-31T10:54:42.606Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/9d/b520fb8eb8055e6b401de3b5beba87b60acfdfaf90d63c78d473664aac53/svg_text2path-0.4.8-py3-none-any.whl", hash = "sha256:391fe228bc69218c4b2c74f78f8a0c37101ce5a305f89ffb90e269c54bc4fa38", size = 159087, upload-time = "2026-01-30T08:40:44.81Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/69/8507a052135d39d8bade92d565499182eaeb7c89d59ef51512cfd94dc4e2/svg_text2path-0.5.0-py3-none-any.whl", hash = "sha256:a8e65ede4dd361fe66b2c74a47f23f7a472b28ac9e88b51e2e0f629cc91c52b1", size = 171513, upload-time = "2026-01-31T10:54:39.296Z" },
 ]
 
 [[package]]
@@ -1521,7 +1521,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2.0" },
     { name = "python-bidi", specifier = ">=0.6.7" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "svg-text2path", marker = "python_full_version >= '3.11' and extra == 'text2path'", specifier = ">=0.4.3" },
+    { name = "svg-text2path", marker = "python_full_version >= '3.11' and extra == 'text2path'", specifier = ">=0.5.0" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.0" },
     { name = "tomli-w", specifier = ">=1.2.0" },
 ]
