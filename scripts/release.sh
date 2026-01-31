@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
 
+# Prevent concurrent releases - acquire exclusive lock
+# This ensures only one release process can run at a time to avoid conflicts
+LOCK_FILE="/tmp/svg2fbf-release.lock"
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+  echo "ERROR: Another release process is already running."
+  echo "If you're sure no other release is running, remove: $LOCK_FILE"
+  exit 1
+fi
+
 # Enable strict error handling so that any failing command stops the script immediately.
 # Treat use of unset variables as errors to avoid subtle bugs from typos or missing values.
 # Make pipelines fail when any component fails, not just the last command in the pipeline.
@@ -172,6 +182,17 @@ start_branch="$(git rev-parse --abbrev-ref HEAD)"
 # The cleanup function will delete only the files in this array, nothing else.
 # This provides explicit control over what gets deleted instead of using wildcards.
 declare -a RELEASE_NOTES_FILES=()
+
+# Validate branch name to prevent shell injection
+# Only allow alphanumeric characters, dots, underscores, dashes, and slashes
+# This prevents malicious branch names from being used in git commands
+validate_branch_name() {
+  local branch="$1"
+  if [[ ! "$branch" =~ ^[a-zA-Z0-9._/-]+$ ]]; then
+    echo "ERROR: Invalid branch name '$branch'. Only alphanumeric, dots, underscores, dashes, and slashes allowed." >&2
+    exit 1
+  fi
+}
 
 # Define a function to safely switch git branches with validation.
 # This function records the current branch and provides a way to return to it.
@@ -700,7 +721,10 @@ archive_previous_stages() {
       if gh release view "$old_tag" >/dev/null 2>&1; then
         echo "  Archiving: $old_tag (marking as pre-release)"
         # Mark as pre-release to indicate it's superseded
-        gh release edit "$old_tag" --prerelease --notes "⚠️ SUPERSEDED: This release has been superseded by v${new_version}. Use the newer version instead." 2>/dev/null || true
+        # Failure to archive is non-fatal - it just means the old release won't be marked as superseded
+        if ! gh release edit "$old_tag" --prerelease --notes "SUPERSEDED: This release has been superseded by v${new_version}. Use the newer version instead." 2>/dev/null; then
+          echo "  Warning: Could not archive $old_tag (non-fatal)" >&2
+        fi
       fi
     done
   done
@@ -856,6 +880,21 @@ generate_changelog_and_notes() {
   echo "$notes_file"
 }
 
+# Comprehensive rollback on validation failure or error
+# Restores pyproject.toml, returns to original branch, cleans up temporary files
+rollback_release() {
+  echo "Rolling back release..." >&2
+  # Restore pyproject.toml to its original state
+  git checkout -- pyproject.toml 2>/dev/null || true
+  # Restore CHANGELOG.md if it was modified
+  git checkout -- CHANGELOG.md 2>/dev/null || true
+  # Return to the original branch
+  restore_original_branch
+  # Clean up any temporary files created during this release attempt
+  cleanup_temporary_files
+  echo "Rollback complete." >&2
+}
+
 # Define the release_channel function that performs the full release pipeline.
 # Accept a channel name (alpha/beta/rc/stable) and a branch name as arguments.
 # Execute checkout, branch sync, cleanliness check, version bump, changelog generation, build, tag, push, GitHub release, and optional PyPI publish.
@@ -868,6 +907,10 @@ release_channel() {
   # Check out this branch before doing any other operations in the function.
   # Assume the caller has passed a valid branch name that exists in the repository.
   local branch="$2"
+
+  # Validate branch name to prevent shell injection attacks
+  # This must happen before any git operations use the branch name
+  validate_branch_name "$branch"
 
   # Print a blank line to visually separate release logs from earlier output.
   # Print a descriptive header stating which channel and branch are being released.
@@ -883,7 +926,11 @@ release_channel() {
   # Fetch the latest changes for this branch from the origin remote.
   # Use git fetch to update remote-tracking references without merging anything.
   # Make sure the script has an accurate view of origin/$branch for comparison.
-  git fetch origin "$branch"
+  if ! git fetch origin "$branch"; then
+    echo "ERROR: Failed to fetch from origin for branch '$branch'." >&2
+    echo "Check your network connection and repository permissions." >&2
+    exit 1
+  fi
 
   # Compare the local HEAD with the remote origin/$branch to detect divergence.
   # Abort if the local branch is not exactly at the same commit as origin/$branch.
@@ -975,8 +1022,7 @@ release_channel() {
     echo "❌ VERSION RELEASE VALIDATION FAILED" >&2
     echo "The new version ${new_version} violates one or more publishing rules." >&2
     echo "" >&2
-    echo "Rolling back version bump in pyproject.toml..." >&2
-    git checkout -- pyproject.toml
+    rollback_release
     exit 1
   fi
   echo ""
@@ -1010,33 +1056,61 @@ release_channel() {
   # Run uv sync to align the local environment with project dependency specifications.
   # Ensure that any changes in pyproject or lockfile are applied before building.
   # Help promote reproducible builds across different machines or CI environments.
-  uv sync
+  if ! uv sync; then
+    echo "ERROR: 'uv sync' failed. Cannot proceed with release." >&2
+    echo "Fix dependency issues before releasing." >&2
+    rollback_release
+    exit 1
+  fi
   # Run uv build to create distribution artifacts for the project.
   # Expect uv to build wheels and source distributions into the dist directory.
   # Use these artifacts later when creating GitHub releases and publishing to PyPI.
-  uv build
+  if ! uv build; then
+    echo "ERROR: 'uv build' failed. Cannot proceed with release." >&2
+    echo "Fix build issues before releasing." >&2
+    rollback_release
+    exit 1
+  fi
 
   # Commit uv.lock changes that may occur during sync/build.
   # Pre-commit hooks are skipped to avoid stashing/interference with release automation.
+  # Note: || true is intentional - commit may have nothing to commit if uv.lock unchanged
   if [[ -n $(git status --porcelain uv.lock) ]]; then
     git add uv.lock
-    git commit --no-verify -m "chore: Update uv.lock for ${channel} ${new_version}" || true
+    if ! git commit --no-verify -m "chore: Update uv.lock for ${channel} ${new_version}"; then
+      echo "Note: No uv.lock changes to commit (this is normal)" >&2
+    fi
   fi
 
   # Commit the built wheel to the branch so each branch tracks its versioned artifact.
   # This allows `just install` to work directly from the branch's committed wheel.
   # Each branch shows only its own versioned wheel in dist/.
+  # Note: Failure is non-fatal as the main release commit already happened
   git add dist/
-  git commit --no-verify -m "Add built wheel for ${channel} ${new_version}" || true
+  if ! git commit --no-verify -m "Add built wheel for ${channel} ${new_version}"; then
+    echo "Note: No wheel changes to commit (this may be normal)" >&2
+  fi
 
   # Create a git tag pointing to the newly created release commit.
   # Use the tag name constructed earlier (for example, v1.2.3).
   # Use this tag as the reference for GitHub releases and version identification.
-  git tag "$tag"
+  if ! git tag "$tag"; then
+    echo "ERROR: Failed to create git tag '$tag'." >&2
+    echo "The tag may already exist. Check with: git tag -l '$tag'" >&2
+    rollback_release
+    exit 1
+  fi
   # Push both the branch and the new tag to the origin remote repository.
-  # Ensure that the remote’s view of the repository includes this release state.
+  # Ensure that the remote's view of the repository includes this release state.
   # Allow GitHub to discover and use the tag for release creation.
-  git push origin "$branch" "$tag"
+  if ! git push origin "$branch" "$tag"; then
+    echo "ERROR: Failed to push branch '$branch' and tag '$tag' to origin." >&2
+    echo "Check your network connection and repository permissions." >&2
+    # Clean up local tag since push failed
+    git tag -d "$tag" 2>/dev/null
+    rollback_release
+    exit 1
+  fi
 
   # Prepare a release title matching the tag for use in GitHub’s release listing.
   # Create a simple fallback notes message if no notes file is present or used.
@@ -1128,10 +1202,17 @@ release_channel() {
     # Show the exact version being uploaded to aid in tracking and debugging.
     # Invoke uv publish directly, relying on UV_PUBLISH_TOKEN already being exported.
     echo "Publishing stable version ${new_version} to PyPI with uv publish..."
-    uv publish
+    if ! uv publish; then
+      echo "" >&2
+      echo "ERROR: 'uv publish' failed for version ${new_version}." >&2
+      echo "The GitHub release was created successfully, but PyPI publish failed." >&2
+      echo "You may need to manually publish to PyPI or investigate the error." >&2
+      echo "Check your UV_PUBLISH_TOKEN and PyPI account status." >&2
+      exit 1
+    fi
 
     echo ""
-    echo "✅ Successfully published version ${new_version} to PyPI"
+    echo "Successfully published version ${new_version} to PyPI"
     echo ""
   else
     # Log that PyPI publishing is intentionally skipped.

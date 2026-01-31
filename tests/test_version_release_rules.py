@@ -8,6 +8,7 @@ These tests verify the three publishing rules:
 """
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +17,86 @@ import pytest
 
 # Path to release.sh script
 RELEASE_SCRIPT = Path(__file__).parent.parent / "scripts" / "release.sh"
+
+
+def _extract_bash_functions() -> str:
+    """Extract version-related function definitions from release.sh.
+
+    Uses sed to extract the function bodies from the actual release.sh script,
+    avoiding the main execution code that checks arguments and exits.
+    Returns a string containing bash function definitions.
+    """
+    script_content = RELEASE_SCRIPT.read_text(encoding="utf-8")
+
+    # Find the version release rules section and extract relevant functions
+    # The functions are between "VERSION RELEASE RULES ENFORCEMENT" and "ensure_clean()"
+    functions_to_extract = [
+        "get_base_version",
+        "get_version_stage",
+        "get_stage_value",
+        "compare_base_versions",
+    ]
+
+    extracted = []
+    for func_name in functions_to_extract:
+        # Find function start
+        pattern = f"{func_name}()"
+        start_idx = script_content.find(pattern)
+        if start_idx == -1:
+            continue
+
+        # Find the opening brace after the function name
+        brace_start = script_content.find("{", start_idx)
+        if brace_start == -1:
+            continue
+
+        # Find matching closing brace (count braces)
+        brace_count = 1
+        pos = brace_start + 1
+        while pos < len(script_content) and brace_count > 0:
+            if script_content[pos] == "{":
+                brace_count += 1
+            elif script_content[pos] == "}":
+                brace_count -= 1
+            pos += 1
+
+        # Extract the full function including closing brace
+        func_body = script_content[start_idx:pos]
+        extracted.append(func_body)
+
+    return "\n\n".join(extracted)
+
+
+# Cache the extracted functions to avoid re-reading the file for each test
+_CACHED_FUNCTIONS: str | None = None
+
+
+def run_bash_function(function_name: str, *args: str) -> str:
+    """Run a bash function from release.sh and return its output.
+
+    Extracts only the function definitions from release.sh (avoiding the main
+    execution code that checks arguments and exits) and runs the specified function.
+    Returns stdout stripped of trailing whitespace.
+    """
+    global _CACHED_FUNCTIONS
+    if _CACHED_FUNCTIONS is None:
+        _CACHED_FUNCTIONS = _extract_bash_functions()
+
+    # Build argument string with proper quoting for each argument
+    args_str = " ".join(f'"{arg}"' for arg in args)
+
+    script = f"""
+{_CACHED_FUNCTIONS}
+
+{function_name} {args_str}
+"""
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=RELEASE_SCRIPT.parent.parent,  # Project root
+    )
+    return result.stdout.strip()
 
 
 class TestVersionRulesIntegration:
@@ -310,3 +391,112 @@ class TestReleaseScriptStructure:
         """Verify script requires UV_PUBLISH_TOKEN for stable releases"""
         content = RELEASE_SCRIPT.read_text(encoding="utf-8")
         assert "UV_PUBLISH_TOKEN" in content, "Should check for UV_PUBLISH_TOKEN"
+
+
+# =============================================================================
+# BEHAVIOR TESTS - Actually run the bash functions
+# =============================================================================
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Bash functions not available on Windows")
+class TestGetBaseVersionBehavior:
+    """Behavior tests for get_base_version function - actually executes the bash function."""
+
+    def test_removes_alpha_suffix(self) -> None:
+        """Verify alpha suffix (aN) is removed from version string."""
+        assert run_bash_function("get_base_version", "1.2.3a1") == "1.2.3"
+        assert run_bash_function("get_base_version", "1.2.3a99") == "1.2.3"
+
+    def test_removes_beta_suffix(self) -> None:
+        """Verify beta suffix (bN) is removed from version string."""
+        assert run_bash_function("get_base_version", "1.2.3b1") == "1.2.3"
+        assert run_bash_function("get_base_version", "1.2.3b10") == "1.2.3"
+
+    def test_removes_rc_suffix(self) -> None:
+        """Verify rc suffix (rcN) is removed from version string."""
+        assert run_bash_function("get_base_version", "1.2.3rc1") == "1.2.3"
+        assert run_bash_function("get_base_version", "1.2.3rc99") == "1.2.3"
+
+    def test_stable_version_unchanged(self) -> None:
+        """Verify stable versions without suffix remain unchanged."""
+        assert run_bash_function("get_base_version", "1.2.3") == "1.2.3"
+        assert run_bash_function("get_base_version", "0.0.1") == "0.0.1"
+        assert run_bash_function("get_base_version", "99.99.99") == "99.99.99"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Bash functions not available on Windows")
+class TestGetVersionStageBehavior:
+    """Behavior tests for get_version_stage function - actually executes the bash function."""
+
+    def test_detects_alpha(self) -> None:
+        """Verify function returns 'alpha' for versions with aN suffix."""
+        assert run_bash_function("get_version_stage", "1.2.3a1") == "alpha"
+        assert run_bash_function("get_version_stage", "0.1.0a5") == "alpha"
+
+    def test_detects_beta(self) -> None:
+        """Verify function returns 'beta' for versions with bN suffix."""
+        assert run_bash_function("get_version_stage", "1.2.3b1") == "beta"
+        assert run_bash_function("get_version_stage", "0.1.0b10") == "beta"
+
+    def test_detects_rc(self) -> None:
+        """Verify function returns 'rc' for versions with rcN suffix."""
+        assert run_bash_function("get_version_stage", "1.2.3rc1") == "rc"
+        assert run_bash_function("get_version_stage", "0.1.0rc99") == "rc"
+
+    def test_detects_stable(self) -> None:
+        """Verify function returns 'stable' for versions without pre-release suffix."""
+        assert run_bash_function("get_version_stage", "1.2.3") == "stable"
+        assert run_bash_function("get_version_stage", "0.0.1") == "stable"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Bash functions not available on Windows")
+class TestGetStageValueBehavior:
+    """Behavior tests for get_stage_value function - actually executes the bash function."""
+
+    def test_alpha_value(self) -> None:
+        """Verify alpha stage has value 1."""
+        assert run_bash_function("get_stage_value", "alpha") == "1"
+
+    def test_beta_value(self) -> None:
+        """Verify beta stage has value 2."""
+        assert run_bash_function("get_stage_value", "beta") == "2"
+
+    def test_rc_value(self) -> None:
+        """Verify rc stage has value 3."""
+        assert run_bash_function("get_stage_value", "rc") == "3"
+
+    def test_stable_value(self) -> None:
+        """Verify stable stage has value 4."""
+        assert run_bash_function("get_stage_value", "stable") == "4"
+
+    def test_stage_ordering(self) -> None:
+        """Verify stage progression: alpha < beta < rc < stable."""
+        alpha = int(run_bash_function("get_stage_value", "alpha"))
+        beta = int(run_bash_function("get_stage_value", "beta"))
+        rc = int(run_bash_function("get_stage_value", "rc"))
+        stable = int(run_bash_function("get_stage_value", "stable"))
+        assert alpha < beta < rc < stable
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Bash functions not available on Windows")
+class TestCompareBaseVersionsBehavior:
+    """Behavior tests for compare_base_versions function - actually executes the bash function."""
+
+    def test_equal_versions(self) -> None:
+        """Verify function returns 0 when versions are equal."""
+        assert run_bash_function("compare_base_versions", "1.2.3", "1.2.3") == "0"
+
+    def test_first_greater(self) -> None:
+        """Verify function returns 1 when first version is greater."""
+        assert run_bash_function("compare_base_versions", "1.2.4", "1.2.3") == "1"
+        assert run_bash_function("compare_base_versions", "2.0.0", "1.9.9") == "1"
+
+    def test_first_smaller(self) -> None:
+        """Verify function returns -1 when first version is smaller."""
+        assert run_bash_function("compare_base_versions", "1.2.3", "1.2.4") == "-1"
+        assert run_bash_function("compare_base_versions", "0.9.9", "1.0.0") == "-1"
+
+    def test_edge_cases(self) -> None:
+        """Verify function handles edge cases correctly."""
+        assert run_bash_function("compare_base_versions", "0.0.1", "0.0.2") == "-1"
+        assert run_bash_function("compare_base_versions", "99.99.99", "99.99.98") == "1"
