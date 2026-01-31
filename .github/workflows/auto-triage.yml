@@ -32,8 +32,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Setup GitHub CLI
-        uses: cli/cli-action@v1
+      # Note: gh CLI is pre-installed on GitHub-hosted runners
 
       - name: Run triage agent
         env:
