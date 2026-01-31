@@ -3783,6 +3783,12 @@ def generate_fbfsvg_animation():
 
         current_filepath = None
 
+        # Check for text2path validation failures after processing all frames
+        # Why: We collect all failures during processing, then report them all at once
+        # This allows users to see ALL problematic frames, not just the first one
+        if getattr(options, "text2path", False):
+            check_and_report_text2path_failures()
+
         # STEP 7
         # setup the 'animation_backdrop' group with a background rectangle
         # (or image) with the same size of the frames
@@ -4391,6 +4397,9 @@ def maybe_gziped_file(filename, mode="rb"):
 # Global FontCache for text2path conversion (reused across files for efficiency)
 _text2path_font_cache = None
 _bun_installed_checked = False
+# Global list to collect text2path validation failures across all frames
+# Why: Collect ALL failures before reporting, rather than stopping at first failure
+_text2path_validation_failures: list[tuple[str, str]] = []  # List of (filepath, error_message)
 
 
 def ensure_bun_installed():
@@ -4461,11 +4470,58 @@ def get_text2path_font_cache():
     return _text2path_font_cache
 
 
+def check_and_report_text2path_failures() -> None:
+    """Check if any text2path validation failures occurred and report all of them.
+
+    This function should be called after processing all frames to report
+    ALL validation failures at once, rather than stopping at the first failure.
+
+    Raises:
+        SystemExit: Exits with code 1 if any validation failures occurred
+    """
+    global _text2path_validation_failures
+
+    if not _text2path_validation_failures:
+        return  # No failures
+
+    # Report all failures
+    ppp("")
+    ppp("=" * 70)
+    ppp("ERROR: Text-to-path validation failed for the following frames:")
+    ppp("=" * 70)
+
+    for filepath, error_msg in _text2path_validation_failures:
+        basename = os.path.basename(filepath)
+        ppp(f"  • {basename}")
+        ppp(f"    Path: {filepath}")
+        ppp(f"    Error: {error_msg}")
+        ppp("")
+
+    ppp(f"Total failed frames: {len(_text2path_validation_failures)}")
+    ppp("")
+    ppp("These frames produced invalid SVG after text-to-path conversion.")
+    ppp("Please check the source SVGs and fonts used.")
+    ppp("=" * 70)
+
+    # Exit with error
+    print_log_and_exit(1)
+
+
+def reset_text2path_validation_failures() -> None:
+    """Reset the validation failures list (useful for multiple runs in tests)."""
+    global _text2path_validation_failures
+    _text2path_validation_failures = []
+
+
 def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options) -> bytes:
     """Convert text elements to paths using svg-text2path if --text2path flag is enabled.
 
     Uses svg-text2path 0.5.0+ with HarfBuzz text shaping for maximum accuracy.
     SVG validation is enabled by default to catch conversion errors early.
+
+    Note: Validation failures are collected in _text2path_validation_failures
+    and reported at the end of processing (via check_and_report_text2path_failures).
+    This allows all failed frames to be reported together.
 
     Args:
         svg_content: Raw SVG file content as bytes
@@ -4473,11 +4529,14 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         options: Program options (checks text2path flag)
 
     Returns:
-        Converted SVG content as bytes (or original if conversion disabled/unavailable)
+        Converted SVG content as bytes
+        Returns ORIGINAL content if:
+        - Conversion is disabled
+        - Validation fails (failure is collected for later reporting)
+        - Conversion fails in non-strict mode
 
     Raises:
         ImportError: If --text2path is used but svg-text2path is not installed
-        ValueError: If conversion fails or produces invalid SVG (validation enabled)
     """
     if not getattr(options, "text2path", False):
         return svg_content
@@ -4539,7 +4598,12 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         if validate_svg:
             if result.output_valid is False:
                 validation_issues = "; ".join(result.validation_issues) if result.validation_issues else "unknown validation error"
-                raise ValueError(f"SVG validation failed after text-to-path conversion: {validation_issues}")
+                error_msg = f"SVG validation failed: {validation_issues}"
+                # Why: Collect failures instead of raising immediately, so we can report ALL failed frames
+                _text2path_validation_failures.append((filepath, error_msg))
+                add2log(f"ERROR: [text2path] {basename}: {error_msg}")
+                # Return original SVG content to allow processing to continue
+                return svg_content
             elif result.output_valid is True:
                 pass  # Validation passed
             # output_valid=None means validation was skipped (e.g., Bun not available)
@@ -4616,9 +4680,12 @@ def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
 
         # Convert text to paths if --text2path flag is enabled
         # Why: Must convert before XML parsing since svg-text2path works on strings
+        # Note: Validation failures are collected in _text2path_validation_failures
+        # and reported at the end of processing (not immediately)
         try:
             in_string = convert_text_to_paths_if_enabled(in_string, filepath, options)
-        except (ImportError, ValueError) as e:
+        except ImportError as e:
+            # Missing dependency - must exit immediately
             add2log(f"ERROR: {str(e)}")
             print_log_and_exit(1)
 
