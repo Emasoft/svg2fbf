@@ -5,17 +5,21 @@ on:
   push:
     branches: [main, review, master]  # Quality checks only on stable branches
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code (full history for base/head refs)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Set up UV
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
 
       # Ruff: verify formatting & lint (read-only; no --fix)
       # Why: Use 'uv run' instead of 'uvx' to read project's pyproject.toml config
@@ -27,7 +31,7 @@ jobs:
       # TruffleHog: scan full repository history (fail on verified+unknown secrets)
       # NOTE: The action automatically adds --fail, --no-update, --github-actions flags
       - name: Secrets scan (verified+unknown)
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@a42d72ef6e036f11894cdae57460f64a65b6a495  # v3.88.26
         with:
           path: ./
           extra_args: >

@@ -35,7 +35,7 @@ winget install --id Casey.Just
 # Via Cargo (Rust)
 cargo install just
 
-# Via 
+# Via
 npm install -g just-install
 ```
 
@@ -176,9 +176,394 @@ This project uses Just to manage the common development tasks. Here is the list 
 | `just promote-to-testing` | Merge dev → testing (feature complete) |
 | `just promote-to-review` | Merge testing → review (bugs fixed) |
 | `just promote-to-stable` | Merge review → master (ready for release) |
-| `just sync-main` | Sync main branch with master |
 
 **Important:** The release script enforces strict version rules. See [Version Release Rules](#version-release-rules) below.
+
+### Advanced Branch Operations
+
+These commands provide powerful branch management capabilities. Use with caution as they perform complex git operations across multiple branches.
+
+#### just promote
+
+**Usage:** `just promote`
+
+**Description:** Unified promotion command that merges changes through the entire branch pipeline sequentially: `dev → testing → review → master → main`.
+
+**When to use:**
+- When you need to promote changes through ALL branches at once
+- After completing a development cycle and want to push to production
+- To ensure all branches stay in sync with consistent versions
+
+**How it differs from individual promote-to-X commands:**
+- `just promote-to-testing` - Merges only `dev → testing` (one step)
+- `just promote-to-review` - Merges only `testing → review` (one step)
+- `just promote-to-stable` - Merges only `review → master` (one step)
+- `just promote` - Runs ALL the above steps in sequence (full pipeline)
+
+**⚠️ Warning:** This command stops on the FIRST merge conflict. If a conflict occurs:
+1. The command will abort and leave you on the conflicted branch
+2. You must resolve the conflict manually
+3. Complete the merge with `git add . && git commit && git push`
+4. Run `just promote` again to continue the remaining promotions
+
+**Example:**
+```bash
+# Promote through entire pipeline
+just promote
+
+# Result:
+# ✅ dev → testing
+# ✅ testing → review
+# ✅ review → master
+# ✅ master → main
+```
+
+**Returns to:** Original branch after completion
+
+---
+
+#### just sync-main
+
+**Usage:** `just sync-main`
+
+**Description:** Makes the `main` branch identical to the `master` branch using a force-push with lease.
+
+**When to use:**
+- After promoting changes to `master` to keep `main` in sync
+- The `main` and `master` branches serve different purposes:
+  - `master` = The stable production branch (releases, PyPI publishing)
+  - `main` = Mirror of master (for compatibility with GitHub conventions)
+
+**What it does:**
+1. Fetches latest from both `master` and `main`
+2. Checks out `main`
+3. Resets `main` to match `master` exactly (`git reset --hard master`)
+4. Force-pushes to `origin/main` (with `--force-with-lease` for safety)
+5. Returns to your original branch
+
+**Example:**
+```bash
+just sync-main
+
+# Result:
+# ✅ main is now synced with master
+#    (main and master are identical)
+```
+
+**Note:** This is automatically run as the final step of `just promote`
+
+---
+
+#### just equalize
+
+**Usage:** `just equalize`
+
+**Description:** Force-syncs ALL branches by merging through the entire promotion chain with interactive confirmation. This is a powerful emergency recovery tool.
+
+**⚠️ DANGEROUS - Use only for emergency recovery!**
+
+**When to use:**
+- When branches have diverged significantly and need to be resynchronized
+- After accidentally working on the wrong branch
+- For emergency recovery when promotion commands fail
+- To reset the entire branch structure to a consistent state
+
+**What it does:**
+1. Verifies you're in a git repository
+2. Checks for uncommitted changes and warns you
+3. Checks for active git worktrees
+4. Shows current status of all branches
+5. **Asks for confirmation** before proceeding
+6. Merges through the chain: `dev → testing → review → master → main`
+7. For each merge:
+   - Checks if merge is needed (skips if already up to date)
+   - Attempts the merge
+   - On **conflict**: Aborts and provides detailed resolution instructions
+   - On **success**: Pushes to remote
+
+**Interactive prompts:**
+- Warns about uncommitted changes
+- Warns about multiple worktrees
+- Requires explicit "yes" confirmation to proceed
+- On conflict: Provides step-by-step resolution guide
+
+**Example:**
+```bash
+just equalize
+
+# Output:
+# 🔄 Equalize All Branches (Promotion Chain)
+# ═══════════════════════════════════════════════
+#
+# Promotion flow: dev → testing → review → master → main
+#
+# ⚠️  WARNING: This will merge through the promotion chain!
+#    Each branch will be merged into the next: dev→testing→review→master→main
+#    Merge conflicts will abort the process.
+#
+# Are you sure you want to continue? (yes/no):
+```
+
+**On merge conflict:**
+```bash
+❌ MERGE CONFLICT DETECTED!
+═══════════════════════════════════════════════════════════════
+
+Conflict occurred when merging:
+  Source: testing
+  Target: review (current branch)
+
+📁 Conflicted files:
+  - src/svg2fbf.py
+  - pyproject.toml
+
+🔧 To resolve the conflicts:
+  1. Open the conflicted files listed above
+  2. Look for conflict markers: <<<<<<< HEAD, =======, >>>>>>>
+  3. Edit the files to resolve the conflicts
+  ...
+  9. Resume equalize to continue the promotion chain:
+     just equalize
+```
+
+**⚠️ Critical warnings:**
+- Always commit changes before running
+- Check all worktrees for uncommitted changes
+- Cannot be undone once merges are pushed
+- Stops on first conflict - you must resolve and re-run
+
+---
+
+#### just backport-hotfix
+
+**Usage:** `just backport-hotfix`
+
+**Description:** Interactively backports hotfix commits from stable branches (`master` or `main`) to development branches (`dev`, `testing`, `review`). Used for critical fixes that need to be applied to earlier branches.
+
+**When to use:**
+- A critical bug was fixed in `master`/`main`
+- The fix needs to be applied to `dev`, `testing`, or `review`
+- You want to cherry-pick specific fixes without merging everything
+
+**What it does:**
+1. Validates you're on `dev`, `testing`, or `review` branch
+2. Determines source branch (`main` preferred, falls back to `master`)
+3. Finds all commits in source branch NOT in current branch
+4. Shows interactive list of available commits
+5. You select which commit to backport
+6. Shows commit details (hash, message, author, date)
+7. Checks for duplicate commits (same message + author)
+8. Shows files that would be changed
+9. **Performs conflict check** (dry-run merge)
+10. On conflict: Aborts with detailed error and recommendations
+11. On clean merge: Shows diff summary and asks for confirmation
+12. Cherry-picks the commit if confirmed
+
+**Interactive workflow:**
+```bash
+# Switch to target branch first
+git checkout dev
+
+# Run backport
+just backport-hotfix
+
+# Output:
+# 🔄 Backport Hotfix from master/main
+# ═══════════════════════════════════════════════
+# Current branch: dev
+# Source branch: master
+#
+# Commits available for backport:
+#  1. abc1234 fix: Critical security patch
+#  2. def5678 fix: Memory leak in processor
+#  3. ghi9012 fix: Validation error
+#
+# Enter commit number to backport (or 'q' to quit):
+```
+
+**Safety features:**
+- Validates source and target branches exist
+- Checks for duplicate commits
+- Performs conflict detection BEFORE attempting cherry-pick
+- Shows file changes and diff summary
+- Requires explicit confirmation
+
+**On conflict:**
+```bash
+⚠️  WARNING: Merge conflicts detected!
+
+Conflicting files:
+  - src/processor.py
+  - tests/test_processor.py
+
+❌ Cannot safely backport this hotfix
+
+Recommendations:
+1. The hotfix may conflict with new code in dev
+2. The bug may have been fixed differently in dev
+3. The code that was fixed may have been removed/replaced in dev
+
+Options:
+  - Cherry-pick manually and resolve conflicts: git cherry-pick abc1234
+  - Check if the bug still exists in dev
+  - Skip this backport if the code changed significantly
+```
+
+**Example:**
+```bash
+git checkout dev
+just backport-hotfix
+
+# Select commit #1
+# Review changes
+# Confirm: yes
+
+# Result:
+# ✅ Hotfix backported successfully!
+# Next steps:
+# 1. Review the changes: git show HEAD
+# 2. Run tests: just test
+# 3. Push when ready: git push origin dev
+```
+
+---
+
+#### just port-commit
+
+**Usage:** `just port-commit`
+
+**Description:** Interactively ports specific commits from the current branch to one or more target branches. More flexible than `backport-hotfix` as it works between ANY branches, not just stable→dev.
+
+**When to use:**
+- You made a commit on `dev` that should also be on `testing`
+- You want to cherry-pick specific features between branches
+- You need to apply the same fix to multiple branches simultaneously
+- More control over which commits go where
+
+**What it does:**
+1. Shows list of all available branches (except current)
+2. You select a comparison branch
+3. Finds commits in current branch NOT in comparison branch
+4. You select which commit to port
+5. Shows list of target branches to port TO
+6. You select one or multiple target branches (or "all")
+7. For EACH target branch:
+   - Checks for duplicate commits
+   - Shows files that would change
+   - Performs conflict check
+   - Shows diff summary
+   - Asks for confirmation (yes/no/skip)
+   - Cherry-picks if confirmed
+8. Returns to original branch when complete
+
+**Interactive workflow:**
+```bash
+# Must be on source branch
+git checkout dev
+
+just port-commit
+
+# Output:
+# 🔄 Port Commit from dev
+# ═══════════════════════════════════════════════
+#
+# Available branches:
+#  1. testing
+#  2. review
+#  3. master
+#  4. main
+#  5. feature/new-parser
+#
+# Enter branch number to compare with (or 'q' to quit): 1
+#
+# Commits available for porting:
+#  1. abc1234 feat: Add new validation mode
+#  2. def5678 fix: Handle edge case in parser
+#
+# Enter commit number to port (or 'q' to quit): 2
+#
+# Port this commit to which branch(es)?
+# Available target branches:
+#  1. testing
+#  2. review
+#  3. master
+#
+# Enter branch numbers separated by spaces (e.g., '1 3 5')
+# Or 'all' for all branches, or 'q' to quit
+# > 1 2
+```
+
+**Multi-branch porting:**
+- Can port to multiple branches in one run
+- Each branch is processed independently
+- Option to skip individual branches if conflicts detected
+- Can choose yes/no/skip for each branch
+
+**Safety per branch:**
+- Duplicate detection
+- Conflict check (dry-run)
+- File change preview
+- Individual confirmation
+
+**Example - Port to multiple branches:**
+```bash
+git checkout dev
+just port-commit
+
+# 1. Select comparison branch: testing
+# 2. Select commit: "fix: Handle edge case"
+# 3. Select targets: "1 2" (testing and review)
+#
+# Processing branch: testing
+#   ✅ No conflicts
+#   Proceed? yes
+#   ✅ Ported successfully
+#
+# Processing branch: review
+#   ⚠️  Conflicts detected
+#   Skip this branch? yes
+#   ⏭️  Skipping review
+#
+# ✅ Port operation complete
+#
+# Next steps:
+# 1. Review changes on each branch
+# 2. Run tests on each branch
+# 3. Push when ready
+```
+
+**Conflict handling:**
+- Shows conflicting files
+- Offers to skip the branch
+- Offers to abort cherry-pick if you proceed anyway
+- Continues to next branch on skip
+
+**Use cases:**
+1. **Port feature to multiple release branches:**
+   ```bash
+   git checkout feature/new-feature
+   just port-commit
+   # Port to: dev, testing, review
+   ```
+
+2. **Port hotfix from testing to dev:**
+   ```bash
+   git checkout testing
+   just port-commit
+   # Compare with: dev
+   # Port to: dev
+   ```
+
+3. **Selective backporting:**
+   ```bash
+   git checkout master
+   just port-commit
+   # Compare with: dev
+   # Select specific commit
+   # Port to: dev, testing (skip review if conflicts)
+   ```
+
+---
 
 ## Complete Development Workflow
 
