@@ -360,6 +360,7 @@ The table above is a curated selection of the most important comparisons. For co
 - 🌈 **SVG 2.0 mesh gradients** - Native support with conditional JavaScript polyfill injection
 - 📋 **Structured metadata** - RDF/XML metadata conformant to Dublin Core and custom FBF vocabulary
 - ⚙️ **FBF Generation Cards** - Declarative YAML-based project configuration for reproducible builds
+- 🔤 **Text-to-path conversion** - Optional conversion of text elements to paths for deduplication and font-free rendering
 
 #### Advanced Capabilities
 - 🌊 **Streaming architecture** - Real-time frame appending without playback interruption via frames-at-end design
@@ -886,6 +887,53 @@ svg2fbf -i frames/ -o output/ -f loop.fbf.svg -s 12 -p -a pingpong_once_reversed
 | `-q, --quiet` | 🔇 Suppress status messages | `False` |
 | `--keep-xml-space` | Keep xml:space="preserve" attribute | `False` |
 | `--no-keep-ratio` | Don't add preserveAspectRatio | `False` |
+
+### Text-to-Path Conversion
+
+Convert text elements in SVG frames to vector paths before processing. This enables:
+- ✅ **Text deduplication** - Text becomes paths that can be deduplicated via `<use>` references
+- ✅ **No font embedding** - Animation doesn't require external fonts
+- ✅ **Consistent rendering** - Text renders identically across all platforms
+- ✅ **Smaller file sizes** - For animations with repeated text across frames
+
+**Installation:**
+```bash
+# Install svg2fbf with text2path support
+uv tool install 'svg2fbf[text2path]'
+
+# Or upgrade existing installation
+uv tool upgrade svg2fbf
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--text2path` | 🔤 Convert all text elements to paths | `False` |
+| `--text2path-precision` | 🎯 Decimal precision for paths | `8` |
+| `--text2path-no-validate` | ⚡ Skip SVG validation (faster) | `False` |
+
+> **Note:** Text-to-path conversion is always strict. The tool will fail immediately if any font is missing, conversion errors occur, or the output is invalid. This ensures no corrupted animations are produced.
+
+**Usage Examples:**
+```bash
+# Basic text-to-path conversion
+svg2fbf -i frames/ -o output/ -f animation.fbf.svg --text2path
+
+# Lower precision for smaller files
+svg2fbf -i frames/ -o output/ -f animation.fbf.svg --text2path --text2path-precision 4
+
+# Skip validation for faster conversion (not recommended)
+svg2fbf -i frames/ -o output/ -f animation.fbf.svg --text2path --text2path-no-validate
+```
+
+**When to Use:**
+- Frames contain repeated text across multiple frames (titles, captions)
+- You want to embed animations without external font dependencies
+- Text must render consistently across all browsers and devices
+- Your SVG editor doesn't have native text-to-path export
+
+**See Also:** [Text-to-Path Technical Documentation](docs/TEXT_TO_PATH_CONVERSION.md)
 
 ### Metadata Options
 
