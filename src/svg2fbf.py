@@ -2326,8 +2326,9 @@ def sort_input_paths(input_paths, parse_ending_numbers_as_ints):
 
 
 def change_extension_to_fbfsvg(file_name):
-    # Use Path.stem to handle filenames with multiple dots (e.g. "my.scene.svg")
-    filename_without_extension = Path(file_name).stem
+    # Strip everything after first dot to get base name (e.g. "test.fbf.svg" -> "test")
+    # Intentionally uses split(".")[0] not Path.stem since we want "test" not "test.fbf"
+    filename_without_extension = file_name.split(".")[0]
     return filename_without_extension + ".fbf.svg"
 
 
