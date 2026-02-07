@@ -599,7 +599,7 @@ VALID_SVG_ELEMENTS = [
     "meshgradient",
     "meshpatch",
     "meshrow",
-    "solidColor"
+    "solidColor",
     # Tiny SVG 1.2
     "audio",
     "discard",
@@ -608,7 +608,7 @@ VALID_SVG_ELEMENTS = [
     "prefetch",
     "tbreak",
     "textArea",
-    "video"
+    "video",
     # if xmlns:html="http://www.w3.org/1999/xhtml" is defined
     "html:audio",
     "html:canvas",
@@ -687,7 +687,7 @@ ELEMENTS_NOT_TO_HASH = [
     "meshgradient",
     "meshpatch",
     "meshrow",
-    "solidColor"
+    "solidColor",
     # Tiny SVG 1.2
     "discard",
     "handler",
@@ -2342,7 +2342,7 @@ def sort_input_paths(input_paths, parse_ending_numbers_as_ints):
     # checking that we have at least 1 file
     if (input_paths is None) or (len(input_paths) < 1):
         ppp("ERROR - Insufficient number of frames in input folder.\nExiting.")
-        sys.exit()
+        sys.exit(1)
 
     # Special case: single frame doesn't need sorting
     if len(input_paths) == 1:
@@ -3600,7 +3600,7 @@ def generate_fbfsvg_animation():
                 # otherwise we exit the script
                 if xml_output_svg.namespaceURI != NS["SVG"]:
                     ppp("ERROR: namespaceURI of the default empty document is not SVG " + xml_output_svg.namespaceURI)
-                    sys.exit()
+                    sys.exit(1)
                 xml_output_defs = xml_output_doc.getElementsByTagName("defs")[0]
                 xml_output_shared = ElementByIdAndTag("SHARED_DEFINITIONS", "g", xml_output_defs)
                 elementsInputHashDict = {}
@@ -3925,7 +3925,7 @@ def generate_fbfsvg_animation():
         if options.animation_type == "once":
             animElem.setAttribute("repeatCount", "1")
             animElem.setAttribute("values", frames)
-        if options.animation_type == "once_reversed":
+        elif options.animation_type == "once_reversed":
             animElem.setAttribute("repeatCount", "1")
             animElem.setAttribute("values", framesReversed)
         elif options.animation_type == "loop":
@@ -3948,7 +3948,7 @@ def generate_fbfsvg_animation():
             animElem.setAttribute("values", framesPingPongReversed)
         else:
             # default is loop mode
-            animElem.setAttribute("repeatCount", "1")
+            animElem.setAttribute("repeatCount", "indefinite")
             animElem.setAttribute("values", frames)
 
         animElem.setAttribute("dur", f"{round(frame_duration * max_frame_num, 4)}s")
@@ -4783,7 +4783,7 @@ def move_all_non_renderable_elements_to_defs_shared(doc):
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -4867,7 +4867,7 @@ def move_all_non_defs_input_elements_as_frames_to_the_output_defs(input_svg, opt
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -4944,7 +4944,7 @@ def move_elem_to_output_svg_defs(node, elementsHashDict, frame_group=None):
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
     global output_duplicates_list
@@ -4978,7 +4978,7 @@ def move_all_input_defs_elements_to_the_output_defs(input_svg, options, frame_nu
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5095,7 +5095,7 @@ def convert_redundant_element_to_use_element(node, master_id, new_node_id, refer
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5294,7 +5294,7 @@ def reuse_elements_if_they_are_already_in_output_defs(input_svg, element_tag_nam
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5412,7 +5412,7 @@ def deep_reuse_elem_if_they_are_already_in_output_defs(input_svg, options, frame
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
     global outputReferencingElementsDict
@@ -5570,7 +5570,7 @@ def deep_convert_redundant_element_to_use_element(node, master_id, new_node_id, 
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5791,6 +5791,12 @@ def getViewBox(docElement, options):
     if (w.units != Unit.NONE and w.units != Unit.PX) or (h.units != Unit.NONE and h.units != Unit.PX):
         add2log(f"WARNING: viewBox values of file {current_filepath} are not unitless or in px!")
     # TODO: convert values to unitless
+
+    # Initialize viewBox variables with defaults matching document dimensions
+    vbX = 0.0
+    vbY = 0.0
+    vbWidth = w.value
+    vbHeight = h.value
 
     # parse viewBox attribute
     vbSep = RE_COMMA_WSP.split(docElement.getAttribute("viewBox"))
@@ -6112,7 +6118,6 @@ def remove_all_animations(node, options):
             "animateMotion",
         ]:
             node.removeChild(child)
-            return
         else:
             remove_all_animations(child, options)
 
@@ -8443,7 +8448,7 @@ def parseCssString(style_string):
             elif crule["selector"] == "polyline":
                 add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polyline' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
-            elif rule["selector"] == "polygon":
+            elif crule["selector"] == "polygon":
                 add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polygon' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "image":
@@ -9726,6 +9731,8 @@ def scourCoordinates(data, options, force_whitespace=False, control_points=None,
             previousCoord = scouredCoord
             c += 1
 
+        return "".join(newData)
+
     return ""
 
 
@@ -10362,9 +10369,9 @@ def get_document_begin(vbwidth, vbheight, docWidth, docHeight, no_keep_ratio=Fal
         + """"
     viewBox="0 0 """
         + str(vbwidth)
-        + """px """
+        + """ """
         + str(vbheight)
-        + """px"
+        + """"
     >
      <!--	FILE GENERATED BY svg2fbf v"""
         + SEMVERSION
@@ -10662,13 +10669,16 @@ def main():
 
     if options.show_copyright_info:
         ppp(COPYRIGHT_INFO)
-        exit()
+        sys.exit(0)
 
-    if options.input_folder[-1] != "/":
-        options.input_folder += "/"
+    # Guard against None when using YAML explicit frames mode (no input_folder)
+    if options.input_folder is not None:
+        if options.input_folder[-1] != "/":
+            options.input_folder += "/"
 
-    if options.output_path[-1] != "/":
-        options.output_path += "/"
+    if options.output_path is not None:
+        if options.output_path[-1] != "/":
+            options.output_path += "/"
 
     doProfiling = False
 
@@ -10883,7 +10893,15 @@ def cli():
             add2log(f"❌ Error: Cannot create output directory '{options.output_path}' - {e}")
             print_log_and_exit(1)
 
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except SystemExit:
+        raise
+    except Exception as e:
+        ppp(f"ERROR: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
