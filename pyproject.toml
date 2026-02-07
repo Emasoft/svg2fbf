@@ -83,6 +83,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "defusedxml>=0.7.1",
     "numpy>=2.2.0",
     "pyyaml>=6.0",
 ]

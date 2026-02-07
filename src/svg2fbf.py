@@ -41,6 +41,8 @@ import warnings
 import webbrowser
 import xml.dom.minidom
 import xml.parsers.expat
+
+import defusedxml.minidom
 from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 from decimal import Context, Decimal, InvalidOperation, getcontext
@@ -3575,7 +3577,7 @@ def generate_fbfsvg_animation():
 
                 # we get the empty template and make it the output doc
                 # Why: Pass metadata_dict to embed RDF/XML metadata in the FBF document
-                xml_output_doc = xml.dom.minidom.parseString(
+                xml_output_doc = defusedxml.minidom.parseString(
                     get_empty_document(
                         vbWdoc,
                         vbHdoc,
@@ -3945,7 +3947,10 @@ def generate_fbfsvg_animation():
             animElem.setAttribute("repeatCount", "indefinite")
             animElem.setAttribute("values", frames)
 
-        animElem.setAttribute("dur", f"{round(frame_duration * max_frame_num, 4)}s")
+        # Compute dur from actual number of SMIL values, not frame count
+        # Pingpong modes have 2N-1 values (forward + reverse minus shared middle frame)
+        actual_values_count = len(animElem.getAttribute("values").split(";"))
+        animElem.setAttribute("dur", f"{round(frame_duration * actual_values_count, 4)}s")
         if options.play_on_click is True:
             animElem.setAttribute("begin", "click")
 
@@ -4408,17 +4413,23 @@ def ensure_bun_installed():
     try:
         system = platform.system()
         if system == "Darwin":
-            # macOS: prefer Homebrew if available
+            # macOS: prefer Homebrew (no shell=True, no curl|bash)
             if shutil.which("brew"):
-                subprocess.run(["brew", "install", "bun"], check=True, capture_output=True)
+                subprocess.run(["brew", "install", "oven-sh/bun/bun"], check=True, capture_output=True)
             else:
-                # Fallback to official installer
-                subprocess.run("curl -fsSL https://bun.sh/install | bash", shell=True, check=True, capture_output=True)
+                # No safe auto-install without Homebrew; direct user to install manually
+                ppp("ERROR: Bun requires Homebrew on macOS. Install Homebrew first: https://brew.sh")
+                ppp("       Then run: brew install oven-sh/bun/bun")
+                return False
         elif system == "Linux":
-            # Linux: use official installer
-            subprocess.run("curl -fsSL https://bun.sh/install | bash", shell=True, check=True, capture_output=True)
+            # Linux: use npm if available (avoids curl|bash supply chain risk)
+            if shutil.which("npm"):
+                subprocess.run(["npm", "install", "-g", "bun"], check=True, capture_output=True)
+            else:
+                ppp("ERROR: Bun auto-install requires npm on Linux.")
+                ppp("       Install npm first, or install Bun manually: https://bun.sh")
+                return False
         elif system == "Windows":
-            # Windows: use npm if available
             if shutil.which("npm"):
                 subprocess.run(["npm", "install", "-g", "bun"], check=True, capture_output=True)
             else:
@@ -4618,7 +4629,7 @@ def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
             print_log_and_exit(1)
 
         try:
-            doc = xml.dom.minidom.parseString(in_string)
+            doc = defusedxml.minidom.parseString(in_string)
         except xml.parsers.expat.ExpatError as e:
             raise xml.parsers.expat.ExpatError(f"Invalid XML in {filepath}: {str(e)}") from e
         except Exception as e:
