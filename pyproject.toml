@@ -21,6 +21,8 @@ exclude = [
 "src/svg_viewbox_repair.py" = "svg_viewbox_repair/main.py"
 "src/svg_viewbox_repair/__init__.py" = "svg_viewbox_repair/__init__.py"
 "src/auto_install_deps.py" = "auto_install_deps.py"
+# Runtime data file referenced by svg2fbf.py for mesh gradient polyfill
+"src/meshgradient_polyfill.txt" = "svg2fbf/meshgradient_polyfill.txt"
 
 [tool.hatch.build.targets.wheel.shared-data]
 "tests/node_scripts" = "share/svg2fbf/node_scripts"
@@ -29,10 +31,17 @@ exclude = [
 [tool.hatch.build.targets.sdist]
 # Also exclude from source distributions
 # Also exclude ccpm/ (private plugin, separate project)
+# Also exclude examples/ and large data to reduce sdist size
 exclude = [
     "tests/sessions/",
     "tests/**/*.zip",
     "ccpm/",
+    "examples/",
+    "examples_dev/",
+    "docs_dev/",
+    "scripts_dev/",
+    "libs_dev/",
+    "FBF.SVG/",
 ]
 
 [project]
@@ -74,12 +83,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "fonttools>=4.60.1",
-    "lxml>=6.0.2",
     "numpy>=2.2.0",
-    "python-bidi>=0.6.7",
     "pyyaml>=6.0",
-    "tomli-w>=1.2.0",
 ]
 
 [project.optional-dependencies]

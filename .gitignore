@@ -3,6 +3,7 @@ __pycache__/
 *.py[oc]
 *.pyo
 *.pyd
+*.backup
 build/
 # dist/ - Now tracked so each branch has its versioned wheel
 wheels/
