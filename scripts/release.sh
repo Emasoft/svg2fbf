@@ -1122,8 +1122,8 @@ release_channel() {
   # Create a commit that encapsulates both the version bump and the changelog update.
   # Use a descriptive commit message including channel and version information.
   # Treat this commit as the canonical representation of the release in git history.
-  # Use --no-verify to skip pre-commit hooks that might interfere with release automation.
-  git commit --no-verify -m "Release ${channel} ${new_version}"
+  # Run pre-commit hooks on release commits to ensure code quality.
+  git commit -m "Release ${channel} ${new_version}"
 
   # Remove any previously built artifacts under the dist directory.
   # Clean the build output so no stale artifacts from earlier releases remain.
@@ -1150,11 +1150,10 @@ release_channel() {
   fi
 
   # Commit uv.lock changes that may occur during sync/build.
-  # Pre-commit hooks are skipped to avoid stashing/interference with release automation.
   # Note: || true is intentional - commit may have nothing to commit if uv.lock unchanged
   if [[ -n $(git status --porcelain uv.lock) ]]; then
     git add uv.lock
-    if ! git commit --no-verify -m "chore: Update uv.lock for ${channel} ${new_version}"; then
+    if ! git commit -m "chore: Update uv.lock for ${channel} ${new_version}"; then
       echo "Note: No uv.lock changes to commit (this is normal)" >&2
     fi
   fi
@@ -1164,7 +1163,7 @@ release_channel() {
   # Each branch shows only its own versioned wheel in dist/.
   # Note: Failure is non-fatal as the main release commit already happened
   git add dist/
-  if ! git commit --no-verify -m "Add built wheel for ${channel} ${new_version}"; then
+  if ! git commit -m "Add built wheel for ${channel} ${new_version}"; then
     echo "Note: No wheel changes to commit (this may be normal)" >&2
   fi
 
@@ -1326,13 +1325,20 @@ release_channel() {
     # Checkout main branch to prepare for sync using the safe switch function
     switch_to_branch main
 
-    # Reset main to exactly match master (hard reset)
-    git reset --hard master
+    # Confirm destructive operation before proceeding
+    echo "  ⚠️  This will HARD RESET main to match master and FORCE PUSH"
+    read -r -p "  Proceed with syncing main to master? [y/N]: " sync_confirm
+    if [[ "$sync_confirm" != "y" && "$sync_confirm" != "Y" ]]; then
+      echo "  Skipped main→master sync (user declined)" >&2
+    else
+      # Reset main to exactly match master (hard reset)
+      git reset --hard master
 
-    # Push main to origin, forcing if necessary to ensure sync
-    git push origin main --force-with-lease
+      # Push main to origin, forcing if necessary to ensure sync
+      git push origin main --force-with-lease
 
-    echo "✅ main branch synced with master"
+      echo "✅ main branch synced with master"
+    fi
   fi
 
   echo

@@ -6,7 +6,7 @@ on:
     types: [opened, reopened]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-issue-${{ github.event.issue.number }}
   cancel-in-progress: true
 
 # Permissions needed for the workflow

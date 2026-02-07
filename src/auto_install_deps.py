@@ -188,26 +188,14 @@ def install_puppeteer(scripts_dir: Path | None = None) -> tuple[bool, str]:
         else:
             return False, f"❌ Failed to install Puppeteer locally:\n{output}"
 
-    # Fallback: try global install
+    # Fallback: try global install (without sudo for security — npm scripts should not run as root)
     print("   Attempting global install...")
     success, output = run_command(["npm", "install", "-g", "puppeteer"], "npm install puppeteer", check=False)
 
     if success:
         return True, "✅ Puppeteer installed globally"
 
-    # If global install fails, try with sudo
-    if "permission denied" in output.lower() or "EACCES" in output:
-        print("   ⚠️  Global install requires permissions, trying with sudo...")
-        success, output = run_command(
-            ["sudo", "npm", "install", "-g", "puppeteer"],
-            "npm install puppeteer",
-            check=False,
-        )
-
-        if success:
-            return True, "✅ Puppeteer installed successfully with sudo"
-
-    return False, f"❌ Failed to install Puppeteer:\n{output}"
+    return False, f"❌ Failed to install Puppeteer:\n{output}\n\nTip: If permission denied, use 'npm config set prefix ~/.npm-global' to avoid needing sudo."
 
 
 def setup_dependencies(silent: bool = False) -> bool:

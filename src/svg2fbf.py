@@ -4303,11 +4303,26 @@ def apply_inherited_attributes_to_children(frame_group, inherited_attrs):
 
 
 def maybe_gziped_file(filename, mode="rb"):
+    # Maximum decompressed size to prevent gzip bombs (100 MB)
+    MAX_DECOMPRESSED_SIZE = 100 * 1024 * 1024
+
     if os.path.splitext(filename)[1].lower() in (".svgz", ".gz"):
         import gzip
+        import io
 
         add2log(f"WARNING: input file {current_filepath} is in compressed format. Extracting.")
-        return gzip.GzipFile(filename, mode)
+        # Read with size limit to prevent gzip bomb decompression attacks
+        with gzip.open(filename, mode) as gz:
+            data: bytes = gz.read(MAX_DECOMPRESSED_SIZE + 1)  # type: ignore[assignment]  # mode="rb" guarantees bytes
+            if len(data) > MAX_DECOMPRESSED_SIZE:
+                ppp(f"❌ ERROR: Decompressed size of {filename} exceeds {MAX_DECOMPRESSED_SIZE // (1024 * 1024)} MB limit")
+                sys.exit(1)
+        return io.BytesIO(data)
+    # For regular files, check size before opening (100 MB limit for SVG input)
+    file_size = os.path.getsize(filename)
+    if file_size > MAX_DECOMPRESSED_SIZE:
+        ppp(f"❌ ERROR: Input file {filename} is {file_size // (1024 * 1024)} MB, exceeds {MAX_DECOMPRESSED_SIZE // (1024 * 1024)} MB limit")
+        sys.exit(1)
     return open(filename, mode)
 
 
