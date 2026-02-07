@@ -2633,8 +2633,6 @@ def detect_mesh_gradients(svg_files):
         >>> has_mesh = detect_mesh_gradients(svg_files)
         >>> print(f"Uses mesh gradients: {has_mesh}")
     """
-    import re
-
     # WHY: Regex pattern to match both namespaced and non-namespaced mesh gradient tags
     # Supports: <meshgradient>, <svg:meshgradient>, and variants with attributes
     mesh_pattern = re.compile(r"<(?:svg:)?meshgradient[\s>]", re.IGNORECASE)
@@ -2677,7 +2675,6 @@ def detect_embedded_images(svg_files):
         >>> has_embedded = detect_embedded_images(svg_files)
         >>> print(f"Uses embedded images: {has_embedded}")
     """
-    import re
 
     # WHY: Pattern matches data URIs with base64-encoded images in image elements
     # Supports both xlink:href and href attributes (SVG 1.1 and SVG 2.0)
@@ -2717,7 +2714,6 @@ def detect_css_classes(svg_files):
         >>> has_classes = detect_css_classes(svg_files)
         >>> print(f"Uses CSS classes: {has_classes}")
     """
-    import re
 
     # WHY: Pattern matches class attributes with non-empty, non-whitespace values
     # Avoids false positives from empty class="" or class="   " attributes
@@ -2760,7 +2756,6 @@ def detect_external_fonts(svg_files):
         >>> has_fonts = detect_external_fonts(svg_files)
         >>> print(f"Uses external fonts: {has_fonts}")
     """
-    import re
 
     # WHY: Multiple patterns to catch different font reference methods
     # @font-face in style blocks, font file extensions, external stylesheet links
@@ -2807,7 +2802,6 @@ def detect_external_media(svg_files):
         >>> has_external = detect_external_media(svg_files)
         >>> print(f"Uses external media: {has_external}")
     """
-    import re
 
     # WHY: Pattern matches image elements with href to external files
     # Excludes data: URIs (those are embedded, not external)
@@ -4503,7 +4497,6 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         add2log(f"WARNING: Non-UTF8 characters in {filepath}, some may be lost")
 
     # Count text elements before conversion
-    import re
 
     text_pattern = re.compile(r"<(text|tspan|textPath)[\s>]", re.IGNORECASE)
     text_before = len(text_pattern.findall(svg_string))
@@ -8305,16 +8298,8 @@ def removeUnusedAttributesOnParent(elem):
     return num
 
 
-referencingProps = [
-    "fill",
-    "stroke",
-    "filter",
-    "clip-path",
-    "mask",
-    "marker-start",
-    "marker-end",
-    "marker-mid",
-]
+# NOTE: referencingProps is defined once at module level (near line 2569)
+# and used by both the FBF pipeline and Scour optimization functions
 
 
 def findReferencedElements(node, ids=None):
@@ -10757,7 +10742,6 @@ def inject_mesh_gradient_polyfill(svg_string):
         str: SVG string with injected polyfill (or unchanged if no
              meshgradients)
     """
-    import re
 
     # Check if the SVG actually contains meshgradient elements
     # Why: Only inject polyfill if needed - saves ~16KB when not
@@ -10807,6 +10791,17 @@ def cli():
     cl_parser = setup_command_line_parser()
     options = cl_parser.parse_args()
 
+    # Handle --version and --help flags early (before YAML loading)
+    # Why: These should work instantly without requiring a valid config file
+    if options.show_version:
+        print_version_only()
+        sys.exit(0)
+
+    if options.show_help:
+        print_version_banner()
+        cl_parser.print_help()
+        sys.exit(0)
+
     # Handle positional YAML config file argument
     # Why: Enable simple usage like `svg2fbf scene_1.yaml` instead of
     # requiring --config flag
@@ -10824,6 +10819,9 @@ def cli():
     # Load YAML configuration if provided - Merge with CLI options
     # Why: Allow batch processing with config files, CLI args take priority
     yaml_config = load_yaml_config(options.config)
+    # Fail if user explicitly provided --config but file was not loaded
+    if options.config and yaml_config is None:
+        cl_parser.error(f"Configuration file not found or invalid: {options.config}")
     options = merge_config_with_cli(yaml_config, options)
 
     # Get explicit frame list from config if provided (generation cards)
@@ -10834,17 +10832,6 @@ def cli():
         options.explicit_frames = explicit_frames
     else:
         options.explicit_frames = None
-
-    # Handle --version flag
-    if options.show_version:
-        print_version_only()
-        sys.exit(0)
-
-    # Handle --help flag
-    if options.show_help:
-        print_version_banner()
-        cl_parser.print_help()
-        sys.exit(0)
 
     # Show version banner (unless in quiet mode)
     if not options.quiet_mode:
