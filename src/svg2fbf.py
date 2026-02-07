@@ -1640,17 +1640,6 @@ def svg_float(text):
         return float(text)
 
 
-def svg_floats(text, min=None, max=None):
-    if text is None:
-        return None
-    floats = [float(v) for v in text.replace(",", " ").split(" ") if v]
-    if min is not None and len(floats) < min:
-        raise ValueError(f"expected at least {min} arguments")
-    if max is not None and len(floats) > max:
-        raise ValueError(f"expected at most {max} arguments")
-    return floats
-
-
 def svg_angle(angle):
     """Convert SVG angle to radians"""
     angle = angle.strip()
@@ -1659,55 +1648,6 @@ def svg_angle(angle):
     elif angle.endswith("rad"):
         return float(angle[:-3])
     return float(angle) * math.pi / 180
-
-
-# Default font size in pixels
-FONT_SIZE = 16
-
-
-def svg_size(size, default=None, dpi=96):
-    if size is None:
-        return default
-    if isinstance(size, (int, float)):
-        return float(size)
-    size = size.strip().lower()
-    match = FLOAT_RE.match(size)
-    if match is None:
-        warnings.warn(f"invalid size: {size}", stacklevel=2)
-        return default
-    value = float(match.group(0))
-    units = size[match.end() :].strip()
-    if not units or units == "px":
-        return value
-    elif units == "in":
-        return value * dpi
-    elif units == "cm":
-        return value * dpi / 2.54
-    elif units == "mm":
-        return value * dpi / 25.4
-    elif units == "pt":
-        return value * dpi / 72.0
-    elif units == "pc":
-        return value * dpi / 6.0
-    elif units == "em":
-        return value * FONT_SIZE
-    elif units == "ex":
-        return value * FONT_SIZE / 2.0
-    elif units == "%":
-        warnings.warn("size in % is not supported", stacklevel=2)
-        return value
-
-
-def svg_url(url, ids):
-    """Resolve SVG url"""
-    match = re.match(r"url\(\#([^)]+)\)", url.strip())
-    if match is None:
-        return None
-    target = ids.get(match.group(1))
-    if target is None:
-        warnings.warn(f"failed to resolve url: {url}", stacklevel=2)
-        return None
-    return target
 
 
 def is_same_sign(a, b):
@@ -2055,7 +1995,7 @@ of SVG files using SMIL animation.
     parser.add_argument("--no-keep-ratio", action="store_true", dest="no_keep_ratio", default=False, help="don't add preserveAspectRatio attribute to the output SVG (useful for animations with negative viewBox coordinates)")
     parser.add_argument("--align-mode", choices=["top-left", "center"], dest="align_mode", default="center", help="📐 alignment mode for fitting frames: 'center' (default, matches preserveAspectRatio='xMidYMid meet') or 'top-left'", metavar="MODE")
     parser.add_argument("-p", "--play_on_click", action="store_true", dest="play_on_click", default=False, help="make the svg animation start on click (require the 'object' tag instead of the 'img' tag in the html)")
-    parser.add_argument("-b", "--backdrop", dest="backdrop", help="path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)", default="None", metavar="IMAGE")
+    parser.add_argument("-b", "--backdrop", dest="backdrop", help="path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)", default=None, metavar="IMAGE")
     parser.add_argument("-d", "--digits", dest="digits", type=int, help="🔬 coordinate precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-c", "--cdigits", dest="cdigits", type=int, help="🔬 control point precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-q", "--quiet", action="store_true", dest="quiet_mode", help="🔇 don't print status messages to stdout", default=False)
@@ -2229,12 +2169,16 @@ def merge_config_with_cli(yaml_config, cli_options):
     if "speed" in gen_params and cli_options.fps == 1.0:
         cli_options.fps = float(gen_params["speed"])
     if "animation_type" in gen_params and cli_options.animation_type == "loop":
-        cli_options.animation_type = gen_params["animation_type"]
+        yaml_anim_type = gen_params["animation_type"]
+        if yaml_anim_type not in TYPE_CHOICES:
+            ppp(f"WARNING: Invalid animation_type '{yaml_anim_type}' in YAML config. Valid choices: {TYPE_CHOICES}")
+        else:
+            cli_options.animation_type = yaml_anim_type
     if "digits" in gen_params and cli_options.digits == 28:
         cli_options.digits = int(gen_params["digits"])
     if "cdigits" in gen_params and cli_options.cdigits == 28:
         cli_options.cdigits = int(gen_params["cdigits"])
-    if "backdrop" in gen_params and cli_options.backdrop == "None":
+    if "backdrop" in gen_params and cli_options.backdrop is None:
         cli_options.backdrop = gen_params["backdrop"]
     if "play_on_click" in gen_params and not cli_options.play_on_click:
         cli_options.play_on_click = gen_params["play_on_click"]
@@ -2294,12 +2238,21 @@ def get_frame_list_from_config(yaml_config, input_folder):
         for frame_str in frames:
             frame_path = Path(frame_str)
 
-            # Make relative paths relative to config file location if possible
-            # This allows portable config files with relative frame paths
+            # Make relative paths relative to current working directory
+            # User should ensure they run svg2fbf from the correct directory
             if not frame_path.is_absolute():
-                # If frame path is relative, it's relative to current working directory
-                # User should ensure they run svg2fbf from the correct directory
                 frame_path = Path.cwd() / frame_path
+
+            # Resolve symlinks and ".." to get canonical path, then verify
+            # it stays within the working directory (prevent path traversal via YAML)
+            resolved = frame_path.resolve()
+            cwd_resolved = Path.cwd().resolve()
+            if not str(resolved).startswith(str(cwd_resolved) + os.sep) and resolved != cwd_resolved:
+                ppp(f"❌ ERROR: Frame path escapes working directory: {frame_str}")
+                ppp(f"   Resolved to: {resolved}")
+                ppp(f"   Working dir: {cwd_resolved}")
+                sys.exit(1)
+            frame_path = resolved
 
             if not frame_path.exists():
                 ppp(f"❌ ERROR: Frame file not found: {frame_str}")
@@ -2373,7 +2326,8 @@ def sort_input_paths(input_paths, parse_ending_numbers_as_ints):
 
 
 def change_extension_to_fbfsvg(file_name):
-    filename_without_extension = file_name.split(".")[0]
+    # Use Path.stem to handle filenames with multiple dots (e.g. "my.scene.svg")
+    filename_without_extension = Path(file_name).stem
     return filename_without_extension + ".fbf.svg"
 
 
@@ -2393,26 +2347,6 @@ def ppp(txt=""):
 
             txt_ascii = "".join(c if ord(c) < 128 else "?" for c in txt)
             sys.stdout.write("\r" + txt_ascii + "\n\r")
-
-
-def pppd(txt="", function_name=None):
-    if function_name is None:
-        ppp("DEBUG START:")
-        ppp(txt)
-        ppp("DEBUG END.")
-    else:
-        ppp(f"DEBUG FUNCTION {function_name} START:")
-        ppp(txt)
-        ppp(f"DEBUG FUNCTION {function_name} END.")
-    return
-
-
-def ppx(xml_doc):
-    ppp("DEBUG XML DOC START:")
-    ppp(xml_doc.toprettyxml())
-    ppp("DEBUG XML DOC END.")
-    ppp()
-    return
 
 
 # my simple log function
@@ -2449,10 +2383,9 @@ def open_in_browser(filepath):
     Args:
         filepath: Path to the generated FBF SVG file
     """
-    # Convert to absolute path and file:// URL
-    # Why: Browsers need absolute file:// URLs to open local files
-    abs_path = os.path.abspath(filepath)
-    file_url = f"file://{abs_path}"
+    # Convert to absolute path and cross-platform file:// URI
+    # Why: Browsers need absolute file:// URLs; Path.as_uri() handles Windows drive letters
+    file_url = Path(filepath).resolve().as_uri()
 
     try:
         # Try Chrome first (best SVG animation support)
@@ -2548,16 +2481,6 @@ def remove_prefix(text, prefix):
 # I don't use zfill() because I need to be sure of type (integer).
 def paddedNum(input_integer: int, number_of_digits: int) -> str:
     return "{num:0{width}}".format(num=int(input_integer), width=int(number_of_digits))
-
-
-# a function to truncate floats and decimals to a
-# given number of digits for printing purposes
-#
-def truncDec(dec: Decimal, digits: int) -> decimal.Decimal:
-    round_down_ctx = decimal.getcontext()
-    round_down_ctx.rounding = decimal.ROUND_DOWN
-    new_dec = round_down_ctx.create_decimal(dec)
-    return round(new_dec, digits)
 
 
 # global variables
@@ -3498,7 +3421,7 @@ def generate_fbfsvg_animation():
         # Why: Document special FBF features and options used
         # hasBackdropImage: true only if user provided external backdrop image
         # file via --backdrop flag
-        metadata_dict["hasBackdropImage"] = options.backdrop is not None and options.backdrop != "None"
+        metadata_dict["hasBackdropImage"] = options.backdrop is not None
         metadata_dict["hasInteractivity"] = options.play_on_click
         metadata_dict["interactivityType"] = "click_to_start" if options.play_on_click else "none"
         metadata_dict["keepXmlSpace"] = options.keep_xml_space_attribute
@@ -3784,7 +3707,7 @@ def generate_fbfsvg_animation():
         animation_backdrop = ElementByIdAndTag("ANIMATION_BACKDROP", "g", xml_output_doc)
 
         # STEP 7.1: Add backdrop image/SVG to STAGE_BACKGROUND if provided
-        if options.backdrop is not None and options.backdrop != "None":
+        if options.backdrop is not None:
             backdrop_path = Path(options.backdrop)
 
             if not backdrop_path.exists():
@@ -3826,7 +3749,8 @@ def generate_fbfsvg_animation():
                             backdrop_doc.unlink()
 
                         except Exception as e:
-                            ppp(f"WARNING: Failed to process SVG backdrop: {e}")
+                            ppp(f"ERROR: Failed to process SVG backdrop: {e}")
+                            sys.exit(1)
 
                     else:
                         # Bitmap backdrop: create <image> element in STAGE_BACKGROUND
@@ -3863,7 +3787,8 @@ def generate_fbfsvg_animation():
                             ppp(f"✓ Added bitmap backdrop from {backdrop_path.name}")
 
                         except Exception as e:
-                            ppp(f"WARNING: Failed to process bitmap backdrop: {e}")
+                            ppp(f"ERROR: Failed to process bitmap backdrop: {e}")
+                            sys.exit(1)
 
         # STEP 8
         # setup the 'animation_stage' group, with the 'animated_group'
@@ -4683,19 +4608,14 @@ def progress_bar(
         # Input validation
         if total < 2:
             raise ValueError("Total number of elements must be at least 2")
-        if total == 0:
-            raise ValueError("Total cannot be zero")
         if count > total:
             raise ValueError("Count must not be higher than total")
         if suffix not in ("percentage", "counter"):
             raise ValueError("Suffix must be 'percentage' or 'counter'")
 
-        # Calculate progress
-        try:
-            x = int(size * count / total)
-            percent = f"{int((count / total) * 100)}%"
-        except ZeroDivisionError as e:
-            raise ValueError("Cannot divide by zero total") from e
+        # Calculate progress (total >= 2 guaranteed by validation above)
+        x = int(size * count / total)
+        percent = f"{int((count / total) * 100)}%"
 
         # Format counter
         try:
@@ -5168,23 +5088,8 @@ def generateHashKeyDictionary(xml_doc):
     # All nodes are hashed recursively.
     hash_id_dict = defaultdict(list)
     generate_hash_id_dict_recursively(xml_doc, hash_id_dict)
-    # printDictionary(hash_id_dict)
 
     return hash_id_dict
-
-
-def printDictionary(mydict):
-    index = 0
-    ppp("DEBUG DICTIONARY")
-    for key, values in mydict.items():
-        ppp("KEY:" + str(key))
-        for id_, node_ in values:
-            ppp("	index:" + str(index))
-            ppp("	ID:" + str(id_))
-            ppp("	NODE:" + node_.toprettyxml())
-            ppp()
-            index = index + 1
-    ppp("DEBUG DICTIONARY END...")
 
 
 # traverse all ids from a node and its childrens recursively
@@ -5515,10 +5420,6 @@ def deep_reuse_elem_if_they_are_already_in_output_defs(input_svg, options, frame
     return
 
 
-def check_id_existence(elem_id):
-    return ElementById(elem_id, xml_output_shared)
-
-
 # Create a Shared Master Node (SMN) from a node and add it to
 # the def shared section of the output svg, as part of the
 # DEEP REUSE protocol.
@@ -5696,55 +5597,6 @@ def replace_all_element_references_with_new_id(old_id, new_id, referencingElems)
                 if n > 0:
                     styles[style] = v_new
             _setStyle(elem, styles)
-
-
-# null coalescing operator
-def COAL(item):
-    return "" if item is None else item
-
-
-def PathById(elementId, xml_doc):
-    elements = xml_doc.getElementsByTagName("path")
-    for element in elements:
-        if element is not None and element.nodeType == element.ELEMENT_NODE:
-            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
-                # return only the first element we found
-                # (supposing no duplicate ids)
-                return element
-    return None
-
-
-def PolygonById(elementId, xml_doc):
-    elements = xml_doc.getElementsByTagName("polygon")
-    for element in elements:
-        if element is not None and element.nodeType == element.ELEMENT_NODE:
-            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
-                # return only the first element we found
-                # (supposing no duplicate ids)
-                return element
-    return None
-
-
-def PolylineById(elementId, xml_doc):
-    elements = xml_doc.getElementsByTagName("polyline")
-    for element in elements:
-        if element is not None and element.nodeType == element.ELEMENT_NODE:
-            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
-                # return only the first element we found
-                # (supposing no duplicate ids)
-                return element
-    return None
-
-
-def ImageById(elementId, xml_doc):
-    elements = xml_doc.getElementsByTagName("image")
-    for element in elements:
-        if element is not None and element.nodeType == element.ELEMENT_NODE:
-            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
-                # return only the first element we found
-                # (supposing no duplicate ids)
-                return element
-    return None
 
 
 def ElementByIdAndTag(elementId, elementTag, xml_doc):
@@ -5928,16 +5780,6 @@ def preprocess_svg_file(doc, options, filepath):
         pass
 
     # NOT NEEDED FOR NOW
-    # remove unnecessary closing point of polygons and scour points
-    # 	for polygon in doc.documentElement.getElementsByTagName('polygon'):
-    # 		clean_polygon(polygon, options)
-
-    # NOT NEEDED FOR NOW
-    # scour points of polyline
-    # 	for polyline in doc.documentElement.getElementsByTagName('polyline'):
-    # 		cleanPolyline(polyline, options)
-
-    # NOT NEEDED FOR NOW
     # clean path data
     # 	for elem in doc.documentElement.getElementsByTagName('path'):
     # 		if elem.getAttribute('d') == '':
@@ -6004,11 +5846,6 @@ def preprocess_svg_file(doc, options, filepath):
 
     # reduce the length of transformation attributes
     # 	optimizeTransforms(doc.documentElement, options)
-
-    # convert rasters references to base64-encoded strings
-    # TODO: solve the crash when trying to encode
-    # for elem in doc.documentElement.getElementsByTagName("image"):
-    #     embed_rasters(elem, options)
 
     # properly size the SVG document (ideally width/height should be 100%
     # with a viewBox)
@@ -7308,80 +7145,6 @@ def removeDuplicateGradients(doc):
             num += len(duplicates)
 
     return num
-
-
-def embed_rasters(element, options):
-    """
-    Converts raster references to inline images.
-    NOTE: there are size limits to base64-encoding handling in browsers
-    """
-    num_rasters_embedded = 0
-
-    href = element.getAttributeNS(NS["XLINK"], "href")
-
-    # if xlink:href is set, then grab the id
-    if href != "" and len(href) > 1:
-        ext = os.path.splitext(os.path.basename(href))[1].lower()[1:]
-
-        # only operate on files with 'png', 'jpg', and 'gif' file extensions
-        if ext in ["png", "jpg", "gif"]:
-            # fix common issues with file paths
-            href_fixed = href.replace("\\", "/")
-            href_fixed = re.sub("file:/+", "file:///", href_fixed)
-
-            # parse the URI to get scheme and path
-            parsed_href = urllib.parse.urlparse(href_fixed)
-
-            # assume locations without protocol point to local files
-            # (and should use the 'file:' protocol)
-            if parsed_href.scheme == "":
-                parsed_href = parsed_href._replace(scheme="file")
-                if href_fixed[0] == "/":
-                    href_fixed = "file://" + href_fixed
-                else:
-                    href_fixed = "file:" + href_fixed
-
-            # relative local paths are relative to the input file,
-            # therefore temporarily change the working dir
-            working_dir_old = None
-            if parsed_href.scheme == "file" and parsed_href.path[0] != "/":
-                if options.infilename:
-                    working_dir_old = os.getcwd()
-                    working_dir_new = os.path.abspath(os.path.dirname(options.infilename))
-                    os.chdir(working_dir_new)
-
-            # open/download the file
-            try:
-                file = urllib.request.urlopen(href_fixed)
-                rasterdata = file.read()
-                file.close()
-            except Exception as e:
-                add2log("WARNING: could not open file '" + href + "' for embedding. The raster image will be kept as " + "a reference but might be invalid. File: " + f"{current_filepath}" + "(Exception details: " + str(e) + ")")
-                rasterdata = ""
-            finally:
-                # always restore initial working directory if we changed it above
-                if working_dir_old is not None:
-                    os.chdir(working_dir_old)
-
-            if rasterdata != "":
-                # base64-encode raster
-                b64eRaster = base64.b64encode(rasterdata)
-
-                # set href attribute to base64-encoded equivalent
-                if b64eRaster != "":
-                    # PNG and GIF both have MIME Type 'image/[ext]', but
-                    # JPEG has MIME Type 'image/jpeg'
-                    if ext == "jpg":
-                        ext = "jpeg"
-
-                    element.setAttributeNS(
-                        NS["XLINK"],
-                        "href",
-                        "data:image/" + ext + ";base64," + b64eRaster.decode(),
-                    )
-                    num_rasters_embedded += 1
-                    del b64eRaster
-    return num_rasters_embedded
 
 
 def properlySizeDoc(docElement, options):
@@ -9604,32 +9367,6 @@ def parseListOfPoints(s):
     return nums
 
 
-def clean_polygon(elem, options):
-    """
-    Remove unnecessary closing point of polygon points attribute
-    """
-    num_points_removed_from_polygon = 0
-
-    pts = parseListOfPoints(elem.getAttribute("points"))
-    N = len(pts) / 2
-    if N >= 2:
-        (startx, starty) = pts[:2]
-        (endx, endy) = pts[-2:]
-        if startx == endx and starty == endy:
-            del pts[-2:]
-            num_points_removed_from_polygon += 1
-    elem.setAttribute("points", scourCoordinates(pts, options, True))
-    return num_points_removed_from_polygon
-
-
-def cleanPolyline(elem, options):
-    """
-    Scour the polyline points attribute
-    """
-    pts = parseListOfPoints(elem.getAttribute("points"))
-    elem.setAttribute("points", scourCoordinates(pts, options, True))
-
-
 def controlPoints(cmd, data):
     """
     Checks if there are control points in the path data
@@ -10578,18 +10315,6 @@ ___________________________________________________________________
     """
 
 
-def get_document_group(group_id):
-    return (
-        '''
-    <g id="'''
-        + group_id
-        + """">
-
-    </g>
-    """
-    )
-
-
 def get_animation_scene(width, height):
     return """
 <!--	ANIMATION BACKDROP	  -->
@@ -10864,8 +10589,10 @@ def cli():
     if options.animation_type not in TYPE_CHOICES:
         cl_parser.error("incorrect animation type name")
 
-    if options.digits < 1:
-        cl_parser.error("Number of significant digits has to be larger than zero, see --help")
+    if options.digits < 1 or options.digits > 50:
+        cl_parser.error("--digits must be between 1 and 50, see --help")
+    if options.cdigits < 1 or options.cdigits > 50:
+        cl_parser.error("--cdigits must be between 1 and 50, see --help")
     if options.cdigits > options.digits:
         cl_parser.error("WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help")
 
