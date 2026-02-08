@@ -1641,6 +1641,66 @@ def svg_float(text):
         return float(text)
 
 
+def svg_floats(text, min=None, max=None):
+    if text is None:
+        return None
+    floats = [float(v) for v in text.replace(",", " ").split(" ") if v]
+    if min is not None and len(floats) < min:
+        raise ValueError(f"expected at least {min} arguments")
+    if max is not None and len(floats) > max:
+        raise ValueError(f"expected at most {max} arguments")
+    return floats
+
+
+# Default font size in pixels
+FONT_SIZE = 16
+
+
+def svg_size(size, default=None, dpi=96):
+    if size is None:
+        return default
+    if isinstance(size, (int, float)):
+        return float(size)
+    size = size.strip().lower()
+    match = FLOAT_RE.match(size)
+    if match is None:
+        warnings.warn(f"invalid size: {size}", stacklevel=2)
+        return default
+    value = float(match.group(0))
+    units = size[match.end() :].strip()
+    if not units or units == "px":
+        return value
+    elif units == "in":
+        return value * dpi
+    elif units == "cm":
+        return value * dpi / 2.54
+    elif units == "mm":
+        return value * dpi / 25.4
+    elif units == "pt":
+        return value * dpi / 72.0
+    elif units == "pc":
+        return value * dpi / 6.0
+    elif units == "em":
+        return value * FONT_SIZE
+    elif units == "ex":
+        return value * FONT_SIZE / 2.0
+    elif units == "%":
+        warnings.warn("size in % is not supported", stacklevel=2)
+        return value
+
+
+def svg_url(url, ids):
+    """Resolve SVG url"""
+    match = re.match(r"url\(\#([^)]+)\)", url.strip())
+    if match is None:
+        return None
+    target = ids.get(match.group(1))
+    if target is None:
+        warnings.warn(f"failed to resolve url: {url}", stacklevel=2)
+        return None
+    return target
+
+
 def svg_angle(angle):
     """Convert SVG angle to radians"""
     angle = angle.strip()
@@ -2351,6 +2411,26 @@ def ppp(txt=""):
             sys.stdout.write("\r" + txt_ascii + "\n\r")
 
 
+def pppd(txt="", function_name=None):
+    if function_name is None:
+        ppp("DEBUG START:")
+        ppp(txt)
+        ppp("DEBUG END.")
+    else:
+        ppp(f"DEBUG FUNCTION {function_name} START:")
+        ppp(txt)
+        ppp(f"DEBUG FUNCTION {function_name} END.")
+    return
+
+
+def ppx(xml_doc):
+    ppp("DEBUG XML DOC START:")
+    ppp(xml_doc.toprettyxml())
+    ppp("DEBUG XML DOC END.")
+    ppp()
+    return
+
+
 # my simple log function
 # TODO: add a "save log to file" option
 #
@@ -2483,6 +2563,16 @@ def remove_prefix(text, prefix):
 # I don't use zfill() because I need to be sure of type (integer).
 def paddedNum(input_integer: int, number_of_digits: int) -> str:
     return "{num:0{width}}".format(num=int(input_integer), width=int(number_of_digits))
+
+
+# a function to truncate floats and decimals to a
+# given number of digits for printing purposes
+#
+def truncDec(dec: Decimal, digits: int) -> decimal.Decimal:
+    round_down_ctx = decimal.getcontext()
+    round_down_ctx.rounding = decimal.ROUND_DOWN
+    new_dec = round_down_ctx.create_decimal(dec)
+    return round(new_dec, digits)
 
 
 # global variables
@@ -5453,6 +5543,10 @@ def deep_reuse_elem_if_they_are_already_in_output_defs(input_svg, options, frame
     return
 
 
+def check_id_existence(elem_id):
+    return ElementById(elem_id, xml_output_shared)
+
+
 # Create a Shared Master Node (SMN) from a node and add it to
 # the def shared section of the output svg, as part of the
 # DEEP REUSE protocol.
@@ -5630,6 +5724,55 @@ def replace_all_element_references_with_new_id(old_id, new_id, referencingElems)
                 if n > 0:
                     styles[style] = v_new
             _setStyle(elem, styles)
+
+
+# null coalescing operator
+def COAL(item):
+    return "" if item is None else item
+
+
+def PathById(elementId, xml_doc):
+    elements = xml_doc.getElementsByTagName("path")
+    for element in elements:
+        if element is not None and element.nodeType == element.ELEMENT_NODE:
+            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
+                # return only the first element we found
+                # (supposing no duplicate ids)
+                return element
+    return None
+
+
+def PolygonById(elementId, xml_doc):
+    elements = xml_doc.getElementsByTagName("polygon")
+    for element in elements:
+        if element is not None and element.nodeType == element.ELEMENT_NODE:
+            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
+                # return only the first element we found
+                # (supposing no duplicate ids)
+                return element
+    return None
+
+
+def PolylineById(elementId, xml_doc):
+    elements = xml_doc.getElementsByTagName("polyline")
+    for element in elements:
+        if element is not None and element.nodeType == element.ELEMENT_NODE:
+            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
+                # return only the first element we found
+                # (supposing no duplicate ids)
+                return element
+    return None
+
+
+def ImageById(elementId, xml_doc):
+    elements = xml_doc.getElementsByTagName("image")
+    for element in elements:
+        if element is not None and element.nodeType == element.ELEMENT_NODE:
+            if element.hasAttribute("id") and element.getAttribute("id") == elementId:
+                # return only the first element we found
+                # (supposing no duplicate ids)
+                return element
+    return None
 
 
 def ElementByIdAndTag(elementId, elementTag, xml_doc):
@@ -10461,6 +10604,18 @@ ___________________________________________________________________
     </desc>
 
     """
+
+
+def get_document_group(group_id):
+    return (
+        '''
+    <g id="'''
+        + group_id
+        + """">
+
+    </g>
+    """
+    )
 
 
 def get_animation_scene(width, height):
