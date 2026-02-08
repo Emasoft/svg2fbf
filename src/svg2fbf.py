@@ -3712,7 +3712,8 @@ def generate_fbfsvg_animation():
             backdrop_path = Path(options.backdrop)
 
             if not backdrop_path.exists():
-                ppp(f"WARNING: Backdrop file not found: {backdrop_path}")
+                ppp(f"❌ ERROR: Backdrop file not found: {backdrop_path}")
+                sys.exit(1)
             else:
                 stage_background = ElementByIdAndTag("STAGE_BACKGROUND", "g", xml_output_doc)
 
