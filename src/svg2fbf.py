@@ -36,6 +36,7 @@ import sys
 import time
 import traceback
 import urllib.parse
+import urllib.request
 import uuid
 import warnings
 import webbrowser
@@ -5955,15 +5956,13 @@ def preprocess_svg_file(doc, options, filepath):
     while remove_nested_groups(doc.documentElement) > 0:
         pass
 
-    # NOT NEEDED FOR NOW
-    # remove unnecessary closing point of polygons and scour points
-    # 	for polygon in doc.documentElement.getElementsByTagName('polygon'):
-    # 		clean_polygon(polygon, options)
+    # Remove unnecessary closing point of polygons and scour polygon points
+    for polygon in doc.documentElement.getElementsByTagName("polygon"):
+        clean_polygon(polygon, options)
 
-    # NOT NEEDED FOR NOW
-    # scour points of polyline
-    # 	for polyline in doc.documentElement.getElementsByTagName('polyline'):
-    # 		cleanPolyline(polyline, options)
+    # Scour points of polyline elements
+    for polyline in doc.documentElement.getElementsByTagName("polyline"):
+        cleanPolyline(polyline, options)
 
     # NOT NEEDED FOR NOW
     # clean path data
@@ -6033,10 +6032,10 @@ def preprocess_svg_file(doc, options, filepath):
     # reduce the length of transformation attributes
     # 	optimizeTransforms(doc.documentElement, options)
 
-    # convert rasters references to base64-encoded strings
-    # TODO: solve the crash when trying to encode
-    # for elem in doc.documentElement.getElementsByTagName("image"):
-    #     embed_rasters(elem, options)
+    # Convert external raster references to inline base64 data URIs
+    # Handles local files, remote URLs, file:// URIs, and network paths
+    for elem in doc.documentElement.getElementsByTagName("image"):
+        embed_rasters(elem, options)
 
     # properly size the SVG document (ideally width/height should be 100%
     # with a viewBox)
@@ -7340,76 +7339,141 @@ def removeDuplicateGradients(doc):
 
 def embed_rasters(element, options):
     """
-    Converts raster references to inline images.
-    NOTE: there are size limits to base64-encoding handling in browsers
+    Embed external raster image references as inline base64 data URIs.
+
+    Handles all image source types:
+    - Local files (relative and absolute paths)
+    - Remote URLs (http://, https://)
+    - file:// protocol URIs
+    - Network/UNC paths (//server/share/...)
+
+    Supports image formats: png, jpg/jpeg, gif, webp, bmp, tiff, ico, svg+xml.
+    No artificial size limits — the full image is embedded regardless of size.
     """
     num_rasters_embedded = 0
 
+    # Check both xlink:href (SVG 1.1) and href (SVG 2.0) attributes
     href = element.getAttributeNS(NS["XLINK"], "href")
+    if not href or len(href) <= 1:
+        href = element.getAttribute("href")
+    if not href or len(href) <= 1:
+        return 0
 
-    # if xlink:href is set, then grab the id
-    if href != "" and len(href) > 1:
-        ext = os.path.splitext(os.path.basename(href))[1].lower()[1:]
+    # Skip already-embedded data URIs and internal references (#id)
+    if href.startswith("data:") or href.startswith("#"):
+        return 0
 
-        # only operate on files with 'png', 'jpg', and 'gif' file extensions
-        if ext in ["png", "jpg", "gif"]:
-            # fix common issues with file paths
-            href_fixed = href.replace("\\", "/")
-            href_fixed = re.sub("file:/+", "file:///", href_fixed)
+    # Determine file extension for MIME type mapping
+    ext = os.path.splitext(os.path.basename(urllib.parse.urlparse(href).path))[1].lower().lstrip(".")
 
-            # parse the URI to get scheme and path
-            parsed_href = urllib.parse.urlparse(href_fixed)
+    # Map of supported extensions to MIME subtypes
+    # No restrictions on image format — embed anything with a known MIME type
+    ext_to_mime = {
+        "png": "png",
+        "jpg": "jpeg",
+        "jpeg": "jpeg",
+        "gif": "gif",
+        "webp": "webp",
+        "bmp": "bmp",
+        "tiff": "tiff",
+        "tif": "tiff",
+        "ico": "x-icon",
+        "svg": "svg+xml",
+        "svgz": "svg+xml",
+    }
 
-            # assume locations without protocol point to local files
-            # (and should use the 'file:' protocol)
-            if parsed_href.scheme == "":
-                parsed_href = parsed_href._replace(scheme="file")
-                if href_fixed[0] == "/":
-                    href_fixed = "file://" + href_fixed
-                else:
-                    href_fixed = "file:" + href_fixed
+    mime_subtype = ext_to_mime.get(ext)
+    if mime_subtype is None:
+        # Unknown image format — skip embedding, keep original reference
+        add2log(f"WARNING: Unknown image format '.{ext}' in href '{href}', skipping embedding. File: {current_filepath}")
+        return 0
 
-            # relative local paths are relative to the input file,
-            # therefore temporarily change the working dir
-            working_dir_old = None
-            if parsed_href.scheme == "file" and parsed_href.path[0] != "/":
-                if options.infilename:
-                    working_dir_old = os.getcwd()
-                    working_dir_new = os.path.abspath(os.path.dirname(options.infilename))
-                    os.chdir(working_dir_new)
+    # Resolve the href to a fetchable URL or local file path
+    rasterdata = _fetch_image_data(href, options)
 
-            # open/download the file
-            try:
-                file = urllib.request.urlopen(href_fixed)
-                rasterdata = file.read()
-                file.close()
-            except Exception as e:
-                add2log("WARNING: could not open file '" + href + "' for embedding. The raster image will be kept as " + "a reference but might be invalid. File: " + f"{current_filepath}" + "(Exception details: " + str(e) + ")")
-                rasterdata = ""
-            finally:
-                # always restore initial working directory if we changed it above
-                if working_dir_old is not None:
-                    os.chdir(working_dir_old)
+    if rasterdata is None or len(rasterdata) == 0:
+        return 0
 
-            if rasterdata != "":
-                # base64-encode raster
-                b64eRaster = base64.b64encode(rasterdata)
+    # Base64-encode and set as data URI (no size limit)
+    b64_data = base64.b64encode(rasterdata).decode("ascii")
+    data_uri = f"data:image/{mime_subtype};base64,{b64_data}"
 
-                # set href attribute to base64-encoded equivalent
-                if b64eRaster != "":
-                    # PNG and GIF both have MIME Type 'image/[ext]', but
-                    # JPEG has MIME Type 'image/jpeg'
-                    if ext == "jpg":
-                        ext = "jpeg"
+    # Set on both xlink:href and href for maximum compatibility
+    element.setAttributeNS(NS["XLINK"], "href", data_uri)
+    if element.hasAttribute("href"):
+        element.setAttribute("href", data_uri)
 
-                    element.setAttributeNS(
-                        NS["XLINK"],
-                        "href",
-                        "data:image/" + ext + ";base64," + b64eRaster.decode(),
-                    )
-                    num_rasters_embedded += 1
-                    del b64eRaster
+    num_rasters_embedded += 1
+    add2log(f"Embedded raster image ({ext}, {len(rasterdata)} bytes) from: {href}")
     return num_rasters_embedded
+
+
+def _fetch_image_data(href, options):
+    """
+    Fetch image data from any supported source: local file, remote URL,
+    file:// URI, or network path.
+
+    Returns bytes on success, None on failure (with warning logged).
+    """
+    parsed = urllib.parse.urlparse(href)
+
+    # Case 1: Remote URL (http/https) — fetch directly via urllib
+    if parsed.scheme in ("http", "https"):
+        try:
+            req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return response.read()
+        except Exception as e:
+            add2log(f"WARNING: Failed to fetch remote image '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Case 2: file:// URI — convert to local path and read
+    if parsed.scheme == "file":
+        try:
+            # urllib.request.url2pathname handles platform-specific conversions
+            # (Windows drive letters, URL-encoded chars, etc.)
+            local_path = urllib.request.url2pathname(parsed.path)
+            return Path(local_path).read_bytes()
+        except Exception as e:
+            add2log(f"WARNING: Failed to read file URI '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Case 3: No scheme — treat as local file path (relative or absolute)
+    if parsed.scheme == "" or (len(parsed.scheme) == 1 and os.name == "nt"):
+        # On Windows, single-letter schemes are drive letters (e.g., C:)
+        file_path = href
+
+        # Resolve relative paths against the input file's directory (not cwd)
+        # This avoids thread-unsafe os.chdir() and handles paths correctly
+        # regardless of where svg2fbf was invoked from
+        resolved = Path(file_path)
+        if not resolved.is_absolute():
+            # Try relative to input file's directory first
+            input_dir = Path(current_filepath).parent if current_filepath else Path.cwd()
+            resolved = input_dir / file_path
+
+        try:
+            return resolved.read_bytes()
+        except FileNotFoundError:
+            # If not found relative to input dir, try relative to cwd as fallback
+            try:
+                return Path(file_path).resolve().read_bytes()
+            except Exception:
+                pass
+            add2log(f"WARNING: Image file not found '{href}' (resolved to: {resolved}). File: {current_filepath}")
+            return None
+        except Exception as e:
+            add2log(f"WARNING: Failed to read image file '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Case 4: Other schemes (ftp://, smb://, etc.) — try urlopen as generic handler
+    try:
+        req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            return response.read()
+    except Exception as e:
+        add2log(f"WARNING: Failed to fetch image from '{href}': {e}. File: {current_filepath}")
+        return None
 
 
 def properlySizeDoc(docElement, options):
@@ -10829,6 +10893,11 @@ def cli():
 
     cl_parser = setup_command_line_parser()
     options = cl_parser.parse_args()
+
+    # Set Scour-inherited defaults for options not exposed via CLI
+    # These are used internally by scourCoordinates and related functions
+    if not hasattr(options, "renderer_workaround"):
+        options.renderer_workaround = False
 
     # Handle --version and --help flags early (before YAML loading)
     # Why: These should work instantly without requiring a valid config file
