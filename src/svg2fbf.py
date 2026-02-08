@@ -5106,8 +5106,23 @@ def generateHashKeyDictionary(xml_doc):
     # All nodes are hashed recursively.
     hash_id_dict = defaultdict(list)
     generate_hash_id_dict_recursively(xml_doc, hash_id_dict)
+    # printDictionary(hash_id_dict)
 
     return hash_id_dict
+
+
+def printDictionary(mydict):
+    index = 0
+    ppp("DEBUG DICTIONARY")
+    for key, values in mydict.items():
+        ppp("KEY:" + str(key))
+        for id_, node_ in values:
+            ppp("	index:" + str(index))
+            ppp("	ID:" + str(id_))
+            ppp("	NODE:" + node_.toprettyxml())
+            ppp()
+            index = index + 1
+    ppp("DEBUG DICTIONARY END...")
 
 
 # traverse all ids from a node and its childrens recursively
@@ -5798,6 +5813,16 @@ def preprocess_svg_file(doc, options, filepath):
         pass
 
     # NOT NEEDED FOR NOW
+    # remove unnecessary closing point of polygons and scour points
+    # 	for polygon in doc.documentElement.getElementsByTagName('polygon'):
+    # 		clean_polygon(polygon, options)
+
+    # NOT NEEDED FOR NOW
+    # scour points of polyline
+    # 	for polyline in doc.documentElement.getElementsByTagName('polyline'):
+    # 		cleanPolyline(polyline, options)
+
+    # NOT NEEDED FOR NOW
     # clean path data
     # 	for elem in doc.documentElement.getElementsByTagName('path'):
     # 		if elem.getAttribute('d') == '':
@@ -5864,6 +5889,11 @@ def preprocess_svg_file(doc, options, filepath):
 
     # reduce the length of transformation attributes
     # 	optimizeTransforms(doc.documentElement, options)
+
+    # convert rasters references to base64-encoded strings
+    # TODO: solve the crash when trying to encode
+    # for elem in doc.documentElement.getElementsByTagName("image"):
+    #     embed_rasters(elem, options)
 
     # properly size the SVG document (ideally width/height should be 100%
     # with a viewBox)
@@ -7163,6 +7193,80 @@ def removeDuplicateGradients(doc):
             num += len(duplicates)
 
     return num
+
+
+def embed_rasters(element, options):
+    """
+    Converts raster references to inline images.
+    NOTE: there are size limits to base64-encoding handling in browsers
+    """
+    num_rasters_embedded = 0
+
+    href = element.getAttributeNS(NS["XLINK"], "href")
+
+    # if xlink:href is set, then grab the id
+    if href != "" and len(href) > 1:
+        ext = os.path.splitext(os.path.basename(href))[1].lower()[1:]
+
+        # only operate on files with 'png', 'jpg', and 'gif' file extensions
+        if ext in ["png", "jpg", "gif"]:
+            # fix common issues with file paths
+            href_fixed = href.replace("\\", "/")
+            href_fixed = re.sub("file:/+", "file:///", href_fixed)
+
+            # parse the URI to get scheme and path
+            parsed_href = urllib.parse.urlparse(href_fixed)
+
+            # assume locations without protocol point to local files
+            # (and should use the 'file:' protocol)
+            if parsed_href.scheme == "":
+                parsed_href = parsed_href._replace(scheme="file")
+                if href_fixed[0] == "/":
+                    href_fixed = "file://" + href_fixed
+                else:
+                    href_fixed = "file:" + href_fixed
+
+            # relative local paths are relative to the input file,
+            # therefore temporarily change the working dir
+            working_dir_old = None
+            if parsed_href.scheme == "file" and parsed_href.path[0] != "/":
+                if options.infilename:
+                    working_dir_old = os.getcwd()
+                    working_dir_new = os.path.abspath(os.path.dirname(options.infilename))
+                    os.chdir(working_dir_new)
+
+            # open/download the file
+            try:
+                file = urllib.request.urlopen(href_fixed)
+                rasterdata = file.read()
+                file.close()
+            except Exception as e:
+                add2log("WARNING: could not open file '" + href + "' for embedding. The raster image will be kept as " + "a reference but might be invalid. File: " + f"{current_filepath}" + "(Exception details: " + str(e) + ")")
+                rasterdata = ""
+            finally:
+                # always restore initial working directory if we changed it above
+                if working_dir_old is not None:
+                    os.chdir(working_dir_old)
+
+            if rasterdata != "":
+                # base64-encode raster
+                b64eRaster = base64.b64encode(rasterdata)
+
+                # set href attribute to base64-encoded equivalent
+                if b64eRaster != "":
+                    # PNG and GIF both have MIME Type 'image/[ext]', but
+                    # JPEG has MIME Type 'image/jpeg'
+                    if ext == "jpg":
+                        ext = "jpeg"
+
+                    element.setAttributeNS(
+                        NS["XLINK"],
+                        "href",
+                        "data:image/" + ext + ";base64," + b64eRaster.decode(),
+                    )
+                    num_rasters_embedded += 1
+                    del b64eRaster
+    return num_rasters_embedded
 
 
 def properlySizeDoc(docElement, options):
@@ -9383,6 +9487,32 @@ def parseListOfPoints(s):
         i += 2
 
     return nums
+
+
+def clean_polygon(elem, options):
+    """
+    Remove unnecessary closing point of polygon points attribute
+    """
+    num_points_removed_from_polygon = 0
+
+    pts = parseListOfPoints(elem.getAttribute("points"))
+    N = len(pts) / 2
+    if N >= 2:
+        (startx, starty) = pts[:2]
+        (endx, endy) = pts[-2:]
+        if startx == endx and starty == endy:
+            del pts[-2:]
+            num_points_removed_from_polygon += 1
+    elem.setAttribute("points", scourCoordinates(pts, options, True))
+    return num_points_removed_from_polygon
+
+
+def cleanPolyline(elem, options):
+    """
+    Scour the polyline points attribute
+    """
+    pts = parseListOfPoints(elem.getAttribute("points"))
+    elem.setAttribute("points", scourCoordinates(pts, options, True))
 
 
 def controlPoints(cmd, data):
