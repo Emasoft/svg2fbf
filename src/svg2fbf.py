@@ -50,6 +50,7 @@ from functools import partial
 import argparse
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
+from typing import NoReturn
 from pstats import SortKey
 from xml.dom import Node
 
@@ -109,7 +110,7 @@ def _get_version():
                 import tomllib
             except ImportError:
                 try:
-                    import tomli as tomllib
+                    import tomli as tomllib  # type: ignore[import-not-found]
                 except ImportError:
                     # Fallback to simple parsing if no TOML library
                     with open(pyproject_path, encoding="utf-8") as f:
@@ -1565,7 +1566,7 @@ def string2svgtransformations(input):
     if input is None:
         return None
 
-    def args_err(name, args_len, needs):
+    def args_err(name: str, args_len: int, needs: str | int) -> NoReturn:
         raise ValueError(f"`{name}` transform requires {args_len} arguments {needs} where given")
 
     tr = ConcatenatedSVGTransformations()

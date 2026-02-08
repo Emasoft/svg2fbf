@@ -167,7 +167,7 @@ def install_puppeteer(scripts_dir: Path | None = None) -> tuple[bool, str]:
     # If scripts_dir not provided, try to find it
     if scripts_dir is None:
         try:
-            from .svg_viewbox_repair import get_node_scripts_dir
+            from .svg_viewbox_repair import get_node_scripts_dir  # type: ignore[attr-defined]
 
             scripts_dir = get_node_scripts_dir().parent
         except Exception:
@@ -267,7 +267,7 @@ def setup_dependencies(silent: bool = False) -> bool:
     # Check if Puppeteer is installed locally in scripts directory
     has_puppeteer_local = False
     try:
-        from .svg_viewbox_repair import get_node_scripts_dir
+        from .svg_viewbox_repair import get_node_scripts_dir  # type: ignore[attr-defined]
 
         scripts_dir = get_node_scripts_dir().parent
         node_modules = scripts_dir / "node_modules" / "puppeteer"
@@ -319,7 +319,7 @@ def check_dependencies() -> tuple[bool, str]:
     # Check Puppeteer - must be installed locally in scripts directory
     # Global installations don't work reliably for packaged tools
     try:
-        from .svg_viewbox_repair import get_node_scripts_dir
+        from .svg_viewbox_repair import get_node_scripts_dir  # type: ignore[attr-defined]
 
         scripts_dir = get_node_scripts_dir().parent
 

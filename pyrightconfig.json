@@ -1,0 +1,15 @@
+{
+  "include": ["src"],
+  "exclude": ["**/node_modules", "**/__pycache__", "build", "dist", ".venv"],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "standard",
+  "reportOptionalMemberAccess": "warning",
+  "reportArgumentType": "warning",
+  "reportPossiblyUnbound": "warning",
+  "reportPossiblyUnboundVariable": "warning",
+  "reportReturnType": "warning",
+  "reportOperatorIssue": "warning",
+  "reportMissingImports": "error",
+  "reportUndefinedVariable": "error",
+  "reportAttributeAccessIssue": "warning"
+}

@@ -42,6 +42,9 @@ def get_node_scripts_dir() -> Path:
     Raises:
         RuntimeError: If node_scripts directory cannot be found
     """
+    # Initialize data_dir so it is always bound for the error message below
+    data_dir: Path | None = None
+
     # Method 1: Try installed package location (shared-data)
     # When installed via wheel, scripts are in share/svg2fbf/node_scripts
     try:
@@ -75,8 +78,8 @@ def get_node_scripts_dir() -> Path:
         return editable_scripts
 
     # Build error message with path information
-    data_dir_path = data_dir / "share" / "svg2fbf" / "node_scripts" if "data_dir" in locals() else "N/A"
-    search_path_path = search_path / "tests" / "node_scripts" if "search_path" in locals() else "N/A"
+    data_dir_path = str(data_dir / "share" / "svg2fbf" / "node_scripts") if data_dir is not None else "N/A"
+    search_path_path = str(search_path / "tests" / "node_scripts")
 
     raise RuntimeError(
         "❌ Cannot find node_scripts directory\n\n"
@@ -107,6 +110,10 @@ def validate_svg_has_viewbox(svg_path: Path) -> tuple[bool, str]:
     try:
         tree = ET.parse(svg_path)
         root = tree.getroot()
+
+        # Guard against getroot() returning None (malformed XML)
+        if root is None:
+            return False, "SVG has no root element"
 
         # Check for viewBox in root element
         # Handle both with and without namespace
@@ -256,6 +263,10 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         # Parse XML
         tree = ET.parse(svg_path)
         root = tree.getroot()
+
+        # Guard against getroot() returning None (malformed XML)
+        if root is None:
+            raise RuntimeError("SVG has no root element")
 
         # Create viewBox string
         viewbox_str = f"{bbox['x']} {bbox['y']} {bbox['width']} {bbox['height']}"
