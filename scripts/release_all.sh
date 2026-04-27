@@ -120,10 +120,22 @@ if [[ "$CURRENT_BRANCH" != "dev" ]]; then
 fi
 ok "On dev branch"
 
-if [[ -n "$(git status --porcelain)" ]]; then
-    abort "Working tree has uncommitted changes. Commit or stash first." 1
+# Use --untracked-files=no — untracked files that ARE gitignored are fine
+# (agent runtime state, IDE caches, etc.). Only fail on tracked changes
+# OR untracked files that aren't covered by .gitignore.
+TRACKED_DIRTY="$(git status --porcelain --untracked-files=no)"
+UNTRACKED_NONIGNORED="$(git ls-files --others --exclude-standard)"
+if [[ -n "$TRACKED_DIRTY" ]]; then
+    err "Tracked files have uncommitted changes:"
+    echo "$TRACKED_DIRTY" | sed 's/^/    /' >&2
+    abort "Commit or stash first." 1
 fi
-ok "Working tree clean"
+if [[ -n "$UNTRACKED_NONIGNORED" ]]; then
+    err "Untracked files not covered by .gitignore:"
+    echo "$UNTRACKED_NONIGNORED" | sed 's/^/    /' >&2
+    abort "Either commit them or add them to .gitignore." 1
+fi
+ok "Working tree clean (tracked + untracked)"
 
 # Verify origin reachable
 if ! git ls-remote --exit-code origin HEAD >/dev/null 2>&1; then

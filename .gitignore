@@ -55,6 +55,15 @@ hound_found_*.md
 tests/results/
 tests/samples/
 tests/examples/
+
+# AI Maestro plugin runtime state (heartbeat, drift detection logs, etc.)
+.janitor/
+# Plugin recheck state
+.rechecker/
+# tldr-code cache
+.tldr/
+.tldrignore
+
 # Don't ignore tests/fixtures/ wholesale — the e2e/ subtree is required
 # for the byte-exact regression test in scripts/test_release_clean.sh
 # and tests/test_e2e_byte_exact.py. Ignore only the OTHER fixture dirs
