@@ -505,11 +505,37 @@ if text_align_match and text_anchor == 'start':  # Only if text-anchor not expli
 - Cause: Anti-aliasing differences between text and path rendering engines
 - Expected and acceptable (paths are geometrically identical)
 
-## Production Implementation (2025-11-19)
+## Production Implementation
 
-### Implementation: `src/svg2fbf/text_to_path.py`
+### Main Implementation: `svg-text2path` Library (Recommended)
 
-**Status:** ✅ Production-ready CLI tool
+The primary text-to-path conversion in svg2fbf uses the external `svg-text2path` library, integrated via the `--text2path` CLI flag.
+
+**Installation:**
+```bash
+uv tool install 'svg2fbf[text2path]'
+```
+
+**Usage:**
+```bash
+svg2fbf -i frames/ -o output/ -f animation.fbf.svg --text2path
+```
+
+**Features:**
+- ✅ HarfBuzz text shaping (production-quality rendering)
+- ✅ Complex script support (Arabic, Indic, CJK, etc.)
+- ✅ Proper ligature handling
+- ✅ Bidirectional text support
+- ✅ SVG validation with Bun
+- ✅ 8 decimal precision (configurable)
+
+---
+
+### Legacy Implementation: `scripts_dev/text_to_path.py`
+
+> **Note:** This standalone tool has been moved to `scripts_dev/` and is kept for reference only. For production use, prefer the `--text2path` flag which uses the `svg-text2path` library.
+
+**Status:** 🗄️ Reference implementation (moved from `src/svg2fbf/text_to_path.py`)
 
 **Features Implemented:**
 - ✅ Font glyph extraction via FontTools
@@ -555,16 +581,16 @@ Pixel comparison:
 
 ```bash
 # Convert text to paths
-python -m svg2fbf.text_to_path input.svg output.svg
+python scripts_dev/text_to_path.py input.svg output.svg
 
 # Convert in-place
-python -m svg2fbf.text_to_path input.svg --in-place
+python scripts_dev/text_to_path.py input.svg --in-place
 
 # Convert with backup
-python -m svg2fbf.text_to_path input.svg --in-place --backup
+python scripts_dev/text_to_path.py input.svg --in-place --backup
 
 # Example: Process FBF header
-python -m svg2fbf.text_to_path \
+python scripts_dev/text_to_path.py \
     assets/panther_bird_header.fbf.svg \
     assets/panther_bird_header_paths.fbf.svg
 ```
@@ -695,7 +721,7 @@ def compare_with_threshold(img1_path: str, img2_path: str, threshold: int = 30) 
 #### Comparison with Inkscape
 
 To verify geometric accuracy, the same text was converted using:
-1. Our tool: `python -m svg2fbf.text_to_path`
+1. Our tool: `python scripts_dev/text_to_path.py`
 2. Inkscape: Text → Path to Path (Shift+Ctrl+C)
 
 **Result:** Both produce **identical path coordinates** (verified by direct SVG comparison)
@@ -735,7 +761,7 @@ python tests/compare_text_to_path.py text.png paths.png --requirement 0.5
 
 **Production Test - FBF Animation Header:**
 ```bash
-python src/svg2fbf/text_to_path.py \
+python scripts_dev/text_to_path.py \
     assets/panther_bird_header.fbf.svg \
     /tmp/panther_bird_header_paths.fbf.svg
 ```

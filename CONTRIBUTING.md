@@ -325,6 +325,16 @@ The project enforces strict version progression rules to maintain a clean releas
 2. **Stage Progression Rule**: Stage must be LOWER than previous version's stage
 3. **RC Gateway Rule**: Alpha/beta of next version only if previous reached RC or stable
 
+### Promotion Criteria
+
+| Promotion | Criteria | How to Verify |
+|-----------|----------|---------------|
+| **Alpha → Beta** | Required changes completed | Code committed, features done |
+| **Beta → RC** | All tests pass | `pytest` 100% pass, CI green |
+| **RC → Stable** | User review approved | Manual testing, user signoff |
+
+**Never skip stages!** Always follow: alpha → beta → rc → stable
+
 For detailed rules and examples, see **[CLAUDE.md](CLAUDE.md#version-release-rules-critical)**.
 
 ### Release Workflow

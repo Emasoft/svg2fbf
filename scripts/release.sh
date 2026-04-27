@@ -543,6 +543,67 @@ get_stage_value() {
   esac
 }
 
+# Validate promotion criteria based on the stage transition
+# Arguments: current_stage, target_channel
+# Returns: 0 if criteria met, 1 if not met
+# Promotion Criteria:
+#   - Alpha → Beta: Changes completed (code is committed)
+#   - Beta → RC: All tests must pass
+#   - RC → Stable: User approval required
+validate_promotion_criteria() {
+  local current_stage="$1"
+  local target_channel="$2"
+
+  echo "Checking promotion criteria for: $current_stage → $target_channel"
+
+  case "$target_channel" in
+    beta)
+      # Alpha → Beta: Verify changes are completed (all code committed)
+      if [[ "$current_stage" == "alpha" ]]; then
+        echo "  ✓ Promotion criteria: Changes completed (code committed)"
+        return 0
+      fi
+      ;;
+    rc)
+      # Beta → RC: All tests must pass
+      if [[ "$current_stage" == "alpha" || "$current_stage" == "beta" ]]; then
+        echo "  Running tests for promotion to RC..."
+        if ! pytest -q --tb=no 2>/dev/null; then
+          echo "  ❌ TESTS FAILED - Cannot promote to RC" >&2
+          echo "     All tests must pass before promoting to Release Candidate." >&2
+          echo "     Run 'pytest -v' to see failing tests." >&2
+          return 1
+        fi
+        echo "  ✓ All tests passed"
+        echo "  ✓ Promotion criteria: Tests pass"
+        return 0
+      fi
+      ;;
+    stable)
+      # RC → Stable: User approval required
+      if [[ "$current_stage" == "alpha" || "$current_stage" == "beta" || "$current_stage" == "rc" ]]; then
+        echo ""
+        echo "  ⚠️  STABLE RELEASE REQUIRES USER APPROVAL"
+        echo ""
+        echo "  You are about to release a STABLE version."
+        echo "  This will be published to PyPI and become the recommended version."
+        echo ""
+        read -r -p "  Have you reviewed and approved this release? [y/N]: " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+          echo "  ❌ Release cancelled - user approval not given" >&2
+          return 1
+        fi
+        echo "  ✓ User approval received"
+        echo "  ✓ Promotion criteria: User review passed"
+        return 0
+      fi
+      ;;
+  esac
+
+  # No special criteria for same-stage releases (e.g., alpha to alpha)
+  return 0
+}
+
 # Compare two versions and return which is greater
 # Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
 compare_base_versions() {
@@ -986,6 +1047,22 @@ release_channel() {
   echo "Current version: $current_version"
   echo "Bump args for channel '$channel': ${bump_args[*]}"
 
+  # PROMOTION CRITERIA VALIDATION
+  # Check that the promotion criteria are met before proceeding:
+  # - Alpha → Beta: Changes completed (code committed)
+  # - Beta → RC: All tests must pass
+  # - RC → Stable: User approval required
+  local current_stage
+  current_stage="$(get_version_stage "$current_version")"
+  echo ""
+  if ! validate_promotion_criteria "$current_stage" "$channel"; then
+    echo "" >&2
+    echo "❌ PROMOTION CRITERIA NOT MET" >&2
+    echo "Cannot promote from $current_stage to $channel." >&2
+    exit 1
+  fi
+  echo ""
+
   # Call uv version with the computed bump arguments applied to the current project.
   # Use "${bump_args[@]}" so each array element becomes a separate uv argument.
   # Keep this expansion quoted to satisfy ShellCheck and avoid unintended word splitting.
@@ -1045,8 +1122,8 @@ release_channel() {
   # Create a commit that encapsulates both the version bump and the changelog update.
   # Use a descriptive commit message including channel and version information.
   # Treat this commit as the canonical representation of the release in git history.
-  # Use --no-verify to skip pre-commit hooks that might interfere with release automation.
-  git commit --no-verify -m "Release ${channel} ${new_version}"
+  # Run pre-commit hooks on release commits to ensure code quality.
+  git commit -m "Release ${channel} ${new_version}"
 
   # Remove any previously built artifacts under the dist directory.
   # Clean the build output so no stale artifacts from earlier releases remain.
@@ -1073,11 +1150,10 @@ release_channel() {
   fi
 
   # Commit uv.lock changes that may occur during sync/build.
-  # Pre-commit hooks are skipped to avoid stashing/interference with release automation.
   # Note: || true is intentional - commit may have nothing to commit if uv.lock unchanged
   if [[ -n $(git status --porcelain uv.lock) ]]; then
     git add uv.lock
-    if ! git commit --no-verify -m "chore: Update uv.lock for ${channel} ${new_version}"; then
+    if ! git commit -m "chore: Update uv.lock for ${channel} ${new_version}"; then
       echo "Note: No uv.lock changes to commit (this is normal)" >&2
     fi
   fi
@@ -1087,7 +1163,7 @@ release_channel() {
   # Each branch shows only its own versioned wheel in dist/.
   # Note: Failure is non-fatal as the main release commit already happened
   git add dist/
-  if ! git commit --no-verify -m "Add built wheel for ${channel} ${new_version}"; then
+  if ! git commit -m "Add built wheel for ${channel} ${new_version}"; then
     echo "Note: No wheel changes to commit (this may be normal)" >&2
   fi
 
@@ -1249,13 +1325,20 @@ release_channel() {
     # Checkout main branch to prepare for sync using the safe switch function
     switch_to_branch main
 
-    # Reset main to exactly match master (hard reset)
-    git reset --hard master
+    # Confirm destructive operation before proceeding
+    echo "  ⚠️  This will HARD RESET main to match master and FORCE PUSH"
+    read -r -p "  Proceed with syncing main to master? [y/N]: " sync_confirm
+    if [[ "$sync_confirm" != "y" && "$sync_confirm" != "Y" ]]; then
+      echo "  Skipped main→master sync (user declined)" >&2
+    else
+      # Reset main to exactly match master (hard reset)
+      git reset --hard master
 
-    # Push main to origin, forcing if necessary to ensure sync
-    git push origin main --force-with-lease
+      # Push main to origin, forcing if necessary to ensure sync
+      git push origin main --force-with-lease
 
-    echo "✅ main branch synced with master"
+      echo "✅ main branch synced with master"
+    fi
   fi
 
   echo

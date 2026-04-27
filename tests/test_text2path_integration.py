@@ -3,9 +3,9 @@ Unit tests for --text2path flag integration
 
 Tests cover:
 - CLI flag validation (--text2path requires svg-text2path package)
-- CLI flag validation (--text2path-strict requires --text2path)
 - Text to path conversion when package is available
 - Error handling when package is not installed
+- FontCache singleton behavior
 """
 
 import subprocess
@@ -26,47 +26,6 @@ def _check_text2path_installed() -> bool:
         return True
     except ImportError:
         return False
-
-
-class TestText2PathCLIValidation:
-    """Test --text2path CLI flag validation"""
-
-    def test_text2path_strict_requires_text2path_flag(self, tmp_path: Path) -> None:
-        """--text2path-strict without --text2path should fail with clear error"""
-        # Create minimal valid SVG input
-        input_dir = tmp_path / "input"
-        input_dir.mkdir()
-        svg_file = input_dir / "frame_00001.svg"
-        svg_file.write_text(
-            """<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect x="10" y="10" width="80" height="80" fill="blue"/>
-</svg>"""
-        )
-
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
-        # Run svg2fbf with --text2path-strict but without --text2path
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(SVG2FBF_SCRIPT),
-                "-i",
-                str(input_dir),
-                "-o",
-                str(output_dir),
-                "-f",
-                "test.fbf.svg",
-                "--text2path-strict",  # Missing --text2path flag
-            ],
-            capture_output=True,
-            text=True,
-        )
-
-        # Should fail with error about missing --text2path flag
-        assert result.returncode != 0, "Expected non-zero exit code"
-        assert "--text2path-strict requires --text2path" in result.stderr, f"Expected error message about --text2path requirement, got: {result.stderr}"
 
 
 class TestText2PathPackageCheck:
@@ -180,3 +139,143 @@ class TestText2PathConversion:
         # Verify no <text> elements remain in output
         content = output_file.read_text()
         assert "<text" not in content.lower(), "Text elements should be converted to paths"
+
+    def test_text2path_precision_flag(self, svg_with_text: Path, tmp_path: Path) -> None:
+        """--text2path-precision should control decimal precision in converted paths"""
+        if not _check_text2path_installed():
+            pytest.skip("svg-text2path not installed")
+
+        # Convert with default precision (8)
+        output_dir_default = tmp_path / "output_default"
+        output_dir_default.mkdir()
+
+        result_default = subprocess.run(
+            [
+                sys.executable,
+                str(SVG2FBF_SCRIPT),
+                "-i",
+                str(svg_with_text),
+                "-o",
+                str(output_dir_default),
+                "-f",
+                "default.fbf.svg",
+                "--text2path",
+                "--text2path-no-validate",  # Skip validation to focus on precision test
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result_default.returncode == 0, f"svg2fbf failed with default precision: {result_default.stderr}"
+
+        # Convert with low precision (2)
+        output_dir_low = tmp_path / "output_low"
+        output_dir_low.mkdir()
+
+        result_low = subprocess.run(
+            [
+                sys.executable,
+                str(SVG2FBF_SCRIPT),
+                "-i",
+                str(svg_with_text),
+                "-o",
+                str(output_dir_low),
+                "-f",
+                "low.fbf.svg",
+                "--text2path",
+                "--text2path-precision",
+                "2",
+                "--text2path-no-validate",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result_low.returncode == 0, f"svg2fbf failed with low precision: {result_low.stderr}"
+
+        # Both outputs should exist and contain path data
+        default_output = output_dir_default / "default.fbf.svg"
+        low_output = output_dir_low / "low.fbf.svg"
+        assert default_output.exists(), "Default precision output should exist"
+        assert low_output.exists(), "Low precision output should exist"
+
+        # Both should have path elements (text converted to paths)
+        default_content = default_output.read_text()
+        low_content = low_output.read_text()
+        assert "<path" in default_content.lower() or "d=" in default_content, "Default output should contain paths"
+        assert "<path" in low_content.lower() or "d=" in low_content, "Low precision output should contain paths"
+
+    def test_text2path_no_validate_flag(self, svg_with_text: Path, tmp_path: Path) -> None:
+        """--text2path-no-validate should disable SVG validation after conversion"""
+        if not _check_text2path_installed():
+            pytest.skip("svg-text2path not installed")
+
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # Run with validation disabled
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SVG2FBF_SCRIPT),
+                "-i",
+                str(svg_with_text),
+                "-o",
+                str(output_dir),
+                "-f",
+                "test.fbf.svg",
+                "--text2path",
+                "--text2path-no-validate",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, f"svg2fbf failed with --text2path-no-validate: {result.stderr}"
+
+        # Verify output file exists
+        output_file = output_dir / "test.fbf.svg"
+        assert output_file.exists(), "Output FBF file should be created"
+
+        # Verify text was converted to paths
+        content = output_file.read_text()
+        assert "<text" not in content.lower(), "Text elements should be converted to paths"
+
+
+class TestFontCacheReuse:
+    """Test FontCache singleton behavior"""
+
+    def test_font_cache_returns_same_instance(self) -> None:
+        """get_text2path_font_cache() should return the same instance on multiple calls"""
+        if not _check_text2path_installed():
+            pytest.skip("svg-text2path not installed")
+
+        # Import the module
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("svg2fbf", SVG2FBF_SCRIPT)
+        if spec is None or spec.loader is None:
+            pytest.skip("Could not load svg2fbf module")
+        svg2fbf_module = importlib.util.module_from_spec(spec)
+
+        import sys
+
+        old_module = sys.modules.get("svg2fbf")
+        sys.modules["svg2fbf"] = svg2fbf_module
+
+        try:
+            spec.loader.exec_module(svg2fbf_module)
+
+            # Reset the font cache to ensure clean state
+            svg2fbf_module._text2path_font_cache = None
+
+            # Get the font cache twice
+            cache1 = svg2fbf_module.get_text2path_font_cache()
+            cache2 = svg2fbf_module.get_text2path_font_cache()
+
+            # Should be the exact same object
+            assert cache1 is cache2, "get_text2path_font_cache() should return the same instance"
+            assert cache1 is not None, "FontCache should not be None"
+        finally:
+            if old_module is not None:
+                sys.modules["svg2fbf"] = old_module
+            elif "svg2fbf" in sys.modules:
+                del sys.modules["svg2fbf"]

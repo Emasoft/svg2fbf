@@ -21,6 +21,8 @@ exclude = [
 "src/svg_viewbox_repair.py" = "svg_viewbox_repair/main.py"
 "src/svg_viewbox_repair/__init__.py" = "svg_viewbox_repair/__init__.py"
 "src/auto_install_deps.py" = "auto_install_deps.py"
+# Runtime data file referenced by svg2fbf.py for mesh gradient polyfill
+"src/meshgradient_polyfill.txt" = "svg2fbf/meshgradient_polyfill.txt"
 
 [tool.hatch.build.targets.wheel.shared-data]
 "tests/node_scripts" = "share/svg2fbf/node_scripts"
@@ -29,18 +31,25 @@ exclude = [
 [tool.hatch.build.targets.sdist]
 # Also exclude from source distributions
 # Also exclude ccpm/ (private plugin, separate project)
+# Also exclude examples/ and large data to reduce sdist size
 exclude = [
     "tests/sessions/",
     "tests/**/*.zip",
     "ccpm/",
+    "examples/",
+    "examples_dev/",
+    "docs_dev/",
+    "scripts_dev/",
+    "libs_dev/",
+    "FBF.SVG/",
 ]
 
 [project]
 name = "svg2fbf"
-version = "0.1.18"
+version = "0.1.20b1"
 description = "SVG Frame-by-Frame Animation Generator - Create optimized FBF SVG animations from SVG sequences"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Emasoft", email = "713559+Emasoft@users.noreply.github.com" },
 ]
@@ -65,27 +74,23 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Graphics :: Graphics Conversion",
     "Topic :: Multimedia :: Graphics :: Editors :: Vector-Based",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
 dependencies = [
-    "fonttools>=4.60.1",
-    "lxml>=6.0.2",
+    "defusedxml>=0.7.1",
     "numpy>=2.2.0",
-    "python-bidi>=0.6.7",
     "pyyaml>=6.0",
-    "tomli>=2.0.0; python_version < '3.11'",
-    "tomli-w>=1.2.0",
 ]
 
 [project.optional-dependencies]
 text2path = [
-    "svg-text2path>=0.5.0; python_version >= '3.11'",
+    "svg-text2path>=0.5.0",
 ]
 
 [project.license]
@@ -158,7 +163,7 @@ recursive = false  # Default: scan root level only (not subdirectories)
 
 [tool.ruff]
 line-length = 320           # Wide line length for detailed SVG manipulation code
-target-version = "py310"    # Adjust to your lowest supported Python (py38/py39/py310/py311/...)
+target-version = "py311"    # Minimum supported Python version (3.11+ required for svg-text2path)
 fix = true                  # Enable auto-fix by default (top-level setting!)
 
 [tool.ruff.lint]
