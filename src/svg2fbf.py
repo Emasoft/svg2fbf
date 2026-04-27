@@ -31,6 +31,7 @@ import decimal
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -2466,15 +2467,31 @@ def open_in_browser(filepath):
     Args:
         filepath: Path to the generated FBF SVG file
     """
+    # Verify the file actually exists before trying to open it.
+    # Why: When the file is missing (race condition, permission failure that
+    # was swallowed elsewhere, wrong path), every browser-open path below
+    # would still report success — but the user would see "file not found"
+    # in the browser's URL bar without any hint of where the bug was.
+    resolved = Path(filepath).resolve()
+    if not resolved.is_file():
+        if not options.quiet_mode:
+            ppp(f"⚠️  Cannot open in browser — output file does not exist: {resolved}")
+        return
+
     # Convert to absolute path and cross-platform file:// URI
     # Why: Browsers need absolute file:// URLs; Path.as_uri() handles Windows drive letters
-    file_url = Path(filepath).resolve().as_uri()
+    file_url = resolved.as_uri()
 
     try:
         # Try Chrome first (best SVG animation support)
         # Why: Chrome has excellent SMIL/SVG animation support
+        # On macOS, we point at the .app BUNDLE (not the inner binary): if
+        # Chrome is missing, we want to detect that via Path.exists() and
+        # skip to Chromium, instead of letting `open -a /missing/binary url`
+        # surface an NSCocoaErrorDomain "file not found" error that looks
+        # like the SVG itself is missing.
         chrome_paths = {
-            "darwin": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",  # macOS
+            "darwin": "/Applications/Google Chrome.app",  # macOS — .app bundle
             "linux": "google-chrome",  # Linux
             "linux2": "google-chrome",  # Linux (older Python)
             "win32": "chrome",  # Windows
@@ -2482,27 +2499,16 @@ def open_in_browser(filepath):
 
         chrome_path = chrome_paths.get(sys.platform)
 
-        if chrome_path:
-            try:
-                # Why: Use subprocess for Chrome to avoid blocking and get better error handling
-                if sys.platform == "darwin":
-                    # macOS: use 'open -a' for proper app launching
-                    subprocess.Popen(["open", "-a", chrome_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                else:
-                    # Linux/Windows: direct chrome executable
-                    subprocess.Popen([chrome_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+        if chrome_path and _is_browser_available(chrome_path):
+            if _spawn_browser(chrome_path, file_url):
                 if not options.quiet_mode:
-                    ppp(f"🌐 Opening in Chrome: {filepath}")
+                    ppp(f"🌐 Opening in Chrome: {file_url}")
                 return
-            except (FileNotFoundError, OSError):
-                # Chrome not found, try Chromium
-                pass
 
         # Try Chromium if Chrome not available
         # Why: Chromium has the same excellent SVG/SMIL support as Chrome
         chromium_paths = {
-            "darwin": "/Applications/Chromium.app/Contents/MacOS/Chromium",  # macOS
+            "darwin": "/Applications/Chromium.app",  # macOS — .app bundle
             "linux": "chromium-browser",  # Linux (Debian/Ubuntu)
             "linux2": "chromium-browser",  # Linux (older Python)
             "win32": "chromium",  # Windows
@@ -2510,43 +2516,71 @@ def open_in_browser(filepath):
 
         chromium_path = chromium_paths.get(sys.platform)
 
-        if chromium_path:
-            try:
-                # Why: Use subprocess for Chromium to avoid blocking and get better error handling
-                if sys.platform == "darwin":
-                    # macOS: use 'open -a' for proper app launching
-                    subprocess.Popen(["open", "-a", chromium_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                else:
-                    # Linux/Windows: direct chromium executable
-                    # Why: Try both 'chromium' and 'chromium-browser' for different Linux distros
-                    try:
-                        subprocess.Popen([chromium_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    except (FileNotFoundError, OSError):
-                        # Try alternate chromium command name
-                        subprocess.Popen(["chromium", file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+        if chromium_path and _is_browser_available(chromium_path):
+            if _spawn_browser(chromium_path, file_url):
                 if not options.quiet_mode:
-                    ppp(f"🌐 Opening in Chromium: {filepath}")
+                    ppp(f"🌐 Opening in Chromium: {file_url}")
                 return
-            except (FileNotFoundError, OSError):
-                # Chromium not found, fall through to default browser
-                pass
 
         # Fallback to default browser
         # Why: If Chrome and Chromium fail or not available, use system default browser
         if webbrowser.open(file_url, new=2):  # new=2 opens in new tab if possible
             if not options.quiet_mode:
-                ppp(f"🌐 Opening in default browser: {filepath}")
+                ppp(f"🌐 Opening in default browser: {file_url}")
         else:
             # Browser opening failed
             if not options.quiet_mode:
-                ppp(f"⚠️  Could not open browser automatically. Please open manually: {filepath}")
+                ppp(f"⚠️  Could not open browser automatically. Please open manually: {file_url}")
 
     except Exception as e:
         # Don't fail the whole program if browser opening fails
         # Why: Browser opening is a convenience feature, not critical functionality
         if not options.quiet_mode:
             ppp(f"⚠️  Could not open browser: {e}")
+
+
+def _is_browser_available(browser_path: str) -> bool:
+    """Return True if the browser at this path/name is actually launchable.
+
+    On macOS we expect a .app bundle path; check it exists on disk.
+    On Linux/Windows we expect a command name; resolve via PATH.
+    """
+    # Absolute filesystem path (typically a .app bundle on macOS)
+    if browser_path.startswith("/") or (len(browser_path) > 1 and browser_path[1] == ":"):
+        return Path(browser_path).exists()
+    # Bare command name — look up in PATH
+    return shutil.which(browser_path) is not None
+
+
+def _spawn_browser(browser_path: str, file_url: str) -> bool:
+    """Launch the browser with the given file URL. Return True on apparent success.
+
+    Why: subprocess.Popen returns immediately and never reports launch
+    failures, so previous code couldn't tell if the browser actually
+    opened. We use subprocess.run with a short timeout for the macOS
+    `open -a` dispatcher (which exits as soon as launch is queued), and
+    Popen for direct executables (which would block until the browser
+    closes if we waited).
+    """
+    try:
+        if sys.platform == "darwin":
+            # `open -a <app> <url>` exits as soon as LaunchServices accepts
+            # the dispatch — usually <1s. If it fails (e.g. the .app is
+            # missing despite our pre-check), the exit code is non-zero
+            # and we want to fall back instead of printing a fake success.
+            result = subprocess.run(
+                ["open", "-a", browser_path, file_url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=10,
+                check=False,
+            )
+            return result.returncode == 0
+        # Linux/Windows: direct executable, fire-and-forget
+        subprocess.Popen([browser_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return False
 
 
 # simple function to remove prefixes
