@@ -1176,7 +1176,7 @@ wheels = [
 
 [[package]]
 name = "svg2fbf"
-version = "0.1.20b2"
+version = "0.1.20rc1"
 source = { editable = "." }
 dependencies = [
     { name = "defusedxml" },
