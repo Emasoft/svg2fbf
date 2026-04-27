@@ -46,7 +46,7 @@ exclude = [
 
 [project]
 name = "svg2fbf"
-version = "0.1.20b1"
+version = "0.1.20b2"
 description = "SVG Frame-by-Frame Animation Generator - Create optimized FBF SVG animations from SVG sequences"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -121,6 +121,7 @@ dev = [
     "watchdog>=6.0.0",
     "types-pyyaml>=6.0.12.20250915",
     "git-cliff>=2.10.1",
+    "tomli-w>=1.2.0",
 ]
 
 [tool.pytest.ini_options]
