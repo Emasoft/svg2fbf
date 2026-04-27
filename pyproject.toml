@@ -121,6 +121,7 @@ dev = [
     "watchdog>=6.0.0",
     "types-pyyaml>=6.0.12.20250915",
     "git-cliff>=2.10.1",
+    "tomli-w>=1.2.0",
 ]
 
 [tool.pytest.ini_options]
