@@ -1022,6 +1022,42 @@ release_channel() {
     echo "Warning: scripts/validate.sh not found, skipping validation" >&2
   fi
 
+  # HARD PRE-PUBLISH GATE — required for stable; recommended for all channels.
+  # This is the only test that catches "the wheel installs but doesn't work":
+  # - Builds the actual wheel from the current source
+  # - Installs it into a clean Docker container with NOTHING but Python
+  # - Exercises the FULL user path: CLI entry points, imports, auto-install
+  #   of Node.js + Puppeteer, end-to-end svg2fbf and svg-repair-viewbox runs
+  #
+  # Why mandatory for stable: a buggy stable release on PyPI corrupts users'
+  # SVG files. validate.sh covers correctness in source; this covers
+  # correctness in the published artifact. Both must pass.
+  #
+  # Why mandatory for alpha/beta/rc too: GitHub releases are downloaded by
+  # users from the README "try the alpha" instructions. Same blast radius,
+  # smaller audience.
+  if [[ -x "$PROJECT_ROOT/scripts/test_release_clean.sh" ]]; then
+    echo ""
+    echo "Running clean-install verification (Docker + local)..."
+    echo "  This builds the actual wheel and installs it into a clean container."
+    echo "  Skipping this gate is NOT permitted — buggy installs corrupt user files."
+    if ! "$PROJECT_ROOT/scripts/test_release_clean.sh"; then
+      echo "" >&2
+      echo "Error: Clean-install verification FAILED for branch '$branch'." >&2
+      echo "The wheel either fails to install OR fails to function on a fresh user's machine." >&2
+      echo "This MUST be fixed before any release (alpha/beta/rc/stable)." >&2
+      echo "Run: ./scripts/test_release_clean.sh" >&2
+      exit 1
+    fi
+    echo "✓ Clean-install verification passed (macOS local + Linux Docker)"
+  else
+    echo "Error: scripts/test_release_clean.sh not found or not executable." >&2
+    echo "This script is REQUIRED for releases — it is the only check that catches" >&2
+    echo "broken installs that would otherwise corrupt user data." >&2
+    echo "Restore it from git history (commit 58fffe6) or recreate it before releasing." >&2
+    exit 1
+  fi
+
   # Call uv version to query the project's current version string.
   # Capture the full output, which typically includes both project name and version.
   # Prepare to parse the version number from this combined string.

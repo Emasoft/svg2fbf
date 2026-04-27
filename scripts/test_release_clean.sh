@@ -59,6 +59,46 @@ for arg in "$@"; do
 done
 
 # ----------------------------------------------------------------------
+# PRE-FLIGHT: ALL TESTS + ALL LINTERS must pass on the source before we
+# even build a wheel. A failed source check means there is no point doing
+# the install verification — fix the source first.
+# ----------------------------------------------------------------------
+echo "▶ Pre-flight: running all source-level checks (lint + types + tests)..."
+
+echo "  - ruff lint..."
+if ! uv run ruff check src/ tests/ scripts/ >/tmp/ruff-lint.log 2>&1; then
+    echo "    ✗ ruff lint failed:"
+    sed 's/^/      /' /tmp/ruff-lint.log | tail -20
+    exit 1
+fi
+
+echo "  - ruff format check..."
+if ! uv run ruff format --check src/ tests/ scripts/ >/tmp/ruff-fmt.log 2>&1; then
+    echo "    ✗ ruff format check failed:"
+    sed 's/^/      /' /tmp/ruff-fmt.log | tail -20
+    exit 1
+fi
+
+echo "  - pyright type check (errors only)..."
+if ! uv run pyright src/ >/tmp/pyright.log 2>&1; then
+    if grep -q "error:" /tmp/pyright.log; then
+        echo "    ✗ pyright reported errors:"
+        grep "error:" /tmp/pyright.log | sed 's/^/      /' | head -20
+        exit 1
+    fi
+    # exit code may be non-zero due to warnings only — accept that
+fi
+
+echo "  - pytest..."
+if ! uv run pytest tests/ -q --no-header >/tmp/pytest.log 2>&1; then
+    echo "    ✗ pytest failed:"
+    sed 's/^/      /' /tmp/pytest.log | tail -30
+    exit 1
+fi
+
+echo "  ✓ All source-level checks passed"
+echo ""
+
 # Build wheel from current source
 # ----------------------------------------------------------------------
 echo "▶ Building wheel from current source..."
