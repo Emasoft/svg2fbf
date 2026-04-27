@@ -129,12 +129,15 @@ EOF
 # but we run them against the INSTALLED WHEEL (not the source) and
 # byte-compare to the reference. NO <text> elements — fonts vary
 # across machines and would cause spurious failures.
-mkdir -p "$WORK_DIR/e2e/frames"
+mkdir -p "$WORK_DIR/e2e/frames" "$WORK_DIR/e2e/broken_frames"
 cp "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00001.svg" "$WORK_DIR/e2e/frames/"
 cp "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00002.svg" "$WORK_DIR/e2e/frames/"
 cp "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00003.svg" "$WORK_DIR/e2e/frames/"
 cp "$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg" "$WORK_DIR/e2e/expected.fbf.svg"
-E2E_EPOCH="$(cat "$PROJECT_ROOT/tests/fixtures/e2e/expected/SOURCE_DATE_EPOCH" | tr -d '[:space:]')"
+# Broken frames (missing viewBox) — used to exercise the
+# --auto-repair-viewbox install path
+cp "$PROJECT_ROOT/tests/fixtures/e2e/broken_frames/frame00001.svg" "$WORK_DIR/e2e/broken_frames/"
+cp "$PROJECT_ROOT/tests/fixtures/e2e/broken_frames/frame00002.svg" "$WORK_DIR/e2e/broken_frames/"
 
 OVERALL_FAIL=0
 
@@ -188,16 +191,16 @@ if $DO_LOCAL; then
     # E2E byte-exact: convert the fixture frames and compare to the
     # golden reference, byte-for-byte. Catches subtle output drift
     # (attribute ordering, whitespace, optimization changes) that
-    # other tests miss. Uses SOURCE_DATE_EPOCH for determinism.
+    # other tests miss. Uses --skip-date for determinism.
     # cd into the project root so 'tests/fixtures/e2e/frames' resolves
     # to the same path string that's embedded in the reference output.
     run_local "E2E byte-exact (fixtures → reference, byte-for-byte)" bash -c "
         cd '$PROJECT_ROOT'
         rm -rf '$WORK_DIR/local-e2e-out'
-        SOURCE_DATE_EPOCH=$E2E_EPOCH '$LOCAL_VENV/bin/svg2fbf' \\
+        '$LOCAL_VENV/bin/svg2fbf' \\
             -i tests/fixtures/e2e/frames \\
             -o '$WORK_DIR/local-e2e-out' \\
-            --no-browser -s 2.0 -a once -d 6 -c 6 -q
+            --no-browser --skip-date -s 2.0 -a once -d 6 -c 6 -q
         if ! cmp '$WORK_DIR/local-e2e-out/animation.fbf.svg' '$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg'; then
             echo 'BYTE-EXACT MISMATCH — first diff:' >&2
             diff '$WORK_DIR/local-e2e-out/animation.fbf.svg' '$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg' | head -10 >&2
@@ -268,7 +271,9 @@ COPY e2e/frames/frame00001.svg /test/tests/fixtures/e2e/frames/
 COPY e2e/frames/frame00002.svg /test/tests/fixtures/e2e/frames/
 COPY e2e/frames/frame00003.svg /test/tests/fixtures/e2e/frames/
 COPY e2e/expected.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg
-ENV E2E_EPOCH=$E2E_EPOCH
+RUN mkdir -p /test/broken_frames
+COPY e2e/broken_frames/frame00001.svg /test/broken_frames/
+COPY e2e/broken_frames/frame00002.svg /test/broken_frames/
 
 COPY run_tests.sh /test/run_tests.sh
 RUN chmod +x /test/run_tests.sh
@@ -293,10 +298,43 @@ run "svg2fbf core pipeline" bash -c "
     svg2fbf -i /test/frames -o /tmp/out2 --no-browser
     [[ -f /tmp/out2/animation.fbf.svg ]] && xmllint --noout /tmp/out2/animation.fbf.svg && grep -q xmlns:fbf /tmp/out2/animation.fbf.svg
 "
-run "svg-repair-viewbox auto-install Node+Puppeteer + repair" \
-    svg-repair-viewbox /test/needs_viewbox.svg
+
+# Without --auto-repair-viewbox, processing a frame missing viewBox
+# must FAIL with a clear error (and NOT trigger the install path).
+# This protects users on machines without Node.js from accidentally
+# kicking off a 170MB Chromium download.
+run "svg2fbf rejects missing viewBox without --auto-repair-viewbox" bash -c '
+    rm -rf /tmp/out-broken
+    if svg2fbf -i /test/broken_frames -o /tmp/out-broken --no-browser >/tmp/svg2fbf-broken.log 2>&1; then
+        echo "FAIL: svg2fbf should have exited non-zero on missing viewBox"
+        exit 1
+    fi
+    grep -q "missing the viewBox" /tmp/svg2fbf-broken.log
+'
+
+# THIS is the install-path-via-svg2fbf test. svg2fbf with
+# --auto-repair-viewbox sees the missing-viewBox frame, calls
+# ensure_dependencies() under the hood, which bootstraps Node.js
+# + Puppeteer from a CLEAN container, then runs the repair, then
+# completes the FBF generation. Single command drives the whole chain.
+run "svg2fbf --auto-repair-viewbox bootstraps Node+Puppeteer and produces FBF" bash -c "
+    cp -r /test/broken_frames /tmp/broken-copy
+    rm -rf /tmp/out-repair
+    svg2fbf -i /tmp/broken-copy -o /tmp/out-repair --no-browser --auto-repair-viewbox --skip-date
+    # The repair is in-place on the COPY (we don't want to mutate the fixture)
+    grep -q viewBox /tmp/broken-copy/frame00001.svg || { echo 'frame00001 was not repaired'; exit 1; }
+    [[ -f /tmp/out-repair/animation.fbf.svg ]] || { echo 'No FBF output produced'; exit 1; }
+    xmllint --noout /tmp/out-repair/animation.fbf.svg || { echo 'FBF output is not valid XML'; exit 1; }
+    grep -q xmlns:fbf /tmp/out-repair/animation.fbf.svg || { echo 'FBF output missing fbf namespace'; exit 1; }
+"
+
 run "check_dependencies after install (Ready=True)" bash -c '
     /opt/svg2fbf-venv/bin/python -c "import auto_install_deps; r,m=auto_install_deps.check_dependencies(); print(r,m); exit(0 if r else 1)"'
+
+# Bonus: explicit svg-repair-viewbox call still works end-to-end on
+# a system that's now bootstrapped (regression cover).
+run "svg-repair-viewbox direct call (deps already installed)" \
+    svg-repair-viewbox /test/needs_viewbox.svg
 run "browser-open helper logic" /opt/svg2fbf-venv/bin/python -c "
 from svg2fbf.main import _is_browser_available
 assert _is_browser_available('python3'); assert not _is_browser_available('this-fake-browser-12345')
@@ -312,10 +350,10 @@ print('OK')"
 run "E2E byte-exact (fixtures → reference)" bash -c '
     cd /test
     rm -rf /tmp/e2e-out
-    SOURCE_DATE_EPOCH="$E2E_EPOCH" svg2fbf \
+    svg2fbf \
         -i tests/fixtures/e2e/frames \
         -o /tmp/e2e-out \
-        --no-browser -s 2.0 -a once -d 6 -c 6 -q
+        --no-browser --skip-date -s 2.0 -a once -d 6 -c 6 -q
     if ! cmp /tmp/e2e-out/animation.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg; then
         echo "BYTE-EXACT MISMATCH:"
         diff /tmp/e2e-out/animation.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg | head -10

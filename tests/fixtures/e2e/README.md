@@ -26,7 +26,8 @@ handling at the unit-test level instead.
 ## Determinism contract
 
 The output is byte-deterministic when:
-- `SOURCE_DATE_EPOCH` is set (controls `<fbf:generatedDate>`)
+- The `--skip-date` flag is passed (omits the `<fbf:generatedDate>` field —
+  the only otherwise-varying piece in the output)
 - The CLI is invoked with the EXACT command in `expected/COMMAND.txt`
 - The input frames in `frames/` are unchanged
 
@@ -40,6 +41,12 @@ regenerate the expected file with:
 ## Files
 
 - `frames/frame00001.svg`, `frame00002.svg`, `frame00003.svg` — input frames
+  (already valid: have viewBox, byte-exact-test inputs)
+- `broken_frames/frame00001.svg`, `frame00002.svg` — inputs MISSING viewBox.
+  Used to exercise the `--auto-repair-viewbox` integration path: copying
+  these to a temp dir and running svg2fbf with --auto-repair-viewbox
+  triggers the Node.js + Puppeteer auto-install and the viewBox repair.
+  These files are NOT byte-compared (the repaired viewBox depends on
+  chromium-rendered bbox, which can vary across chromium versions).
 - `expected/animation.fbf.svg` — golden reference output, byte-compared on every release
 - `expected/COMMAND.txt` — the exact command used to produce the reference
-- `expected/SOURCE_DATE_EPOCH` — the epoch fed to svg2fbf when generating the reference

@@ -10,9 +10,9 @@ Why a byte-exact test:
     known-good reference, byte-for-byte.
 
 Determinism contract:
-    Output is byte-deterministic when SOURCE_DATE_EPOCH is set
-    (controls the <fbf:generatedDate> field) and the CLI invocation
-    matches tests/fixtures/e2e/expected/COMMAND.txt verbatim. If you
+    Output is byte-deterministic when --skip-date is passed (omits the
+    fbf:generatedDate field) and the CLI invocation matches
+    tests/fixtures/e2e/expected/COMMAND.txt verbatim. If you
     intentionally change input frames or the CLI invocation, regenerate
     the reference with scripts/regen_e2e_reference.sh — and commit the
     regen in the same PR as the change that prompted it.
@@ -33,11 +33,6 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures" / "e2e"
 INPUT_FRAMES = FIXTURES / "frames"
 EXPECTED_DIR = FIXTURES / "expected"
 EXPECTED_OUTPUT = EXPECTED_DIR / "animation.fbf.svg"
-EPOCH_FILE = EXPECTED_DIR / "SOURCE_DATE_EPOCH"
-
-
-def _read_epoch() -> str:
-    return EPOCH_FILE.read_text().strip()
 
 
 def test_fixture_inputs_present():
@@ -46,7 +41,6 @@ def test_fixture_inputs_present():
     frames = sorted(INPUT_FRAMES.glob("frame*.svg"))
     assert len(frames) >= 2, f"Need at least 2 input frames, found {len(frames)}"
     assert EXPECTED_OUTPUT.is_file(), f"Missing reference output: {EXPECTED_OUTPUT}"
-    assert EPOCH_FILE.is_file(), f"Missing SOURCE_DATE_EPOCH: {EPOCH_FILE}"
 
 
 def test_e2e_byte_exact(tmp_path: Path):
@@ -58,7 +52,6 @@ def test_e2e_byte_exact(tmp_path: Path):
     """
     out_dir = tmp_path / "out"
     env = os.environ.copy()
-    env["SOURCE_DATE_EPOCH"] = _read_epoch()
     env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
 
     # Use the SAME relative paths that the reference was generated with —
@@ -72,6 +65,7 @@ def test_e2e_byte_exact(tmp_path: Path):
         "-o",
         str(out_dir),
         "--no-browser",
+        "--skip-date",
         "-s",
         "2.0",
         "-a",

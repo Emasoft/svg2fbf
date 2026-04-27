@@ -2063,6 +2063,8 @@ of SVG files using SMIL animation.
     parser.add_argument("-c", "--cdigits", dest="cdigits", type=int, help="🔬 control point precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-q", "--quiet", action="store_true", dest="quiet_mode", help="🔇 don't print status messages to stdout", default=False)
     parser.add_argument("--no-browser", action="store_true", dest="no_browser", help="🚫 don't automatically open the generated FBF animation in browser", default=False)
+    parser.add_argument("--skip-date", action="store_true", dest="skip_date", help="⏱️  omit the fbf:generatedDate metadata field — useful for reproducible/byte-exact builds (CI, regression tests)", default=False)
+    parser.add_argument("--auto-repair-viewbox", action="store_true", dest="auto_repair_viewbox", help="🔧 if any input frame is missing or has an invalid viewBox, run svg-repair-viewbox automatically before processing (auto-installs Node.js + Puppeteer on first use)", default=False)
     parser.add_argument("-r", "--copyright", action="store_true", dest="show_copyright_info", help="⚖️  show legal information and exit", default=False)
 
     # Metadata options - Authoring & Provenance
@@ -3529,15 +3531,13 @@ def generate_fbfsvg_animation():
         # Why: Track tool version for compatibility and debugging
         metadata_dict["generator"] = "svg2fbf"
         metadata_dict["generatorVersion"] = SEMVERSION
-        # Reproducibility: honor SOURCE_DATE_EPOCH (the cross-tool standard for
-        # build reproducibility — Debian, Nix, conda-forge, distutils all use
-        # it). When set, every invocation with the same inputs produces a
-        # byte-identical FBF output, which is what the release E2E test
-        # depends on. Falls back to wall clock for normal user runs.
-        _sde = os.environ.get("SOURCE_DATE_EPOCH")
-        if _sde and _sde.strip().isdigit():
-            metadata_dict["generatedDate"] = datetime.fromtimestamp(int(_sde), tz=timezone.utc).isoformat()
-        else:
+        # Reproducibility: --skip-date omits the timestamp entirely.
+        # Used by the byte-exact E2E test (and by anyone needing
+        # reproducible builds — CI, regression diffs, supply-chain audits).
+        # Without this flag, every invocation produces a slightly different
+        # output by design (the generation timestamp is the only varying
+        # piece) and byte comparisons would be unreliable.
+        if not getattr(options, "skip_date", False):
             metadata_dict["generatedDate"] = datetime.now(timezone.utc).isoformat()
         metadata_dict["formatVersion"] = "1.0"
         metadata_dict["precisionDigits"] = options.digits
@@ -7522,6 +7522,59 @@ def _fetch_image_data(href, options):
         return None
 
 
+def _auto_repair_viewbox(filepath: str, docElement, options) -> None:
+    """Repair a missing viewBox in-place by invoking svg-repair-viewbox.
+
+    Why: svg2fbf requires viewBox on every input frame. The user can
+    pass --auto-repair-viewbox to make svg2fbf invoke svg-repair-viewbox
+    automatically when an input is missing it — this also triggers the
+    Node.js + Puppeteer auto-install on first use, so a single svg2fbf
+    invocation can drive the entire bootstrap path end-to-end.
+
+    Side effect: REWRITES the input file on disk (svg-repair-viewbox
+    edits in place). After repair, we reparse the file and update the
+    in-memory docElement so the rest of preprocessing sees the new
+    viewBox without needing a second pass.
+    """
+    try:
+        from svg_viewbox_repair.main import ensure_dependencies, repair_animation_sequence_viewbox
+    except Exception as e:
+        ppp(f"\n❌ --auto-repair-viewbox: cannot load svg_viewbox_repair: {e}\n")
+        sys.exit(1)
+
+    if not options.quiet_mode:
+        ppp(f"🔧 --auto-repair-viewbox: file '{filepath}' is missing viewBox; repairing automatically.")
+
+    # Trigger the bootstrap path (Node.js + Puppeteer install on first use).
+    if not ensure_dependencies():
+        ppp("\n❌ --auto-repair-viewbox: failed to install required dependencies (Node.js / Puppeteer).")
+        ppp("   See above for the install error. Fix the environment or repair the SVG manually with svg-repair-viewbox.\n")
+        sys.exit(1)
+
+    try:
+        # repair_animation_sequence_viewbox edits files in place. We pass
+        # only the one file that triggered the call; the rest of the
+        # sequence will trigger their own repair calls (or already pass).
+        repair_animation_sequence_viewbox([Path(filepath)], verbose=not options.quiet_mode)
+    except Exception as e:
+        ppp(f"\n❌ --auto-repair-viewbox: repair failed for '{filepath}': {e}\n")
+        sys.exit(1)
+
+    # Reparse the (now-repaired) file and copy the new viewBox attribute
+    # into the in-memory docElement so callers see it.
+    try:
+        repaired_doc = defusedxml.minidom.parse(filepath)
+        repaired_root = repaired_doc.documentElement
+        if repaired_root.hasAttribute("viewBox"):
+            docElement.setAttribute("viewBox", repaired_root.getAttribute("viewBox"))
+        else:
+            ppp(f"\n❌ --auto-repair-viewbox: repair produced no viewBox for '{filepath}'.\n")
+            sys.exit(1)
+    except Exception as e:
+        ppp(f"\n❌ --auto-repair-viewbox: cannot reparse repaired file '{filepath}': {e}\n")
+        sys.exit(1)
+
+
 def properlySizeDoc(docElement, options):
     # get doc width and height
     if docElement.hasAttribute("width"):
@@ -7547,13 +7600,20 @@ def properlySizeDoc(docElement, options):
 
     if docElement.hasAttribute("viewBox") is False:
         # CRITICAL: svg2fbf requires viewBox for frame-by-frame
-        # animations
-        # Why: Defaulting to arbitrary dimensions causes inconsistent
-        # frame sizing
-        ppp(f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.')
-        ppp(f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.')
-        ppp("   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.\n")
-        sys.exit(1)
+        # animations. Defaulting to arbitrary dimensions causes
+        # inconsistent frame sizing.
+        # If the user passed --auto-repair-viewbox, invoke
+        # svg-repair-viewbox automatically (which itself triggers the
+        # Node.js + Puppeteer auto-install on first use). Otherwise
+        # fail loud with the manual fix instructions.
+        if getattr(options, "auto_repair_viewbox", False):
+            _auto_repair_viewbox(current_filepath, docElement, options)
+        else:
+            ppp(f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.')
+            ppp(f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.')
+            ppp("   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.")
+            ppp("   Or rerun svg2fbf with --auto-repair-viewbox to repair automatically.\n")
+            sys.exit(1)
 
     # parse viewBox attribute
     vbSep = RE_COMMA_WSP.split(docElement.getAttribute("viewBox"))

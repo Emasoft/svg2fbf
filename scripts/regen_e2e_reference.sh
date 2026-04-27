@@ -17,15 +17,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-EPOCH="$(cat tests/fixtures/e2e/expected/SOURCE_DATE_EPOCH | tr -d '[:space:]')"
 TMP_OUT="$(mktemp -d -t svg2fbf-regen-XXXXXX)"
 trap 'rm -rf "$TMP_OUT"' EXIT
 
-echo "▶ Regenerating reference with SOURCE_DATE_EPOCH=$EPOCH"
-SOURCE_DATE_EPOCH="$EPOCH" PYTHONPATH=src uv run python src/svg2fbf.py \
+echo "▶ Regenerating reference (using --skip-date for determinism)"
+PYTHONPATH=src uv run python src/svg2fbf.py \
     -i tests/fixtures/e2e/frames \
     -o "$TMP_OUT" \
-    --no-browser -s 2.0 -a once -d 6 -c 6 -q
+    --no-browser --skip-date -s 2.0 -a once -d 6 -c 6 -q
 
 OLD="tests/fixtures/e2e/expected/animation.fbf.svg"
 NEW="$TMP_OUT/animation.fbf.svg"
