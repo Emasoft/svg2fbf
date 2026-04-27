@@ -224,21 +224,46 @@ if $DO_DOCKER; then
     if ! command -v docker >/dev/null 2>&1; then
         echo "  ⚠ docker not on PATH; skipping Linux test"
     else
+        # Detect host CPU arch and map to Docker platform string.
+        # Why: when the host is ARM64 (Apple Silicon, ARM Linux servers,
+        # Raspberry Pi) and we don't pass --platform, Docker may run
+        # either an emulated x86_64 image (slow, Puppeteer's chromium
+        # works) or a native arm64 image (fast, Puppeteer's chromium
+        # does NOT work because Puppeteer ships only x86_64 Linux Chrome).
+        # Either way, behaviour drifts from "what users on this arch see".
+        # Fix: always pass --platform so the container CPU matches the
+        # host CPU exactly, and install system chromium when needed.
         HOST_ARCH="$(uname -m)"
-        # On Apple Silicon hosts, Puppeteer's chromium isn't ARM64 — install
-        # system chromium so the END-TO-END pipeline can be tested. Real
-        # x86_64 Linux servers don't need this.
-        if [[ "$HOST_ARCH" == "arm64" || "$HOST_ARCH" == "aarch64" ]]; then
-            EXTRA_PKGS="chromium"
-            EXTRA_ENV='ENV PUPPETEER_SKIP_DOWNLOAD=true
+        case "$HOST_ARCH" in
+            arm64|aarch64)
+                DOCKER_PLATFORM="linux/arm64"
+                # Puppeteer's bundled chromium is x86_64-only on Linux.
+                # On native arm64 containers we MUST install system chromium
+                # and route Puppeteer through PUPPETEER_EXECUTABLE_PATH.
+                EXTRA_PKGS="chromium"
+                EXTRA_ENV='ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium'
-            ARCH_NOTE="(ARM64 host: using system chromium since Puppeteer ships x86_64-only)"
-        else
-            EXTRA_PKGS=""
-            EXTRA_ENV=""
-            ARCH_NOTE="(x86_64 host: using Puppeteer's bundled Chrome)"
-        fi
-        echo "  Host arch: $HOST_ARCH $ARCH_NOTE"
+                ARCH_NOTE="(arm64: using system chromium — Puppeteer's bundled chromium is x86_64-only)"
+                ;;
+            x86_64|amd64)
+                DOCKER_PLATFORM="linux/amd64"
+                # Puppeteer's bundled chromium is fine on x86_64 Linux.
+                EXTRA_PKGS=""
+                EXTRA_ENV=""
+                ARCH_NOTE="(x86_64: using Puppeteer's bundled chromium)"
+                ;;
+            *)
+                # Best-effort fallback for unusual archs (riscv64, ppc64le,
+                # s390x). Try a native arm64-like flow with system chromium —
+                # if Docker can't pull a matching image the build fails loudly.
+                DOCKER_PLATFORM="linux/$HOST_ARCH"
+                EXTRA_PKGS="chromium"
+                EXTRA_ENV='ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium'
+                ARCH_NOTE="(uncommon arch '$HOST_ARCH' — best-effort native build with system chromium)"
+                ;;
+        esac
+        echo "  Host arch: $HOST_ARCH → Docker --platform=$DOCKER_PLATFORM $ARCH_NOTE"
 
         cat > "$WORK_DIR/Dockerfile" <<DOCKERFILE
 # Truly clean: ONLY Python. svg2fbf must auto-install everything else.
@@ -368,12 +393,17 @@ INNER
         chmod +x "$WORK_DIR/run_tests.sh"
 
         IMG="svg2fbf-clean-test:latest"
-        if ! docker build -q -t "$IMG" "$WORK_DIR" >/dev/null 2>"$WORK_DIR/build.log"; then
+        # Pass --platform on BOTH build and run so the container CPU
+        # matches the host exactly. Without --platform Docker falls back
+        # to its default (which on multi-arch Docker Desktop is x86_64
+        # via emulation even on arm64 hosts) and drifts from the user
+        # experience we are trying to verify.
+        if ! docker build --platform="$DOCKER_PLATFORM" -q -t "$IMG" "$WORK_DIR" >/dev/null 2>"$WORK_DIR/build.log"; then
             echo "  ✗ Docker build failed"
             sed 's/^/    /' "$WORK_DIR/build.log" | tail -10
             OVERALL_FAIL=1
         else
-            if ! docker run --rm "$IMG"; then
+            if ! docker run --platform="$DOCKER_PLATFORM" --rm "$IMG"; then
                 OVERALL_FAIL=1
             fi
         fi

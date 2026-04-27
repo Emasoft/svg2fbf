@@ -293,6 +293,16 @@ else
     done
 
     # Run the Docker gate against the PyPI version (NOT the local wheel)
+    # Match the host CPU arch exactly via --platform so we test the
+    # binary users on this arch will actually receive.
+    HOST_ARCH="$(uname -m)"
+    case "$HOST_ARCH" in
+        arm64|aarch64) DOCKER_PLATFORM="linux/arm64" ;;
+        x86_64|amd64)  DOCKER_PLATFORM="linux/amd64" ;;
+        *)             DOCKER_PLATFORM="linux/$HOST_ARCH" ;;
+    esac
+    log "  Using --platform=$DOCKER_PLATFORM (host: $HOST_ARCH)"
+
     PYPI_VERIFY_DIR="$(mktemp -d -t svg2fbf-pypi-verify-XXXXXX)"
     cat > "$PYPI_VERIFY_DIR/Dockerfile" <<DOCKERFILE
 FROM python:3.12-slim
@@ -318,11 +328,11 @@ COPY f3.svg /test/tests/fixtures/e2e/frames/frame00003.svg
 COPY expected.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg
 CMD ["bash", "-c", "cd /test && rm -rf /tmp/o && svg2fbf -i tests/fixtures/e2e/frames -o /tmp/o --no-browser --skip-date -s 2.0 -a once -d 6 -c 6 -q && cmp /tmp/o/animation.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg && echo BYTE-EXACT-OK"]
 DOCKERFILE2
-    if ! docker build -q -t "svg2fbf-pypi-verify:$PUBLISHED_VERSION" "$PYPI_VERIFY_DIR" >/dev/null 2>"$PYPI_VERIFY_DIR/build.log"; then
+    if ! docker build --platform="$DOCKER_PLATFORM" -q -t "svg2fbf-pypi-verify:$PUBLISHED_VERSION" "$PYPI_VERIFY_DIR" >/dev/null 2>"$PYPI_VERIFY_DIR/build.log"; then
         cat "$PYPI_VERIFY_DIR/build.log" >&2
         abort "PyPI verification: Docker build failed" 5
     fi
-    OUT="$(docker run --rm "svg2fbf-pypi-verify:$PUBLISHED_VERSION" 2>&1)"
+    OUT="$(docker run --platform="$DOCKER_PLATFORM" --rm "svg2fbf-pypi-verify:$PUBLISHED_VERSION" 2>&1)"
     if ! echo "$OUT" | grep -q BYTE-EXACT-OK; then
         echo "$OUT" >&2
         abort "PyPI verification: byte-exact comparison FAILED against published artifact" 5
