@@ -94,8 +94,49 @@ done
 log()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
 err()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; }
+
+# Background watchdog: every 10s, if host swap usage grows above 8 GB
+# (a sane proxy for "memory leak running away"), kill our own pgid so
+# all docker subprocesses die. Without this, a Chromium leak inside
+# Docker Desktop or under Rosetta can balloon swap to 200GB+ on a
+# 64GB host and freeze the user's machine. Tracked separately from
+# the container's --memory cap because Docker Desktop on macOS uses a
+# Linux VM, and memory accounting between the VM and the host is not
+# direct.
+WATCHDOG_PID=
+start_memory_watchdog() {
+    (
+        while true; do
+            sleep 10
+            if [[ "$(uname -s)" == "Darwin" ]]; then
+                # macOS: swap used in MB (sysctl returns "M = 1234.50")
+                SWAP_GB=$(sysctl vm.swapusage 2>/dev/null \
+                    | awk '{for(i=1;i<=NF;i++)if($i=="used"){gsub(/[^0-9.]/,"",$(i+2));print int($(i+2)/1024+0.5);exit}}')
+            else
+                # Linux: /proc/meminfo SwapTotal-SwapFree, in GB
+                SWAP_GB=$(awk '/SwapTotal/{tot=$2}/SwapFree/{free=$2}END{print int((tot-free)/1024/1024+0.5)}' /proc/meminfo 2>/dev/null || echo 0)
+            fi
+            SWAP_GB=${SWAP_GB:-0}
+            if (( SWAP_GB > 8 )); then
+                err "🚨 MEMORY WATCHDOG: host swap usage is ${SWAP_GB}GB — aborting to protect the system."
+                err "   Likely cause: Chromium leak inside Docker. Killing our process group."
+                # Kill our entire process group, which includes Docker
+                # subprocesses we spawned.
+                kill -TERM -- -$$ 2>&1 || true
+                sleep 2
+                kill -KILL -- -$$ 2>&1 || true
+                exit 0
+            fi
+        done
+    ) &
+    WATCHDOG_PID=$!
+    # Make sure the watchdog dies with us on any exit path.
+    trap 'kill "$WATCHDOG_PID" 2>/dev/null || true' EXIT
+}
+
 abort() {
     err "$1"
+    [[ -n "${WATCHDOG_PID:-}" ]] && kill "$WATCHDOG_PID" 2>/dev/null || true
     [[ $# -ge 2 ]] && exit "$2" || exit 1
 }
 
@@ -129,6 +170,32 @@ if ! docker info >/dev/null 2>&1; then
 fi
 ok "Docker daemon reachable (context: $(docker context show 2>/dev/null), engine: $(docker info --format '{{.OperatingSystem}}' 2>/dev/null))"
 
+# Memory pre-flight: refuse to run if the host has less than 8 GB free.
+# Why: Puppeteer's Chromium under emulation has been observed leaking
+# host memory hard (a previous run pushed swap to 225GB on a 64GB host
+# and forced the user to kill iTerm). The container memory cap
+# prevents this in the gate, but we also want a host-level guard that
+# fails fast BEFORE we start any builds.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    # macOS: memory_pressure reports system memory state
+    FREE_BYTES="$(sysctl -n hw.memsize)"
+    PAGE_USED="$(vm_stat | awk '/Pages free|Pages inactive|Pages purgeable/{sum+=$3+0} END{print sum*4096}')"
+    HOST_FREE_GB=$(( PAGE_USED / 1024 / 1024 / 1024 ))
+else
+    # Linux: /proc/meminfo
+    HOST_FREE_GB=$(awk '/MemAvailable/{print int($2/1024/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+fi
+if (( HOST_FREE_GB < 4 )); then
+    err "Host has only ${HOST_FREE_GB}GB available memory."
+    err "The Docker gate caps each container at 4GB but launching it"
+    err "alongside Docker Desktop/OrbStack itself needs more than 4GB free."
+    abort "Free up memory (close apps) or run on a host with more RAM." 1
+fi
+ok "Host has ${HOST_FREE_GB}GB free memory (>=4GB required)"
+
+# Also issue a hard-limit reminder so the user sees the cap
+echo "  Docker memory cap: 4 GB per container, swap disabled, pids-limit 512"
+
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$CURRENT_BRANCH" != "dev" ]]; then
     abort "Must be on 'dev' branch (currently on '$CURRENT_BRANCH')" 1
@@ -160,6 +227,12 @@ ok "Origin reachable"
 
 # ---------- 2. QUALITY GATE ----------
 log "STEP 2/6: Running full quality gate (lint + types + tests + Docker E2E)"
+
+# Arm the host-side memory watchdog before the heavy Docker work
+# starts. Watchdog auto-kills the process group if host swap usage
+# exceeds 8 GB.
+start_memory_watchdog
+ok "Memory watchdog armed (pid $WATCHDOG_PID, threshold: 8GB swap)"
 
 if ! "$PROJECT_ROOT/scripts/test_release_clean.sh"; then
     abort "Quality gate FAILED — release aborted. Fix issues and rerun." 2
@@ -347,7 +420,12 @@ DOCKERFILE2
         cat "$PYPI_VERIFY_DIR/build.log" >&2
         abort "PyPI verification: Docker build failed" 5
     fi
-    OUT="$(docker run --platform="$DOCKER_PLATFORM" --rm "svg2fbf-pypi-verify:$PUBLISHED_VERSION" 2>&1)"
+    # See test_release_clean.sh for why these limits are required.
+    OUT="$(docker run \
+        --platform="$DOCKER_PLATFORM" \
+        --memory=4g --memory-swap=4g --pids-limit=512 --shm-size=512m \
+        --rm "svg2fbf-pypi-verify:$PUBLISHED_VERSION" 2>&1)"
+    docker rmi -f "svg2fbf-pypi-verify:$PUBLISHED_VERSION" >/dev/null 2>&1 || true
     if ! echo "$OUT" | grep -q BYTE-EXACT-OK; then
         echo "$OUT" >&2
         abort "PyPI verification: byte-exact comparison FAILED against published artifact" 5

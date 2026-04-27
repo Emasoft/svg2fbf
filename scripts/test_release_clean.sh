@@ -403,10 +403,32 @@ INNER
             sed 's/^/    /' "$WORK_DIR/build.log" | tail -10
             OVERALL_FAIL=1
         else
-            if ! docker run --platform="$DOCKER_PLATFORM" --rm "$IMG"; then
+            # HARD memory limit on the container. Why: a previous run
+            # blew the host swap to 225GB on a 64GB machine when
+            # Puppeteer's Chromium leaked under emulation. Capping the
+            # container forces the leak to surface as an OOM kill INSIDE
+            # the container instead of consuming all host swap.
+            #   --memory=4g       : RSS cap
+            #   --memory-swap=4g  : disable swap (memory-swap == memory)
+            #   --pids-limit=512  : prevent fork bombs from spawning
+            #                       runaway chromium tabs
+            #   --shm-size=512m   : explicit shm so Chromium's /dev/shm
+            #                       is bounded (Chromium can otherwise
+            #                       consume large amounts of host shm)
+            if ! docker run \
+                --platform="$DOCKER_PLATFORM" \
+                --memory=4g \
+                --memory-swap=4g \
+                --pids-limit=512 \
+                --shm-size=512m \
+                --rm \
+                "$IMG"; then
                 OVERALL_FAIL=1
             fi
         fi
+        # Always clean up the test image to prevent disk bloat (each
+        # build is ~1GB and we re-build from scratch on every run).
+        docker rmi -f "$IMG" >/dev/null 2>&1 || true
     fi
 fi
 
