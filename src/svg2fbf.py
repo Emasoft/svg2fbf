@@ -2085,7 +2085,7 @@ of SVG files using SMIL animation.
     parser.add_argument("--config", dest="config", help="⚙️  path to YAML configuration file containing metadata and options", default=None, metavar="FILE")
 
     # Text-to-path conversion options (always strict - fails on any error)
-    parser.add_argument("--text2path", action="store_true", dest="text2path", default=False, help="convert all text elements to paths using svg-text2path (requires: uv tool install svg2fbf[text2path])")
+    parser.add_argument("--text2path", action="store_true", dest="text2path", default=False, help="convert all text elements to paths using svg-text2path")
     parser.add_argument("--text2path-precision", type=int, dest="text2path_precision", default=8, metavar="N", help="decimal precision for path coordinates (default: 8 for high accuracy)")
     parser.add_argument("--text2path-no-validate", action="store_true", dest="text2path_no_validate", default=False, help="disable SVG validation after text-to-path conversion (validation requires Bun)")
 
@@ -4562,11 +4562,14 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
     if not getattr(options, "text2path", False):
         return svg_content
 
-    # Try to import svg-text2path (optional dependency)
+    # svg-text2path is a REQUIRED dep (deferred install via the wheel's
+    # main dependencies list). The try/except is defensive — a real
+    # ImportError here means the user's environment is broken, not that
+    # they need to opt in to a separate install.
     try:
         from svg_text2path import Text2PathConverter
     except ImportError as e:
-        raise ImportError("svg-text2path is required for --text2path flag. Install with: uv tool install svg2fbf[text2path]") from e
+        raise ImportError("svg-text2path import failed unexpectedly — this package is a required runtime dependency and should have been installed alongside svg2fbf. Try reinstalling: uv tool install --reinstall svg2fbf") from e
 
     # Decode bytes to string for conversion
     try:
@@ -11002,12 +11005,13 @@ def cli():
     if options.cdigits > options.digits:
         cl_parser.error("WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help")
 
-    # Validate text2path flags
+    # Validate text2path flags — svg-text2path is a required runtime dep,
+    # so the import should always succeed. A failure means a broken install.
     if options.text2path:
         try:
             from svg_text2path import Text2PathConverter  # noqa: F401
         except ImportError:
-            cl_parser.error("--text2path requires svg-text2path package. Install with: uv tool install svg2fbf[text2path]")
+            cl_parser.error("svg-text2path import failed — this is a required dependency. Try reinstalling: uv tool install --reinstall svg2fbf")
 
     # Create output directory if it doesn't exist
     # Why: User convenience - don't force manual directory creation

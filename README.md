@@ -897,9 +897,12 @@ Convert text elements in SVG frames to vector paths before processing. This enab
 - ✅ **Smaller file sizes** - For animations with repeated text across frames
 
 **Installation:**
+
+`svg-text2path` ships as a standard runtime dependency of svg2fbf (no extras
+syntax needed). A normal install gives you `--text2path` automatically:
 ```bash
-# Install svg2fbf with text2path support
-uv tool install 'svg2fbf[text2path]'
+# First-time install
+uv tool install svg2fbf
 
 # Or upgrade existing installation
 uv tool upgrade svg2fbf

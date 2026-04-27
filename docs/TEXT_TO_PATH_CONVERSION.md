@@ -512,8 +512,11 @@ if text_align_match and text_anchor == 'start':  # Only if text-anchor not expli
 The primary text-to-path conversion in svg2fbf uses the external `svg-text2path` library, integrated via the `--text2path` CLI flag.
 
 **Installation:**
+
+`svg-text2path` is a standard runtime dependency of svg2fbf — it installs
+automatically with the regular `svg2fbf` package, no extras syntax needed:
 ```bash
-uv tool install 'svg2fbf[text2path]'
+uv tool install svg2fbf
 ```
 
 **Usage:**
