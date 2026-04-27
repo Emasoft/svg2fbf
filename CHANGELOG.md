@@ -5,6 +5,16 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20b3] - 2026-04-27
+
+### Fixed
+
+- Add missing tomli-w dev dependency (used by test_testrunner.py)
+
+### Other
+
+- Forward tomli-w dev dep to testing
+
 ## [0.1.20b2] - 2026-04-27
 
 ### Fixed
@@ -14,10 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - Forward sudo-fix and test script to beta channel
+- Release beta 0.1.20b2
 
 ### Miscellaneous
 
 - Add scripts/test_release_clean.sh for cross-platform release verification
+- Update uv.lock for beta 0.1.20b2
 
 ## [0.1.20b1] - 2026-04-27
 
