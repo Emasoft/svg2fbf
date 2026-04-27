@@ -130,7 +130,7 @@ class TestVersionRulesIntegration:
         content = RELEASE_SCRIPT.read_text(encoding="utf-8")
         # Check validation is called before git commit
         validation_call = 'validate_version_release "$new_version"'
-        git_commit = 'git commit --no-verify -m "Release'
+        git_commit = 'git commit -m "Release'
 
         assert validation_call in content, "validate_version_release not called in release_channel"
 

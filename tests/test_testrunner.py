@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import tomli
 import tomli_w
 
 # Add tests directory to path for import
