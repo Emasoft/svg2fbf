@@ -5,11 +5,76 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20a1] - 2026-04-27
+
+### Added
+
+- Make text2path strict mode mandatory [**BREAKING**]
+- Complete WIP functions - embed_rasters, clean_polygon, cleanPolyline
+
+### Fixed
+
+- Fix 13 code bugs in svg2fbf.py from comprehensive audit
+- Fix packaging, CI, and supply chain security issues
+- Fix remaining MEDIUM/LOW audit findings in svg2fbf.py
+- Pingpong dur, curl|bash removal, XXE protection (H2/H7/H8/M10)
+- Dead code removal, CLI validation, path traversal, and remaining M/L fixes
+- Release script safety, workflow concurrency, and input size limits
+- Revert L6 filename change and update release script test
+- Hard-fail on missing backdrop file instead of silent warning
+- Resolve all Pyright errors across source files
+- Restore 4 WIP functions removed during dead code cleanup
+- Restore all 17 removed functions per user request
+- Resolve broken relative imports breaking dependency auto-install ([#15](https://github.com/Emasoft/svg2fbf/issues/15))
+- Browser-open fails silently with misleading "file not found" error
+- Use commit SHAs (not tag-object SHAs) for pinned actions
+
+## [0.1.19] - 2026-01-31
+
+### Added
+
+- Add GitHub Action SHA validation safeguard
+- Comprehensive CI/CD pipeline improvements
+- Upgrade svg-text2path to 0.5.0 with HarfBuzz shaping
+- Enable SVG validation by default for text2path conversion
+- Collect and report ALL text2path validation failures
+
+### Fixed
+
+- Correct stage promotion bump logic in release.sh
+- Skip CLAUDE.md test on CI (file is gitignored)
+- Add Windows compatibility to version release tests
+- Comprehensive pipeline audit fixes (security, reliability, docs)
+- Correct TruffleHog action SHA (invalid commit was pinned)
+- Remove non-existent cli/cli-action from auto-triage workflow
+
+### Other
+
+- Version 0.1.19 (stable)
+
+### Testing
+
+- Add integration tests for --text2path flag
+
+### Documentation
+
+- Update documentation for new CI/CD pipeline
+- Add promotion criteria to version release rules
+
+### Miscellaneous
+
+- Untrack tests/sessions/ - redundant test data
+- Require Python 3.11+ for svg-text2path 0.5.0 support
+
 ## [0.1.18a1] - 2026-01-30
 
 ### Added
 
 - Implement version release rules enforcement in release.sh
+
+### Other
+
+- Release alpha 0.1.18a1
 
 ### Documentation
 
@@ -19,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Enforce GitHub release before PyPI publish
 - Update uv.lock
+- Update uv.lock for alpha 0.1.18a1
 
 ## [0.1.17] - 2026-01-30
 

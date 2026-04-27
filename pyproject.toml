@@ -46,7 +46,7 @@ exclude = [
 
 [project]
 name = "svg2fbf"
-version = "0.1.19"
+version = "0.1.20a1"
 description = "SVG Frame-by-Frame Animation Generator - Create optimized FBF SVG animations from SVG sequences"
 readme = "README.md"
 requires-python = ">=3.11"
