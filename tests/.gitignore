@@ -14,6 +14,8 @@ __pycache__/
 # Test output files (PNGs, diffs, etc.)
 *.png
 *.fbf.svg
+# Exception: the e2e byte-exact reference IS tracked.
+!fixtures/e2e/expected/animation.fbf.svg
 
 # HTML reports (large, auto-generated)
 *_report_*.html

@@ -1,0 +1,1 @@
+SOURCE_DATE_EPOCH=1767225600 svg2fbf -i tests/fixtures/e2e/frames -o <output_dir> --no-browser -s 2.0 -a once -d 6 -c 6 -q

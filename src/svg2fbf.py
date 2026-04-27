@@ -3529,7 +3529,16 @@ def generate_fbfsvg_animation():
         # Why: Track tool version for compatibility and debugging
         metadata_dict["generator"] = "svg2fbf"
         metadata_dict["generatorVersion"] = SEMVERSION
-        metadata_dict["generatedDate"] = datetime.now(timezone.utc).isoformat()
+        # Reproducibility: honor SOURCE_DATE_EPOCH (the cross-tool standard for
+        # build reproducibility — Debian, Nix, conda-forge, distutils all use
+        # it). When set, every invocation with the same inputs produces a
+        # byte-identical FBF output, which is what the release E2E test
+        # depends on. Falls back to wall clock for normal user runs.
+        _sde = os.environ.get("SOURCE_DATE_EPOCH")
+        if _sde and _sde.strip().isdigit():
+            metadata_dict["generatedDate"] = datetime.fromtimestamp(int(_sde), tz=timezone.utc).isoformat()
+        else:
+            metadata_dict["generatedDate"] = datetime.now(timezone.utc).isoformat()
         metadata_dict["formatVersion"] = "1.0"
         metadata_dict["precisionDigits"] = options.digits
         metadata_dict["precisionCDigits"] = options.cdigits

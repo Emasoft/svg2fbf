@@ -125,6 +125,17 @@ cat > "$WORK_DIR/needs_viewbox.svg" <<'EOF'
 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><circle cx="25" cy="25" r="20" fill="green"/></svg>
 EOF
 
+# E2E byte-exact reference fixtures — same fixtures the pytest uses,
+# but we run them against the INSTALLED WHEEL (not the source) and
+# byte-compare to the reference. NO <text> elements — fonts vary
+# across machines and would cause spurious failures.
+mkdir -p "$WORK_DIR/e2e/frames"
+cp "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00001.svg" "$WORK_DIR/e2e/frames/"
+cp "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00002.svg" "$WORK_DIR/e2e/frames/"
+cp "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00003.svg" "$WORK_DIR/e2e/frames/"
+cp "$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg" "$WORK_DIR/e2e/expected.fbf.svg"
+E2E_EPOCH="$(cat "$PROJECT_ROOT/tests/fixtures/e2e/expected/SOURCE_DATE_EPOCH" | tr -d '[:space:]')"
+
 OVERALL_FAIL=0
 
 # ----------------------------------------------------------------------
@@ -172,6 +183,26 @@ if $DO_LOCAL; then
     # check_dependencies doesn't crash on import (the silent-failure bug)
     run_local "check_dependencies does not raise ImportError" bash -c "
         '$LOCAL_VENV/bin/python' -c 'import auto_install_deps; auto_install_deps.check_dependencies()'
+    "
+
+    # E2E byte-exact: convert the fixture frames and compare to the
+    # golden reference, byte-for-byte. Catches subtle output drift
+    # (attribute ordering, whitespace, optimization changes) that
+    # other tests miss. Uses SOURCE_DATE_EPOCH for determinism.
+    # cd into the project root so 'tests/fixtures/e2e/frames' resolves
+    # to the same path string that's embedded in the reference output.
+    run_local "E2E byte-exact (fixtures → reference, byte-for-byte)" bash -c "
+        cd '$PROJECT_ROOT'
+        rm -rf '$WORK_DIR/local-e2e-out'
+        SOURCE_DATE_EPOCH=$E2E_EPOCH '$LOCAL_VENV/bin/svg2fbf' \\
+            -i tests/fixtures/e2e/frames \\
+            -o '$WORK_DIR/local-e2e-out' \\
+            --no-browser -s 2.0 -a once -d 6 -c 6 -q
+        if ! cmp '$WORK_DIR/local-e2e-out/animation.fbf.svg' '$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg'; then
+            echo 'BYTE-EXACT MISMATCH — first diff:' >&2
+            diff '$WORK_DIR/local-e2e-out/animation.fbf.svg' '$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg' | head -10 >&2
+            exit 1
+        fi
     "
 
     echo "  Local result: $LOCAL_PASS passed, $LOCAL_FAIL failed"
@@ -222,10 +253,22 @@ RUN python -m venv /opt/svg2fbf-venv && \\
     /opt/svg2fbf-venv/bin/pip install --no-cache-dir ./$WHEEL_NAME
 ENV PATH="/opt/svg2fbf-venv/bin:\$PATH"
 
-RUN mkdir -p /test/frames
+RUN mkdir -p /test/frames /test/tests/fixtures/e2e/frames
 COPY frames/frame00001.svg /test/frames/
 COPY frames/frame00002.svg /test/frames/
 COPY needs_viewbox.svg /test/
+
+# E2E byte-exact fixtures + reference output.
+# Placed at /test/tests/fixtures/e2e/frames/ so that running 'svg2fbf -i
+# tests/fixtures/e2e/frames' from /test produces the same
+# <fbf:sourceFramesPath> embedded in the SVG as the reference (which was
+# generated from the project root with the same relative path). Otherwise
+# a path-string mismatch causes a false byte-exact failure.
+COPY e2e/frames/frame00001.svg /test/tests/fixtures/e2e/frames/
+COPY e2e/frames/frame00002.svg /test/tests/fixtures/e2e/frames/
+COPY e2e/frames/frame00003.svg /test/tests/fixtures/e2e/frames/
+COPY e2e/expected.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg
+ENV E2E_EPOCH=$E2E_EPOCH
 
 COPY run_tests.sh /test/run_tests.sh
 RUN chmod +x /test/run_tests.sh
@@ -259,6 +302,26 @@ from svg2fbf.main import _is_browser_available
 assert _is_browser_available('python3'); assert not _is_browser_available('this-fake-browser-12345')
 assert _is_browser_available('/usr/bin/python3'); assert not _is_browser_available('/applications/nope.app')
 print('OK')"
+
+# E2E BYTE-EXACT — convert the fixture frames with the installed wheel
+# and compare to the golden reference, byte-for-byte. This is what
+# catches "the wheel installs and runs but produces a slightly different
+# output that would corrupt user files".
+# Run from /test (so tests/fixtures/e2e/frames resolves the same way it
+# does on the developer's machine — the path string ends up in the SVG).
+run "E2E byte-exact (fixtures → reference)" bash -c '
+    cd /test
+    rm -rf /tmp/e2e-out
+    SOURCE_DATE_EPOCH="$E2E_EPOCH" svg2fbf \
+        -i tests/fixtures/e2e/frames \
+        -o /tmp/e2e-out \
+        --no-browser -s 2.0 -a once -d 6 -c 6 -q
+    if ! cmp /tmp/e2e-out/animation.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg; then
+        echo "BYTE-EXACT MISMATCH:"
+        diff /tmp/e2e-out/animation.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg | head -10
+        exit 1
+    fi
+'
 
 echo "  Docker result: $PASS passed, $FAIL failed"
 [[ $FAIL -gt 0 ]] && { for f in "${FAILS[@]}"; do echo "    - $f"; done; exit 1; }
