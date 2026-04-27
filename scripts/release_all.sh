@@ -114,6 +114,21 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 ok "GitHub CLI authenticated"
 
+# Check the docker DAEMON is actually reachable. The Docker quality
+# gate fails halfway through if the daemon is down or the active
+# context points at a broken socket — fail fast here with a clearer
+# message. List active context to make it obvious which one is
+# selected (helps when the user has multiple: Docker Desktop, OrbStack,
+# remote Docker, etc.).
+if ! docker info >/dev/null 2>&1; then
+    err "Docker daemon is not reachable."
+    err "Active context: $(docker context show 2>/dev/null || echo unknown)"
+    err "Available contexts:"
+    docker context ls 2>&1 | sed 's/^/    /' >&2 || true
+    abort "Start the docker engine, or switch context with: docker context use <name>" 1
+fi
+ok "Docker daemon reachable (context: $(docker context show 2>/dev/null), engine: $(docker info --format '{{.OperatingSystem}}' 2>/dev/null))"
+
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$CURRENT_BRANCH" != "dev" ]]; then
     abort "Must be on 'dev' branch (currently on '$CURRENT_BRANCH')" 1
