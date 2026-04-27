@@ -165,13 +165,13 @@ def install_puppeteer(scripts_dir: Path | None = None) -> tuple[bool, str]:
     print("📦 Installing Puppeteer (this will download ~170MB Chromium)...")
 
     # If scripts_dir not provided, try to find it
+    # Why: auto_install_deps.py ships as a TOP-LEVEL module (per pyproject.toml
+    # force-include), so the `from .svg_viewbox_repair` relative import used
+    # before always failed silently — leaving scripts_dir=None and forcing
+    # global install (which then check_dependencies() couldn't detect).
+    # Wheel layout: svg_viewbox_repair/main.py contains the helper.
     if scripts_dir is None:
-        try:
-            from .svg_viewbox_repair import get_node_scripts_dir  # type: ignore[attr-defined]
-
-            scripts_dir = get_node_scripts_dir().parent
-        except Exception:
-            scripts_dir = None
+        scripts_dir = _find_scripts_dir()
 
     if scripts_dir and scripts_dir.exists():
         # Install locally in scripts directory
@@ -266,14 +266,10 @@ def setup_dependencies(silent: bool = False) -> bool:
 
     # Check if Puppeteer is installed locally in scripts directory
     has_puppeteer_local = False
-    try:
-        from .svg_viewbox_repair import get_node_scripts_dir  # type: ignore[attr-defined]
-
-        scripts_dir = get_node_scripts_dir().parent
+    scripts_dir = _find_scripts_dir()
+    if scripts_dir is not None:
         node_modules = scripts_dir / "node_modules" / "puppeteer"
         has_puppeteer_local = node_modules.exists()
-    except Exception:
-        pass
 
     if not has_puppeteer_local:
         if not silent:
@@ -316,21 +312,73 @@ def check_dependencies() -> tuple[bool, str]:
     if not check_command_exists("npm"):
         return False, "npm not found"
 
-    # Check Puppeteer - must be installed locally in scripts directory
-    # Global installations don't work reliably for packaged tools
-    try:
-        from .svg_viewbox_repair import get_node_scripts_dir  # type: ignore[attr-defined]
-
-        scripts_dir = get_node_scripts_dir().parent
-
-        # Check if Puppeteer is installed locally in scripts directory
+    # Check Puppeteer - prefer local install, fall back to global detection.
+    # Local install in the bundled scripts dir is preferred because the
+    # node_scripts call `require('puppeteer')` from that working dir.
+    scripts_dir = _find_scripts_dir()
+    if scripts_dir is not None:
         node_modules = scripts_dir / "node_modules" / "puppeteer"
         if node_modules.exists():
             return True, "All dependencies available (Puppeteer installed locally)"
+
+    # Fall back to global puppeteer (the install_puppeteer fallback path).
+    # Without this check, a successful global install would still report
+    # "Puppeteer not found" — exactly the user-reported issue #15.
+    if _is_puppeteer_globally_installed():
+        return True, "All dependencies available (Puppeteer installed globally)"
+
+    return False, "Puppeteer not found"
+
+
+def _find_scripts_dir() -> Path | None:
+    """
+    Locate the bundled node_scripts directory.
+
+    Tries the wheel-installed location (svg_viewbox_repair.main) first,
+    then falls back to a development-mode lookup. Returns the PARENT of
+    node_scripts (i.e. the directory that contains node_scripts/ AND
+    package.json) so callers can run `npm install` there.
+    """
+    # Wheel-installed mode: svg_viewbox_repair is a package, helper lives
+    # in its `main` submodule (force-included from src/svg_viewbox_repair.py).
+    try:
+        from svg_viewbox_repair.main import get_node_scripts_dir  # type: ignore[import-not-found]
+
+        return get_node_scripts_dir().parent
     except Exception:
         pass
 
-    return False, "Puppeteer not found"
+    # Dev mode (running from src/): the file is a top-level module.
+    try:
+        import importlib
+
+        mod = importlib.import_module("svg_viewbox_repair")
+        if hasattr(mod, "get_node_scripts_dir"):
+            return mod.get_node_scripts_dir().parent  # type: ignore[no-any-return]
+    except Exception:
+        pass
+
+    return None
+
+
+def _is_puppeteer_globally_installed() -> bool:
+    """Detect a global puppeteer install via `npm root -g`."""
+    if not check_command_exists("npm"):
+        return False
+    try:
+        result = subprocess.run(
+            ["npm", "root", "-g"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if result.returncode != 0:
+            return False
+        global_root = Path(result.stdout.strip())
+        return (global_root / "puppeteer").exists()
+    except Exception:
+        return False
 
 
 if __name__ == "__main__":

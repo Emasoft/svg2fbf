@@ -471,7 +471,12 @@ def ensure_dependencies() -> bool:
         True if dependencies are ready, False if installation failed
     """
     try:
-        from . import auto_install_deps
+        # auto_install_deps ships as a TOP-LEVEL module (per pyproject.toml
+        # force-include), not inside this package — use absolute import.
+        # The previous `from . import auto_install_deps` always failed, which
+        # made auto-install silently report "dependencies not met" even when
+        # Node.js was already present (issue #15).
+        import auto_install_deps
 
         # First check if dependencies are already available
         ready, _ = auto_install_deps.check_dependencies()
@@ -483,8 +488,8 @@ def ensure_dependencies() -> bool:
         print()
         return auto_install_deps.setup_dependencies(silent=False)
 
-    except ImportError:
-        # auto_install_deps not available (shouldn't happen)
+    except ImportError as e:
+        print(f"\n⚠️  Could not load dependency installer: {e}\n", file=sys.stderr)
         return False
     except Exception as e:
         print(f"\n⚠️  Automatic dependency installation failed: {e}\n", file=sys.stderr)
