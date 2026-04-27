@@ -46,6 +46,10 @@ tmp/
 # Release process temporary files
 .release-notes-*.md  # git-cliff temporary release notes
 
+# Agent / tooling reports — contain private paths, tokens, internal notes
+/reports/
+/reports_dev/
+
 # Temporary analysis files (hound-agent, etc.)
 hound_found_*.md
 /.json
