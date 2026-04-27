@@ -5,6 +5,18 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20] - 2026-04-27
+
+### Fixed
+
+- Add missing tomli-w dev dependency (used by test_testrunner.py)
+
+### Other
+
+- Forward tomli-w dev dep to testing
+- Forward tomli-w dev dep to review
+- Forward tomli-w dev dep to master
+
 ## [0.1.20b2] - 2026-04-27
 
 ### Fixed
@@ -13,11 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- Promote 0.1.20 beta to rc channel after Linux+macOS verification
 - Forward sudo-fix and test script to beta channel
+- Forward sudo-fix and test script to rc channel
+- Promote 0.1.20 fixes to stable channel after Linux+macOS verification
+- Release beta 0.1.20b2
 
 ### Miscellaneous
 
 - Add scripts/test_release_clean.sh for cross-platform release verification
+- Update uv.lock for beta 0.1.20b2
 
 ## [0.1.20b1] - 2026-04-27
 
@@ -70,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive CI/CD pipeline improvements
 - Add GitHub Action SHA validation safeguard
 - Comprehensive CI/CD pipeline improvements
+- Add GitHub Action SHA validation safeguard
+- Comprehensive CI/CD pipeline improvements
+- Add GitHub Action SHA validation safeguard
+- Comprehensive CI/CD pipeline improvements
 - Upgrade svg-text2path to 0.5.0 with HarfBuzz shaping
 - Enable SVG validation by default for text2path conversion
 - Collect and report ALL text2path validation failures
@@ -86,16 +107,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive pipeline audit fixes (security, reliability, docs)
 - Correct TruffleHog action SHA (invalid commit was pinned)
 - Remove non-existent cli/cli-action from auto-triage workflow
+- Skip CLAUDE.md test on CI (file is gitignored)
+- Add Windows compatibility to version release tests
+- Comprehensive pipeline audit fixes (security, reliability, docs)
+- Correct TruffleHog action SHA (invalid commit was pinned)
+- Remove non-existent cli/cli-action from auto-triage workflow
+- Skip CLAUDE.md test on CI (file is gitignored)
+- Add Windows compatibility to version release tests
+- Comprehensive pipeline audit fixes (security, reliability, docs)
+- Correct TruffleHog action SHA (invalid commit was pinned)
+- Remove non-existent cli/cli-action from auto-triage workflow
 
 ### Other
 
 - Merge branch 'dev' into testing
+- Merge branch 'testing' into review
+- Merge branch 'review'
 - Merge branch 'dev' into testing
+- Merge branch 'testing' into review
+- Merge branch 'review'
 - Merge branch 'dev' into testing
+- Merge branch 'testing' into review
+- Merge branch 'review'
 - Version 0.1.19 (stable)
 
 ### Testing
 
+- Add integration tests for --text2path flag
+- Add integration tests for --text2path flag
 - Add integration tests for --text2path flag
 - Add integration tests for --text2path flag
 
@@ -108,7 +147,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Untrack tests/sessions/ - redundant test data
 - Untrack tests/sessions/ - redundant test data
+- Untrack tests/sessions/ - redundant test data
+- Untrack tests/sessions/ - redundant test data
 - Require Python 3.11+ for svg-text2path 0.5.0 support
+
+## [0.1.18] - 2026-01-30
+
+### Other
+
+- Merge review into master - ready for stable release
+- Release stable 0.1.18
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.18
+
+## [0.1.18rc1] - 2026-01-30
+
+### Other
+
+- Merge testing into review - bugs fixed, ready for release candidate
+- Release rc 0.1.18rc1
+
+### Miscellaneous
+
+- Update uv.lock for rc 0.1.18rc1
 
 ## [0.1.18b1] - 2026-01-30
 
