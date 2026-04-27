@@ -6,6 +6,7 @@ Detects the system and automatically installs Node.js and Puppeteer
 using the appropriate package manager.
 """
 
+import os
 import platform
 import shutil
 import subprocess
@@ -16,6 +17,24 @@ from pathlib import Path
 def check_command_exists(command: str) -> bool:
     """Check if a command exists in PATH."""
     return shutil.which(command) is not None
+
+
+def _sudo_prefix() -> list[str]:
+    """Return ['sudo'] if escalation is needed, else [] when already root.
+
+    Why: Linux/macOS package managers normally require root, so the helper
+    used to hard-code 'sudo'. But when svg2fbf runs inside a Docker
+    container (or any environment that already runs as root), sudo is
+    typically not installed and the install fails with "No such file or
+    directory: 'sudo'" — the exact bug end users hit on container hosts.
+
+    Use os.geteuid() to detect root. On Windows os.geteuid is not
+    available, so we just return [] (the choco/winget paths don't need
+    elevation here anyway — Windows handles UAC separately).
+    """
+    if not hasattr(os, "geteuid"):
+        return []
+    return [] if os.geteuid() == 0 else ["sudo"]
 
 
 def run_command(cmd: list[str], description: str, check: bool = True, cwd: str | None = None) -> tuple[bool, str]:
@@ -101,30 +120,30 @@ def install_nodejs(package_manager: str) -> tuple[bool, str]:
 
     elif package_manager == "apt":
         # Update package list first
-        run_command(["sudo", "apt-get", "update", "-qq"], "apt update", check=False)
+        run_command([*_sudo_prefix(), "apt-get", "update", "-qq"], "apt update", check=False)
         success, output = run_command(
-            ["sudo", "apt-get", "install", "-y", "nodejs", "npm"],
+            [*_sudo_prefix(), "apt-get", "install", "-y", "nodejs", "npm"],
             "apt install",
             check=False,
         )
 
     elif package_manager in ["dnf", "yum"]:
         success, output = run_command(
-            ["sudo", package_manager, "install", "-y", "nodejs", "npm"],
+            [*_sudo_prefix(), package_manager, "install", "-y", "nodejs", "npm"],
             f"{package_manager} install",
             check=False,
         )
 
     elif package_manager == "pacman":
         success, output = run_command(
-            ["sudo", "pacman", "-S", "--noconfirm", "nodejs", "npm"],
+            [*_sudo_prefix(), "pacman", "-S", "--noconfirm", "nodejs", "npm"],
             "pacman install",
             check=False,
         )
 
     elif package_manager == "zypper":
         success, output = run_command(
-            ["sudo", "zypper", "install", "-y", "nodejs", "npm"],
+            [*_sudo_prefix(), "zypper", "install", "-y", "nodejs", "npm"],
             "zypper install",
             check=False,
         )
