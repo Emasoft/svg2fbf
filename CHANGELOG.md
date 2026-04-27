@@ -5,6 +5,12 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.20b1] - 2026-04-27
+
+### Other
+
+- Promote 0.1.20 alpha fixes to beta channel
+
 ## [0.1.20a1] - 2026-04-27
 
 ### Added
@@ -29,10 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browser-open fails silently with misleading "file not found" error
 - Use commit SHAs (not tag-object SHAs) for pinned actions
 
+### Other
+
+- Release alpha 0.1.20a1
+
+### Miscellaneous
+
+- Update uv.lock for alpha 0.1.20a1
+
 ## [0.1.19] - 2026-01-31
 
 ### Added
 
+- Add GitHub Action SHA validation safeguard
+- Comprehensive CI/CD pipeline improvements
 - Add GitHub Action SHA validation safeguard
 - Comprehensive CI/CD pipeline improvements
 - Upgrade svg-text2path to 0.5.0 with HarfBuzz shaping
@@ -41,7 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Correct stage promotion bump logic in release.sh
+- Skip CLAUDE.md test on CI (file is gitignored)
+- Add Windows compatibility to version release tests
+- Comprehensive pipeline audit fixes (security, reliability, docs)
+- Correct TruffleHog action SHA (invalid commit was pinned)
+- Remove non-existent cli/cli-action from auto-triage workflow
 - Skip CLAUDE.md test on CI (file is gitignored)
 - Add Windows compatibility to version release tests
 - Comprehensive pipeline audit fixes (security, reliability, docs)
@@ -50,10 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- Merge branch 'dev' into testing
+- Merge branch 'dev' into testing
+- Merge branch 'dev' into testing
 - Version 0.1.19 (stable)
 
 ### Testing
 
+- Add integration tests for --text2path flag
 - Add integration tests for --text2path flag
 
 ### Documentation
@@ -64,7 +88,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Miscellaneous
 
 - Untrack tests/sessions/ - redundant test data
+- Untrack tests/sessions/ - redundant test data
 - Require Python 3.11+ for svg-text2path 0.5.0 support
+
+## [0.1.18b1] - 2026-01-30
+
+### Fixed
+
+- Correct stage promotion bump logic in release.sh
+
+### Other
+
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Release beta 0.1.18b1
+
+### Miscellaneous
+
+- Update uv.lock for beta 0.1.18b1
 
 ## [0.1.18a1] - 2026-01-30
 
