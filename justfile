@@ -148,7 +148,7 @@ build:
 
 # Install current wheel as uv tool (installs existing wheel from dist/)
 # Works with both development wheels (+dev.hash) and release wheels (clean)
-install python="3.10":
+install python="3.11":
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -200,7 +200,7 @@ install python="3.10":
     fi
 
 # Install alpha release from GitHub
-install-alpha python="3.10":
+install-alpha python="3.11":
     @echo "📥 Installing latest alpha release from GitHub..."
     @echo ""
     uv tool install git+https://github.com/Emasoft/svg2fbf.git@dev --python {{python}}
@@ -209,7 +209,7 @@ install-alpha python="3.10":
     @svg2fbf --version
 
 # Install beta release from GitHub
-install-beta python="3.10":
+install-beta python="3.11":
     @echo "📥 Installing latest beta release from GitHub..."
     @echo ""
     uv tool install git+https://github.com/Emasoft/svg2fbf.git@testing --python {{python}}
@@ -218,7 +218,7 @@ install-beta python="3.10":
     @svg2fbf --version
 
 # Install rc release from GitHub
-install-rc python="3.10":
+install-rc python="3.11":
     @echo "📥 Installing latest rc release from GitHub..."
     @echo ""
     uv tool install git+https://github.com/Emasoft/svg2fbf.git@review --python {{python}}
@@ -227,7 +227,7 @@ install-rc python="3.10":
     @svg2fbf --version
 
 # Install stable release from GitHub
-install-stable python="3.10":
+install-stable python="3.11":
     @echo "📥 Installing latest stable release from GitHub..."
     @echo ""
     uv tool install git+https://github.com/Emasoft/svg2fbf.git@master --python {{python}}
@@ -236,7 +236,7 @@ install-stable python="3.10":
     @svg2fbf --version
 
 # Full rebuild and reinstall (cleans, builds, installs - NO version bump)
-reinstall python="3.10":
+reinstall python="3.11":
     @echo "🔄 Full reinstall (clean build + install)..."
     @echo ""
     @echo "Note: This does NOT bump version. Use 'just publish' for releases."

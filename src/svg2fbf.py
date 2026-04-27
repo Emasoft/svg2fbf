@@ -31,16 +31,20 @@ import decimal
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 import traceback
 import urllib.parse
+import urllib.request
 import uuid
 import warnings
 import webbrowser
 import xml.dom.minidom
 import xml.parsers.expat
+
+import defusedxml.minidom
 from collections import defaultdict, namedtuple
 from datetime import datetime, timezone
 from decimal import Context, Decimal, InvalidOperation, getcontext
@@ -48,6 +52,7 @@ from functools import partial
 import argparse
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
+from typing import NoReturn
 from pstats import SortKey
 from xml.dom import Node
 
@@ -107,7 +112,7 @@ def _get_version():
                 import tomllib
             except ImportError:
                 try:
-                    import tomli as tomllib
+                    import tomli as tomllib  # type: ignore[import-not-found]
                 except ImportError:
                     # Fallback to simple parsing if no TOML library
                     with open(pyproject_path, encoding="utf-8") as f:
@@ -599,7 +604,7 @@ VALID_SVG_ELEMENTS = [
     "meshgradient",
     "meshpatch",
     "meshrow",
-    "solidColor"
+    "solidColor",
     # Tiny SVG 1.2
     "audio",
     "discard",
@@ -608,7 +613,7 @@ VALID_SVG_ELEMENTS = [
     "prefetch",
     "tbreak",
     "textArea",
-    "video"
+    "video",
     # if xmlns:html="http://www.w3.org/1999/xhtml" is defined
     "html:audio",
     "html:canvas",
@@ -687,7 +692,7 @@ ELEMENTS_NOT_TO_HASH = [
     "meshgradient",
     "meshpatch",
     "meshrow",
-    "solidColor"
+    "solidColor",
     # Tiny SVG 1.2
     "discard",
     "handler",
@@ -1563,7 +1568,7 @@ def string2svgtransformations(input):
     if input is None:
         return None
 
-    def args_err(name, args_len, needs):
+    def args_err(name: str, args_len: int, needs: str | int) -> NoReturn:
         raise ValueError(f"`{name}` transform requires {args_len} arguments {needs} where given")
 
     tr = ConcatenatedSVGTransformations()
@@ -1649,16 +1654,6 @@ def svg_floats(text, min=None, max=None):
     return floats
 
 
-def svg_angle(angle):
-    """Convert SVG angle to radians"""
-    angle = angle.strip()
-    if angle.endswith("deg"):
-        return float(angle[:-3]) * math.pi / 180
-    elif angle.endswith("rad"):
-        return float(angle[:-3])
-    return float(angle) * math.pi / 180
-
-
 # Default font size in pixels
 FONT_SIZE = 16
 
@@ -1706,6 +1701,16 @@ def svg_url(url, ids):
         warnings.warn(f"failed to resolve url: {url}", stacklevel=2)
         return None
     return target
+
+
+def svg_angle(angle):
+    """Convert SVG angle to radians"""
+    angle = angle.strip()
+    if angle.endswith("deg"):
+        return float(angle[:-3]) * math.pi / 180
+    elif angle.endswith("rad"):
+        return float(angle[:-3])
+    return float(angle) * math.pi / 180
 
 
 def is_same_sign(a, b):
@@ -2053,7 +2058,7 @@ of SVG files using SMIL animation.
     parser.add_argument("--no-keep-ratio", action="store_true", dest="no_keep_ratio", default=False, help="don't add preserveAspectRatio attribute to the output SVG (useful for animations with negative viewBox coordinates)")
     parser.add_argument("--align-mode", choices=["top-left", "center"], dest="align_mode", default="center", help="📐 alignment mode for fitting frames: 'center' (default, matches preserveAspectRatio='xMidYMid meet') or 'top-left'", metavar="MODE")
     parser.add_argument("-p", "--play_on_click", action="store_true", dest="play_on_click", default=False, help="make the svg animation start on click (require the 'object' tag instead of the 'img' tag in the html)")
-    parser.add_argument("-b", "--backdrop", dest="backdrop", help="path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)", default="None", metavar="IMAGE")
+    parser.add_argument("-b", "--backdrop", dest="backdrop", help="path to an image with the same w:h ratio to use as backdrop (e.g.: -b sky.jpg)", default=None, metavar="IMAGE")
     parser.add_argument("-d", "--digits", dest="digits", type=int, help="🔬 coordinate precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-c", "--cdigits", dest="cdigits", type=int, help="🔬 control point precision in significant digits (default: 28)", default=28, metavar="N")
     parser.add_argument("-q", "--quiet", action="store_true", dest="quiet_mode", help="🔇 don't print status messages to stdout", default=False)
@@ -2079,9 +2084,8 @@ of SVG files using SMIL animation.
     # Configuration file option
     parser.add_argument("--config", dest="config", help="⚙️  path to YAML configuration file containing metadata and options", default=None, metavar="FILE")
 
-    # Text-to-path conversion options
+    # Text-to-path conversion options (always strict - fails on any error)
     parser.add_argument("--text2path", action="store_true", dest="text2path", default=False, help="convert all text elements to paths using svg-text2path (requires: uv tool install svg2fbf[text2path])")
-    parser.add_argument("--text2path-strict", action="store_true", dest="text2path_strict", default=False, help="fail if any font is missing during text-to-path conversion")
     parser.add_argument("--text2path-precision", type=int, dest="text2path_precision", default=8, metavar="N", help="decimal precision for path coordinates (default: 8 for high accuracy)")
     parser.add_argument("--text2path-no-validate", action="store_true", dest="text2path_no_validate", default=False, help="disable SVG validation after text-to-path conversion (validation requires Bun)")
 
@@ -2228,12 +2232,16 @@ def merge_config_with_cli(yaml_config, cli_options):
     if "speed" in gen_params and cli_options.fps == 1.0:
         cli_options.fps = float(gen_params["speed"])
     if "animation_type" in gen_params and cli_options.animation_type == "loop":
-        cli_options.animation_type = gen_params["animation_type"]
+        yaml_anim_type = gen_params["animation_type"]
+        if yaml_anim_type not in TYPE_CHOICES:
+            ppp(f"WARNING: Invalid animation_type '{yaml_anim_type}' in YAML config. Valid choices: {TYPE_CHOICES}")
+        else:
+            cli_options.animation_type = yaml_anim_type
     if "digits" in gen_params and cli_options.digits == 28:
         cli_options.digits = int(gen_params["digits"])
     if "cdigits" in gen_params and cli_options.cdigits == 28:
         cli_options.cdigits = int(gen_params["cdigits"])
-    if "backdrop" in gen_params and cli_options.backdrop == "None":
+    if "backdrop" in gen_params and cli_options.backdrop is None:
         cli_options.backdrop = gen_params["backdrop"]
     if "play_on_click" in gen_params and not cli_options.play_on_click:
         cli_options.play_on_click = gen_params["play_on_click"]
@@ -2293,12 +2301,21 @@ def get_frame_list_from_config(yaml_config, input_folder):
         for frame_str in frames:
             frame_path = Path(frame_str)
 
-            # Make relative paths relative to config file location if possible
-            # This allows portable config files with relative frame paths
+            # Make relative paths relative to current working directory
+            # User should ensure they run svg2fbf from the correct directory
             if not frame_path.is_absolute():
-                # If frame path is relative, it's relative to current working directory
-                # User should ensure they run svg2fbf from the correct directory
                 frame_path = Path.cwd() / frame_path
+
+            # Resolve symlinks and ".." to get canonical path, then verify
+            # it stays within the working directory (prevent path traversal via YAML)
+            resolved = frame_path.resolve()
+            cwd_resolved = Path.cwd().resolve()
+            if not str(resolved).startswith(str(cwd_resolved) + os.sep) and resolved != cwd_resolved:
+                ppp(f"❌ ERROR: Frame path escapes working directory: {frame_str}")
+                ppp(f"   Resolved to: {resolved}")
+                ppp(f"   Working dir: {cwd_resolved}")
+                sys.exit(1)
+            frame_path = resolved
 
             if not frame_path.exists():
                 ppp(f"❌ ERROR: Frame file not found: {frame_str}")
@@ -2343,7 +2360,7 @@ def sort_input_paths(input_paths, parse_ending_numbers_as_ints):
     # checking that we have at least 1 file
     if (input_paths is None) or (len(input_paths) < 1):
         ppp("ERROR - Insufficient number of frames in input folder.\nExiting.")
-        sys.exit()
+        sys.exit(1)
 
     # Special case: single frame doesn't need sorting
     if len(input_paths) == 1:
@@ -2372,6 +2389,8 @@ def sort_input_paths(input_paths, parse_ending_numbers_as_ints):
 
 
 def change_extension_to_fbfsvg(file_name):
+    # Strip everything after first dot to get base name (e.g. "test.fbf.svg" -> "test")
+    # Intentionally uses split(".")[0] not Path.stem since we want "test" not "test.fbf"
     filename_without_extension = file_name.split(".")[0]
     return filename_without_extension + ".fbf.svg"
 
@@ -2448,16 +2467,31 @@ def open_in_browser(filepath):
     Args:
         filepath: Path to the generated FBF SVG file
     """
-    # Convert to absolute path and file:// URL
-    # Why: Browsers need absolute file:// URLs to open local files
-    abs_path = os.path.abspath(filepath)
-    file_url = f"file://{abs_path}"
+    # Verify the file actually exists before trying to open it.
+    # Why: When the file is missing (race condition, permission failure that
+    # was swallowed elsewhere, wrong path), every browser-open path below
+    # would still report success — but the user would see "file not found"
+    # in the browser's URL bar without any hint of where the bug was.
+    resolved = Path(filepath).resolve()
+    if not resolved.is_file():
+        if not options.quiet_mode:
+            ppp(f"⚠️  Cannot open in browser — output file does not exist: {resolved}")
+        return
+
+    # Convert to absolute path and cross-platform file:// URI
+    # Why: Browsers need absolute file:// URLs; Path.as_uri() handles Windows drive letters
+    file_url = resolved.as_uri()
 
     try:
         # Try Chrome first (best SVG animation support)
         # Why: Chrome has excellent SMIL/SVG animation support
+        # On macOS, we point at the .app BUNDLE (not the inner binary): if
+        # Chrome is missing, we want to detect that via Path.exists() and
+        # skip to Chromium, instead of letting `open -a /missing/binary url`
+        # surface an NSCocoaErrorDomain "file not found" error that looks
+        # like the SVG itself is missing.
         chrome_paths = {
-            "darwin": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",  # macOS
+            "darwin": "/Applications/Google Chrome.app",  # macOS — .app bundle
             "linux": "google-chrome",  # Linux
             "linux2": "google-chrome",  # Linux (older Python)
             "win32": "chrome",  # Windows
@@ -2465,27 +2499,16 @@ def open_in_browser(filepath):
 
         chrome_path = chrome_paths.get(sys.platform)
 
-        if chrome_path:
-            try:
-                # Why: Use subprocess for Chrome to avoid blocking and get better error handling
-                if sys.platform == "darwin":
-                    # macOS: use 'open -a' for proper app launching
-                    subprocess.Popen(["open", "-a", chrome_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                else:
-                    # Linux/Windows: direct chrome executable
-                    subprocess.Popen([chrome_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+        if chrome_path and _is_browser_available(chrome_path):
+            if _spawn_browser(chrome_path, file_url):
                 if not options.quiet_mode:
-                    ppp(f"🌐 Opening in Chrome: {filepath}")
+                    ppp(f"🌐 Opening in Chrome: {file_url}")
                 return
-            except (FileNotFoundError, OSError):
-                # Chrome not found, try Chromium
-                pass
 
         # Try Chromium if Chrome not available
         # Why: Chromium has the same excellent SVG/SMIL support as Chrome
         chromium_paths = {
-            "darwin": "/Applications/Chromium.app/Contents/MacOS/Chromium",  # macOS
+            "darwin": "/Applications/Chromium.app",  # macOS — .app bundle
             "linux": "chromium-browser",  # Linux (Debian/Ubuntu)
             "linux2": "chromium-browser",  # Linux (older Python)
             "win32": "chromium",  # Windows
@@ -2493,43 +2516,71 @@ def open_in_browser(filepath):
 
         chromium_path = chromium_paths.get(sys.platform)
 
-        if chromium_path:
-            try:
-                # Why: Use subprocess for Chromium to avoid blocking and get better error handling
-                if sys.platform == "darwin":
-                    # macOS: use 'open -a' for proper app launching
-                    subprocess.Popen(["open", "-a", chromium_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                else:
-                    # Linux/Windows: direct chromium executable
-                    # Why: Try both 'chromium' and 'chromium-browser' for different Linux distros
-                    try:
-                        subprocess.Popen([chromium_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    except (FileNotFoundError, OSError):
-                        # Try alternate chromium command name
-                        subprocess.Popen(["chromium", file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+        if chromium_path and _is_browser_available(chromium_path):
+            if _spawn_browser(chromium_path, file_url):
                 if not options.quiet_mode:
-                    ppp(f"🌐 Opening in Chromium: {filepath}")
+                    ppp(f"🌐 Opening in Chromium: {file_url}")
                 return
-            except (FileNotFoundError, OSError):
-                # Chromium not found, fall through to default browser
-                pass
 
         # Fallback to default browser
         # Why: If Chrome and Chromium fail or not available, use system default browser
         if webbrowser.open(file_url, new=2):  # new=2 opens in new tab if possible
             if not options.quiet_mode:
-                ppp(f"🌐 Opening in default browser: {filepath}")
+                ppp(f"🌐 Opening in default browser: {file_url}")
         else:
             # Browser opening failed
             if not options.quiet_mode:
-                ppp(f"⚠️  Could not open browser automatically. Please open manually: {filepath}")
+                ppp(f"⚠️  Could not open browser automatically. Please open manually: {file_url}")
 
     except Exception as e:
         # Don't fail the whole program if browser opening fails
         # Why: Browser opening is a convenience feature, not critical functionality
         if not options.quiet_mode:
             ppp(f"⚠️  Could not open browser: {e}")
+
+
+def _is_browser_available(browser_path: str) -> bool:
+    """Return True if the browser at this path/name is actually launchable.
+
+    On macOS we expect a .app bundle path; check it exists on disk.
+    On Linux/Windows we expect a command name; resolve via PATH.
+    """
+    # Absolute filesystem path (typically a .app bundle on macOS)
+    if browser_path.startswith("/") or (len(browser_path) > 1 and browser_path[1] == ":"):
+        return Path(browser_path).exists()
+    # Bare command name — look up in PATH
+    return shutil.which(browser_path) is not None
+
+
+def _spawn_browser(browser_path: str, file_url: str) -> bool:
+    """Launch the browser with the given file URL. Return True on apparent success.
+
+    Why: subprocess.Popen returns immediately and never reports launch
+    failures, so previous code couldn't tell if the browser actually
+    opened. We use subprocess.run with a short timeout for the macOS
+    `open -a` dispatcher (which exits as soon as launch is queued), and
+    Popen for direct executables (which would block until the browser
+    closes if we waited).
+    """
+    try:
+        if sys.platform == "darwin":
+            # `open -a <app> <url>` exits as soon as LaunchServices accepts
+            # the dispatch — usually <1s. If it fails (e.g. the .app is
+            # missing despite our pre-check), the exit code is non-zero
+            # and we want to fall back instead of printing a fake success.
+            result = subprocess.run(
+                ["open", "-a", browser_path, file_url],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=10,
+                check=False,
+            )
+            return result.returncode == 0
+        # Linux/Windows: direct executable, fire-and-forget
+        subprocess.Popen([browser_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return False
 
 
 # simple function to remove prefixes
@@ -2634,8 +2685,6 @@ def detect_mesh_gradients(svg_files):
         >>> has_mesh = detect_mesh_gradients(svg_files)
         >>> print(f"Uses mesh gradients: {has_mesh}")
     """
-    import re
-
     # WHY: Regex pattern to match both namespaced and non-namespaced mesh gradient tags
     # Supports: <meshgradient>, <svg:meshgradient>, and variants with attributes
     mesh_pattern = re.compile(r"<(?:svg:)?meshgradient[\s>]", re.IGNORECASE)
@@ -2678,7 +2727,6 @@ def detect_embedded_images(svg_files):
         >>> has_embedded = detect_embedded_images(svg_files)
         >>> print(f"Uses embedded images: {has_embedded}")
     """
-    import re
 
     # WHY: Pattern matches data URIs with base64-encoded images in image elements
     # Supports both xlink:href and href attributes (SVG 1.1 and SVG 2.0)
@@ -2718,7 +2766,6 @@ def detect_css_classes(svg_files):
         >>> has_classes = detect_css_classes(svg_files)
         >>> print(f"Uses CSS classes: {has_classes}")
     """
-    import re
 
     # WHY: Pattern matches class attributes with non-empty, non-whitespace values
     # Avoids false positives from empty class="" or class="   " attributes
@@ -2761,7 +2808,6 @@ def detect_external_fonts(svg_files):
         >>> has_fonts = detect_external_fonts(svg_files)
         >>> print(f"Uses external fonts: {has_fonts}")
     """
-    import re
 
     # WHY: Multiple patterns to catch different font reference methods
     # @font-face in style blocks, font file extensions, external stylesheet links
@@ -2808,7 +2854,6 @@ def detect_external_media(svg_files):
         >>> has_external = detect_external_media(svg_files)
         >>> print(f"Uses external media: {has_external}")
     """
-    import re
 
     # WHY: Pattern matches image elements with href to external files
     # Excludes data: URIs (those are embedded, not external)
@@ -3503,7 +3548,7 @@ def generate_fbfsvg_animation():
         # Why: Document special FBF features and options used
         # hasBackdropImage: true only if user provided external backdrop image
         # file via --backdrop flag
-        metadata_dict["hasBackdropImage"] = options.backdrop is not None and options.backdrop != "None"
+        metadata_dict["hasBackdropImage"] = options.backdrop is not None
         metadata_dict["hasInteractivity"] = options.play_on_click
         metadata_dict["interactivityType"] = "click_to_start" if options.play_on_click else "none"
         metadata_dict["keepXmlSpace"] = options.keep_xml_space_attribute
@@ -3582,7 +3627,7 @@ def generate_fbfsvg_animation():
 
                 # we get the empty template and make it the output doc
                 # Why: Pass metadata_dict to embed RDF/XML metadata in the FBF document
-                xml_output_doc = xml.dom.minidom.parseString(
+                xml_output_doc = defusedxml.minidom.parseString(
                     get_empty_document(
                         vbWdoc,
                         vbHdoc,
@@ -3601,7 +3646,7 @@ def generate_fbfsvg_animation():
                 # otherwise we exit the script
                 if xml_output_svg.namespaceURI != NS["SVG"]:
                     ppp("ERROR: namespaceURI of the default empty document is not SVG " + xml_output_svg.namespaceURI)
-                    sys.exit()
+                    sys.exit(1)
                 xml_output_defs = xml_output_doc.getElementsByTagName("defs")[0]
                 xml_output_shared = ElementByIdAndTag("SHARED_DEFINITIONS", "g", xml_output_defs)
                 elementsInputHashDict = {}
@@ -3789,11 +3834,12 @@ def generate_fbfsvg_animation():
         animation_backdrop = ElementByIdAndTag("ANIMATION_BACKDROP", "g", xml_output_doc)
 
         # STEP 7.1: Add backdrop image/SVG to STAGE_BACKGROUND if provided
-        if options.backdrop is not None and options.backdrop != "None":
+        if options.backdrop is not None:
             backdrop_path = Path(options.backdrop)
 
             if not backdrop_path.exists():
-                ppp(f"WARNING: Backdrop file not found: {backdrop_path}")
+                ppp(f"❌ ERROR: Backdrop file not found: {backdrop_path}")
+                sys.exit(1)
             else:
                 stage_background = ElementByIdAndTag("STAGE_BACKGROUND", "g", xml_output_doc)
 
@@ -3831,7 +3877,8 @@ def generate_fbfsvg_animation():
                             backdrop_doc.unlink()
 
                         except Exception as e:
-                            ppp(f"WARNING: Failed to process SVG backdrop: {e}")
+                            ppp(f"ERROR: Failed to process SVG backdrop: {e}")
+                            sys.exit(1)
 
                     else:
                         # Bitmap backdrop: create <image> element in STAGE_BACKGROUND
@@ -3868,7 +3915,8 @@ def generate_fbfsvg_animation():
                             ppp(f"✓ Added bitmap backdrop from {backdrop_path.name}")
 
                         except Exception as e:
-                            ppp(f"WARNING: Failed to process bitmap backdrop: {e}")
+                            ppp(f"ERROR: Failed to process bitmap backdrop: {e}")
+                            sys.exit(1)
 
         # STEP 8
         # setup the 'animation_stage' group, with the 'animated_group'
@@ -3926,7 +3974,7 @@ def generate_fbfsvg_animation():
         if options.animation_type == "once":
             animElem.setAttribute("repeatCount", "1")
             animElem.setAttribute("values", frames)
-        if options.animation_type == "once_reversed":
+        elif options.animation_type == "once_reversed":
             animElem.setAttribute("repeatCount", "1")
             animElem.setAttribute("values", framesReversed)
         elif options.animation_type == "loop":
@@ -3949,10 +3997,13 @@ def generate_fbfsvg_animation():
             animElem.setAttribute("values", framesPingPongReversed)
         else:
             # default is loop mode
-            animElem.setAttribute("repeatCount", "1")
+            animElem.setAttribute("repeatCount", "indefinite")
             animElem.setAttribute("values", frames)
 
-        animElem.setAttribute("dur", f"{round(frame_duration * max_frame_num, 4)}s")
+        # Compute dur from actual number of SMIL values, not frame count
+        # Pingpong modes have 2N-1 values (forward + reverse minus shared middle frame)
+        actual_values_count = len(animElem.getAttribute("values").split(";"))
+        animElem.setAttribute("dur", f"{round(frame_duration * actual_values_count, 4)}s")
         if options.play_on_click is True:
             animElem.setAttribute("begin", "click")
 
@@ -4380,11 +4431,26 @@ def apply_inherited_attributes_to_children(frame_group, inherited_attrs):
 
 
 def maybe_gziped_file(filename, mode="rb"):
+    # Maximum decompressed size to prevent gzip bombs (100 MB)
+    MAX_DECOMPRESSED_SIZE = 100 * 1024 * 1024
+
     if os.path.splitext(filename)[1].lower() in (".svgz", ".gz"):
         import gzip
+        import io
 
         add2log(f"WARNING: input file {current_filepath} is in compressed format. Extracting.")
-        return gzip.GzipFile(filename, mode)
+        # Read with size limit to prevent gzip bomb decompression attacks
+        with gzip.open(filename, mode) as gz:
+            data: bytes = gz.read(MAX_DECOMPRESSED_SIZE + 1)  # type: ignore[assignment]  # mode="rb" guarantees bytes
+            if len(data) > MAX_DECOMPRESSED_SIZE:
+                ppp(f"❌ ERROR: Decompressed size of {filename} exceeds {MAX_DECOMPRESSED_SIZE // (1024 * 1024)} MB limit")
+                sys.exit(1)
+        return io.BytesIO(data)
+    # For regular files, check size before opening (100 MB limit for SVG input)
+    file_size = os.path.getsize(filename)
+    if file_size > MAX_DECOMPRESSED_SIZE:
+        ppp(f"❌ ERROR: Input file {filename} is {file_size // (1024 * 1024)} MB, exceeds {MAX_DECOMPRESSED_SIZE // (1024 * 1024)} MB limit")
+        sys.exit(1)
     return open(filename, mode)
 
 
@@ -4393,6 +4459,8 @@ _text2path_font_cache = None
 _bun_installed_checked = False
 
 
+# Global list to collect text2path validation failures across all frames
+# Why: Collect ALL failures before reporting, rather than stopping at first failure
 def ensure_bun_installed():
     """Ensure Bun is installed for SVG validation. Install if missing."""
     global _bun_installed_checked
@@ -4413,17 +4481,23 @@ def ensure_bun_installed():
     try:
         system = platform.system()
         if system == "Darwin":
-            # macOS: prefer Homebrew if available
+            # macOS: prefer Homebrew (no shell=True, no curl|bash)
             if shutil.which("brew"):
-                subprocess.run(["brew", "install", "bun"], check=True, capture_output=True)
+                subprocess.run(["brew", "install", "oven-sh/bun/bun"], check=True, capture_output=True)
             else:
-                # Fallback to official installer
-                subprocess.run(["curl", "-fsSL", "https://bun.sh/install", "|", "bash"], shell=True, check=True, capture_output=True)
+                # No safe auto-install without Homebrew; direct user to install manually
+                ppp("ERROR: Bun requires Homebrew on macOS. Install Homebrew first: https://brew.sh")
+                ppp("       Then run: brew install oven-sh/bun/bun")
+                return False
         elif system == "Linux":
-            # Linux: use official installer
-            subprocess.run("curl -fsSL https://bun.sh/install | bash", shell=True, check=True, capture_output=True)
+            # Linux: use npm if available (avoids curl|bash supply chain risk)
+            if shutil.which("npm"):
+                subprocess.run(["npm", "install", "-g", "bun"], check=True, capture_output=True)
+            else:
+                ppp("ERROR: Bun auto-install requires npm on Linux.")
+                ppp("       Install npm first, or install Bun manually: https://bun.sh")
+                return False
         elif system == "Windows":
-            # Windows: use npm if available
             if shutil.which("npm"):
                 subprocess.run(["npm", "install", "-g", "bun"], check=True, capture_output=True)
             else:
@@ -4467,17 +4541,23 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
     Uses svg-text2path 0.5.0+ with HarfBuzz text shaping for maximum accuracy.
     SVG validation is enabled by default to catch conversion errors early.
 
+    Always strict: Raises ValueError immediately on any conversion or validation error.
+    No partial or corrupted output is allowed.
+
     Args:
         svg_content: Raw SVG file content as bytes
         filepath: Path to the SVG file (for logging)
         options: Program options (checks text2path flag)
 
     Returns:
-        Converted SVG content as bytes (or original if conversion disabled/unavailable)
+        Converted SVG content as bytes
+        Returns ORIGINAL content if:
+        - Conversion is disabled
+        - Validation fails (failure is collected for later reporting)
+        - Conversion fails in non-strict mode
 
     Raises:
         ImportError: If --text2path is used but svg-text2path is not installed
-        ValueError: If conversion fails or produces invalid SVG (validation enabled)
     """
     if not getattr(options, "text2path", False):
         return svg_content
@@ -4496,7 +4576,6 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         add2log(f"WARNING: Non-UTF8 characters in {filepath}, some may be lost")
 
     # Count text elements before conversion
-    import re
 
     text_pattern = re.compile(r"<(text|tspan|textPath)[\s>]", re.IGNORECASE)
     text_before = len(text_pattern.findall(svg_string))
@@ -4535,13 +4614,12 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         # Use convert_string with return_result=True to get detailed conversion info
         output_svg, result = converter.convert_string(svg_string, return_result=True)
 
-        # Check validation results
+        # Check validation results (always strict - fail immediately on invalid output)
         if validate_svg:
             if result.output_valid is False:
                 validation_issues = "; ".join(result.validation_issues) if result.validation_issues else "unknown validation error"
-                raise ValueError(f"SVG validation failed after text-to-path conversion: {validation_issues}")
-            elif result.output_valid is True:
-                pass  # Validation passed
+                error_msg = f"SVG validation failed for {basename}: {validation_issues}"
+                raise ValueError(error_msg)
             # output_valid=None means validation was skipped (e.g., Bun not available)
 
         # Log missing fonts if any
@@ -4557,19 +4635,16 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         for warning in result.warnings:
             add2log(f"WARNING: [text2path] {basename}: {warning}")
 
-        # If there were errors and strict mode is enabled, fail
-        if result.errors and getattr(options, "text2path_strict", False):
+        # Fail on any conversion errors (always strict - no corrupted output allowed)
+        if result.errors:
             raise ValueError(f"Text-to-path conversion had errors for {basename}: {'; '.join(result.errors)}")
 
     except ValueError:
-        # Re-raise ValueError (validation failures) without wrapping
+        # Re-raise ValueError (conversion failures) without wrapping
         raise
     except Exception as e:
-        if getattr(options, "text2path_strict", False):
-            raise ValueError(f"Text-to-path conversion failed for {basename}: {str(e)}")
-        else:
-            add2log(f"WARNING: Text-to-path conversion failed for {basename}: {str(e)}")
-            return svg_content  # Return original if conversion fails in non-strict mode
+        # Always fail on exceptions - never return original SVG with unconverted text
+        raise ValueError(f"Text-to-path conversion failed for {basename}: {str(e)}") from e
 
     # Count text elements after conversion
     text_after = len(text_pattern.findall(output_svg))
@@ -4580,12 +4655,9 @@ def convert_text_to_paths_if_enabled(svg_content: bytes, filepath: str, options)
         status = "validated" if validate_svg else ""
         ppp(f"  [text2path] {basename}: converted {converted}/{text_before} text elements {status}")
 
-    # Verify no text elements remain (validation)
+    # Fail if any text elements remain (always strict - no partial conversions allowed)
     if text_after > 0:
-        if getattr(options, "text2path_strict", False):
-            raise ValueError(f"{text_after} text element(s) could not be converted in {basename}")
-        else:
-            add2log(f"WARNING: {text_after} text element(s) could not be converted in {basename}")
+        raise ValueError(f"{text_after} text element(s) could not be converted in {basename}")
 
     return output_svg.encode("utf-8")
 
@@ -4616,14 +4688,16 @@ def load_svg(filepath: str, options) -> xml.dom.minidom.Document:
 
         # Convert text to paths if --text2path flag is enabled
         # Why: Must convert before XML parsing since svg-text2path works on strings
+        # Always strict: Raises ValueError immediately on any error
         try:
             in_string = convert_text_to_paths_if_enabled(in_string, filepath, options)
-        except (ImportError, ValueError) as e:
+        except ImportError as e:
+            # Missing dependency - must exit immediately
             add2log(f"ERROR: {str(e)}")
             print_log_and_exit(1)
 
         try:
-            doc = xml.dom.minidom.parseString(in_string)
+            doc = defusedxml.minidom.parseString(in_string)
         except xml.parsers.expat.ExpatError as e:
             raise xml.parsers.expat.ExpatError(f"Invalid XML in {filepath}: {str(e)}") from e
         except Exception as e:
@@ -4677,19 +4751,14 @@ def progress_bar(
         # Input validation
         if total < 2:
             raise ValueError("Total number of elements must be at least 2")
-        if total == 0:
-            raise ValueError("Total cannot be zero")
         if count > total:
             raise ValueError("Count must not be higher than total")
         if suffix not in ("percentage", "counter"):
             raise ValueError("Suffix must be 'percentage' or 'counter'")
 
-        # Calculate progress
-        try:
-            x = int(size * count / total)
-            percent = f"{int((count / total) * 100)}%"
-        except ZeroDivisionError as e:
-            raise ValueError("Cannot divide by zero total") from e
+        # Calculate progress (total >= 2 guaranteed by validation above)
+        x = int(size * count / total)
+        percent = f"{int((count / total) * 100)}%"
 
         # Format counter
         try:
@@ -4781,7 +4850,7 @@ def move_all_non_renderable_elements_to_defs_shared(doc):
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -4865,7 +4934,7 @@ def move_all_non_defs_input_elements_as_frames_to_the_output_defs(input_svg, opt
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -4942,7 +5011,7 @@ def move_elem_to_output_svg_defs(node, elementsHashDict, frame_group=None):
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
     global output_duplicates_list
@@ -4976,7 +5045,7 @@ def move_all_input_defs_elements_to_the_output_defs(input_svg, options, frame_nu
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5093,7 +5162,7 @@ def convert_redundant_element_to_use_element(node, master_id, new_node_id, refer
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5292,7 +5361,7 @@ def reuse_elements_if_they_are_already_in_output_defs(input_svg, element_tag_nam
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5410,7 +5479,7 @@ def deep_reuse_elem_if_they_are_already_in_output_defs(input_svg, options, frame
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
     global outputReferencingElementsDict
@@ -5568,7 +5637,7 @@ def deep_convert_redundant_element_to_use_element(node, master_id, new_node_id, 
     global xml_output_doc
     global xml_output_defs
     global xml_output_shared
-    global sml_output_svg
+    global xml_output_svg
     global input_nodes_flagged_as_not_to_move
     global NON_REUSABLE_ELEMENTS
 
@@ -5790,6 +5859,12 @@ def getViewBox(docElement, options):
         add2log(f"WARNING: viewBox values of file {current_filepath} are not unitless or in px!")
     # TODO: convert values to unitless
 
+    # Initialize viewBox variables with defaults matching document dimensions
+    vbX = 0.0
+    vbY = 0.0
+    vbWidth = w.value
+    vbHeight = h.value
+
     # parse viewBox attribute
     vbSep = RE_COMMA_WSP.split(docElement.getAttribute("viewBox"))
     # if we have a valid viewBox we need to check it
@@ -5915,15 +5990,13 @@ def preprocess_svg_file(doc, options, filepath):
     while remove_nested_groups(doc.documentElement) > 0:
         pass
 
-    # NOT NEEDED FOR NOW
-    # remove unnecessary closing point of polygons and scour points
-    # 	for polygon in doc.documentElement.getElementsByTagName('polygon'):
-    # 		clean_polygon(polygon, options)
+    # Remove unnecessary closing point of polygons and scour polygon points
+    for polygon in doc.documentElement.getElementsByTagName("polygon"):
+        clean_polygon(polygon, options)
 
-    # NOT NEEDED FOR NOW
-    # scour points of polyline
-    # 	for polyline in doc.documentElement.getElementsByTagName('polyline'):
-    # 		cleanPolyline(polyline, options)
+    # Scour points of polyline elements
+    for polyline in doc.documentElement.getElementsByTagName("polyline"):
+        cleanPolyline(polyline, options)
 
     # NOT NEEDED FOR NOW
     # clean path data
@@ -5993,10 +6066,10 @@ def preprocess_svg_file(doc, options, filepath):
     # reduce the length of transformation attributes
     # 	optimizeTransforms(doc.documentElement, options)
 
-    # convert rasters references to base64-encoded strings
-    # TODO: solve the crash when trying to encode
-    # for elem in doc.documentElement.getElementsByTagName("image"):
-    #     embed_rasters(elem, options)
+    # Convert external raster references to inline base64 data URIs
+    # Handles local files, remote URLs, file:// URIs, and network paths
+    for elem in doc.documentElement.getElementsByTagName("image"):
+        embed_rasters(elem, options)
 
     # properly size the SVG document (ideally width/height should be 100%
     # with a viewBox)
@@ -6110,7 +6183,6 @@ def remove_all_animations(node, options):
             "animateMotion",
         ]:
             node.removeChild(child)
-            return
         else:
             remove_all_animations(child, options)
 
@@ -7301,76 +7373,141 @@ def removeDuplicateGradients(doc):
 
 def embed_rasters(element, options):
     """
-    Converts raster references to inline images.
-    NOTE: there are size limits to base64-encoding handling in browsers
+    Embed external raster image references as inline base64 data URIs.
+
+    Handles all image source types:
+    - Local files (relative and absolute paths)
+    - Remote URLs (http://, https://)
+    - file:// protocol URIs
+    - Network/UNC paths (//server/share/...)
+
+    Supports image formats: png, jpg/jpeg, gif, webp, bmp, tiff, ico, svg+xml.
+    No artificial size limits — the full image is embedded regardless of size.
     """
     num_rasters_embedded = 0
 
+    # Check both xlink:href (SVG 1.1) and href (SVG 2.0) attributes
     href = element.getAttributeNS(NS["XLINK"], "href")
+    if not href or len(href) <= 1:
+        href = element.getAttribute("href")
+    if not href or len(href) <= 1:
+        return 0
 
-    # if xlink:href is set, then grab the id
-    if href != "" and len(href) > 1:
-        ext = os.path.splitext(os.path.basename(href))[1].lower()[1:]
+    # Skip already-embedded data URIs and internal references (#id)
+    if href.startswith("data:") or href.startswith("#"):
+        return 0
 
-        # only operate on files with 'png', 'jpg', and 'gif' file extensions
-        if ext in ["png", "jpg", "gif"]:
-            # fix common issues with file paths
-            href_fixed = href.replace("\\", "/")
-            href_fixed = re.sub("file:/+", "file:///", href_fixed)
+    # Determine file extension for MIME type mapping
+    ext = os.path.splitext(os.path.basename(urllib.parse.urlparse(href).path))[1].lower().lstrip(".")
 
-            # parse the URI to get scheme and path
-            parsed_href = urllib.parse.urlparse(href_fixed)
+    # Map of supported extensions to MIME subtypes
+    # No restrictions on image format — embed anything with a known MIME type
+    ext_to_mime = {
+        "png": "png",
+        "jpg": "jpeg",
+        "jpeg": "jpeg",
+        "gif": "gif",
+        "webp": "webp",
+        "bmp": "bmp",
+        "tiff": "tiff",
+        "tif": "tiff",
+        "ico": "x-icon",
+        "svg": "svg+xml",
+        "svgz": "svg+xml",
+    }
 
-            # assume locations without protocol point to local files
-            # (and should use the 'file:' protocol)
-            if parsed_href.scheme == "":
-                parsed_href = parsed_href._replace(scheme="file")
-                if href_fixed[0] == "/":
-                    href_fixed = "file://" + href_fixed
-                else:
-                    href_fixed = "file:" + href_fixed
+    mime_subtype = ext_to_mime.get(ext)
+    if mime_subtype is None:
+        # Unknown image format — skip embedding, keep original reference
+        add2log(f"WARNING: Unknown image format '.{ext}' in href '{href}', skipping embedding. File: {current_filepath}")
+        return 0
 
-            # relative local paths are relative to the input file,
-            # therefore temporarily change the working dir
-            working_dir_old = None
-            if parsed_href.scheme == "file" and parsed_href.path[0] != "/":
-                if options.infilename:
-                    working_dir_old = os.getcwd()
-                    working_dir_new = os.path.abspath(os.path.dirname(options.infilename))
-                    os.chdir(working_dir_new)
+    # Resolve the href to a fetchable URL or local file path
+    rasterdata = _fetch_image_data(href, options)
 
-            # open/download the file
-            try:
-                file = urllib.request.urlopen(href_fixed)
-                rasterdata = file.read()
-                file.close()
-            except Exception as e:
-                add2log("WARNING: could not open file '" + href + "' for embedding. The raster image will be kept as " + "a reference but might be invalid. File: " + f"{current_filepath}" + "(Exception details: " + str(e) + ")")
-                rasterdata = ""
-            finally:
-                # always restore initial working directory if we changed it above
-                if working_dir_old is not None:
-                    os.chdir(working_dir_old)
+    if rasterdata is None or len(rasterdata) == 0:
+        return 0
 
-            if rasterdata != "":
-                # base64-encode raster
-                b64eRaster = base64.b64encode(rasterdata)
+    # Base64-encode and set as data URI (no size limit)
+    b64_data = base64.b64encode(rasterdata).decode("ascii")
+    data_uri = f"data:image/{mime_subtype};base64,{b64_data}"
 
-                # set href attribute to base64-encoded equivalent
-                if b64eRaster != "":
-                    # PNG and GIF both have MIME Type 'image/[ext]', but
-                    # JPEG has MIME Type 'image/jpeg'
-                    if ext == "jpg":
-                        ext = "jpeg"
+    # Set on both xlink:href and href for maximum compatibility
+    element.setAttributeNS(NS["XLINK"], "href", data_uri)
+    if element.hasAttribute("href"):
+        element.setAttribute("href", data_uri)
 
-                    element.setAttributeNS(
-                        NS["XLINK"],
-                        "href",
-                        "data:image/" + ext + ";base64," + b64eRaster.decode(),
-                    )
-                    num_rasters_embedded += 1
-                    del b64eRaster
+    num_rasters_embedded += 1
+    add2log(f"Embedded raster image ({ext}, {len(rasterdata)} bytes) from: {href}")
     return num_rasters_embedded
+
+
+def _fetch_image_data(href, options):
+    """
+    Fetch image data from any supported source: local file, remote URL,
+    file:// URI, or network path.
+
+    Returns bytes on success, None on failure (with warning logged).
+    """
+    parsed = urllib.parse.urlparse(href)
+
+    # Case 1: Remote URL (http/https) — fetch directly via urllib
+    if parsed.scheme in ("http", "https"):
+        try:
+            req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return response.read()
+        except Exception as e:
+            add2log(f"WARNING: Failed to fetch remote image '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Case 2: file:// URI — convert to local path and read
+    if parsed.scheme == "file":
+        try:
+            # urllib.request.url2pathname handles platform-specific conversions
+            # (Windows drive letters, URL-encoded chars, etc.)
+            local_path = urllib.request.url2pathname(parsed.path)
+            return Path(local_path).read_bytes()
+        except Exception as e:
+            add2log(f"WARNING: Failed to read file URI '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Case 3: No scheme — treat as local file path (relative or absolute)
+    if parsed.scheme == "" or (len(parsed.scheme) == 1 and os.name == "nt"):
+        # On Windows, single-letter schemes are drive letters (e.g., C:)
+        file_path = href
+
+        # Resolve relative paths against the input file's directory (not cwd)
+        # This avoids thread-unsafe os.chdir() and handles paths correctly
+        # regardless of where svg2fbf was invoked from
+        resolved = Path(file_path)
+        if not resolved.is_absolute():
+            # Try relative to input file's directory first
+            input_dir = Path(current_filepath).parent if current_filepath else Path.cwd()
+            resolved = input_dir / file_path
+
+        try:
+            return resolved.read_bytes()
+        except FileNotFoundError:
+            # If not found relative to input dir, try relative to cwd as fallback
+            try:
+                return Path(file_path).resolve().read_bytes()
+            except Exception:
+                pass
+            add2log(f"WARNING: Image file not found '{href}' (resolved to: {resolved}). File: {current_filepath}")
+            return None
+        except Exception as e:
+            add2log(f"WARNING: Failed to read image file '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Case 4: Other schemes (ftp://, smb://, etc.) — try urlopen as generic handler
+    try:
+        req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
+        with urllib.request.urlopen(req, timeout=30) as response:
+            return response.read()
+    except Exception as e:
+        add2log(f"WARNING: Failed to fetch image from '{href}': {e}. File: {current_filepath}")
+        return None
 
 
 def properlySizeDoc(docElement, options):
@@ -8298,16 +8435,8 @@ def removeUnusedAttributesOnParent(elem):
     return num
 
 
-referencingProps = [
-    "fill",
-    "stroke",
-    "filter",
-    "clip-path",
-    "mask",
-    "marker-start",
-    "marker-end",
-    "marker-mid",
-]
+# NOTE: referencingProps is defined once at module level (near line 2569)
+# and used by both the FBF pipeline and Scour optimization functions
 
 
 def findReferencedElements(node, ids=None):
@@ -8441,7 +8570,7 @@ def parseCssString(style_string):
             elif crule["selector"] == "polyline":
                 add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polyline' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
-            elif rule["selector"] == "polygon":
+            elif crule["selector"] == "polygon":
                 add2log(f"WARNING: style section of the file {current_filepath} contains CSS rules targeting 'polygon' elements. Adding the attribute to those elements as temporary fix.")
                 style_rules_for_elements.append(crule)
             elif crule["selector"] == "image":
@@ -9724,6 +9853,8 @@ def scourCoordinates(data, options, force_whitespace=False, control_points=None,
             previousCoord = scouredCoord
             c += 1
 
+        return "".join(newData)
+
     return ""
 
 
@@ -10360,9 +10491,9 @@ def get_document_begin(vbwidth, vbheight, docWidth, docHeight, no_keep_ratio=Fal
         + """"
     viewBox="0 0 """
         + str(vbwidth)
-        + """px """
+        + """ """
         + str(vbheight)
-        + """px"
+        + """"
     >
      <!--	FILE GENERATED BY svg2fbf v"""
         + SEMVERSION
@@ -10660,13 +10791,16 @@ def main():
 
     if options.show_copyright_info:
         ppp(COPYRIGHT_INFO)
-        exit()
+        sys.exit(0)
 
-    if options.input_folder[-1] != "/":
-        options.input_folder += "/"
+    # Guard against None when using YAML explicit frames mode (no input_folder)
+    if options.input_folder is not None:
+        if options.input_folder[-1] != "/":
+            options.input_folder += "/"
 
-    if options.output_path[-1] != "/":
-        options.output_path += "/"
+    if options.output_path is not None:
+        if options.output_path[-1] != "/":
+            options.output_path += "/"
 
     doProfiling = False
 
@@ -10745,7 +10879,6 @@ def inject_mesh_gradient_polyfill(svg_string):
         str: SVG string with injected polyfill (or unchanged if no
              meshgradients)
     """
-    import re
 
     # Check if the SVG actually contains meshgradient elements
     # Why: Only inject polyfill if needed - saves ~16KB when not
@@ -10795,6 +10928,22 @@ def cli():
     cl_parser = setup_command_line_parser()
     options = cl_parser.parse_args()
 
+    # Set Scour-inherited defaults for options not exposed via CLI
+    # These are used internally by scourCoordinates and related functions
+    if not hasattr(options, "renderer_workaround"):
+        options.renderer_workaround = False
+
+    # Handle --version and --help flags early (before YAML loading)
+    # Why: These should work instantly without requiring a valid config file
+    if options.show_version:
+        print_version_only()
+        sys.exit(0)
+
+    if options.show_help:
+        print_version_banner()
+        cl_parser.print_help()
+        sys.exit(0)
+
     # Handle positional YAML config file argument
     # Why: Enable simple usage like `svg2fbf scene_1.yaml` instead of
     # requiring --config flag
@@ -10812,6 +10961,9 @@ def cli():
     # Load YAML configuration if provided - Merge with CLI options
     # Why: Allow batch processing with config files, CLI args take priority
     yaml_config = load_yaml_config(options.config)
+    # Fail if user explicitly provided --config but file was not loaded
+    if options.config and yaml_config is None:
+        cl_parser.error(f"Configuration file not found or invalid: {options.config}")
     options = merge_config_with_cli(yaml_config, options)
 
     # Get explicit frame list from config if provided (generation cards)
@@ -10822,17 +10974,6 @@ def cli():
         options.explicit_frames = explicit_frames
     else:
         options.explicit_frames = None
-
-    # Handle --version flag
-    if options.show_version:
-        print_version_only()
-        sys.exit(0)
-
-    # Handle --help flag
-    if options.show_help:
-        print_version_banner()
-        cl_parser.print_help()
-        sys.exit(0)
 
     # Show version banner (unless in quiet mode)
     if not options.quiet_mode:
@@ -10854,8 +10995,10 @@ def cli():
     if options.animation_type not in TYPE_CHOICES:
         cl_parser.error("incorrect animation type name")
 
-    if options.digits < 1:
-        cl_parser.error("Number of significant digits has to be larger than zero, see --help")
+    if options.digits < 1 or options.digits > 50:
+        cl_parser.error("--digits must be between 1 and 50, see --help")
+    if options.cdigits < 1 or options.cdigits > 50:
+        cl_parser.error("--cdigits must be between 1 and 50, see --help")
     if options.cdigits > options.digits:
         cl_parser.error("WARNING: The value for '--cdigits' should be equal or lower than the value for '--digits', see --help")
 
@@ -10865,8 +11008,6 @@ def cli():
             from svg_text2path import Text2PathConverter  # noqa: F401
         except ImportError:
             cl_parser.error("--text2path requires svg-text2path package. Install with: uv tool install svg2fbf[text2path]")
-    if options.text2path_strict and not options.text2path:
-        cl_parser.error("--text2path-strict requires --text2path flag")
 
     # Create output directory if it doesn't exist
     # Why: User convenience - don't force manual directory creation
@@ -10883,7 +11024,15 @@ def cli():
             add2log(f"❌ Error: Cannot create output directory '{options.output_path}' - {e}")
             print_log_and_exit(1)
 
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except SystemExit:
+        raise
+    except Exception as e:
+        ppp(f"ERROR: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
