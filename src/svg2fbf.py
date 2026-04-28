@@ -28,6 +28,7 @@
 import base64
 import cProfile
 import decimal
+import gzip
 import math
 import os
 import re
@@ -2065,6 +2066,8 @@ of SVG files using SMIL animation.
     parser.add_argument("--no-browser", action="store_true", dest="no_browser", help="🚫 don't automatically open the generated FBF animation in browser", default=False)
     parser.add_argument("--skip-date", action="store_true", dest="skip_date", help="⏱️  omit the fbf:generatedDate metadata field — useful for reproducible/byte-exact builds (CI, regression tests)", default=False)
     parser.add_argument("--auto-repair-viewbox", action="store_true", dest="auto_repair_viewbox", help="🔧 if any input frame is missing or has an invalid viewBox, run svg-repair-viewbox automatically before processing (auto-installs Node.js + Puppeteer on first use)", default=False)
+    parser.add_argument("--allow-remote-images", action="store_true", dest="allow_remote_images", help="🌐 allow embedding images fetched over http(s) (DEFAULT: OFF — blocks SSRF and avoids leaking input data to remote servers)", default=False)
+    parser.add_argument("--max-image-bytes", dest="max_image_bytes", type=int, help="🛡️  maximum bytes per embedded image (default: 50 MB) — protects against resource exhaustion from malicious or oversized references", default=50 * 1024 * 1024, metavar="BYTES")
     parser.add_argument("-r", "--copyright", action="store_true", dest="show_copyright_info", help="⚖️  show legal information and exit", default=False)
 
     # Metadata options - Authoring & Provenance
@@ -2547,8 +2550,12 @@ def _is_browser_available(browser_path: str) -> bool:
     On macOS we expect a .app bundle path; check it exists on disk.
     On Linux/Windows we expect a command name; resolve via PATH.
     """
-    # Absolute filesystem path (typically a .app bundle on macOS)
-    if browser_path.startswith("/") or (len(browser_path) > 1 and browser_path[1] == ":"):
+    # Absolute filesystem path (POSIX absolute, Windows drive-letter, UNC,
+    # Windows long-path \\?\C:\…). Path.is_absolute() is the canonical
+    # cross-platform check — it returns True for all of those forms,
+    # including \\server\share\… which a hand-rolled startswith("/")+":"
+    # check would miss.
+    if Path(browser_path).is_absolute():
         return Path(browser_path).exists()
     # Bare command name — look up in PATH
     return shutil.which(browser_path) is not None
@@ -2581,7 +2588,15 @@ def _spawn_browser(browser_path: str, file_url: str) -> bool:
         # Linux/Windows: direct executable, fire-and-forget
         subprocess.Popen([browser_path, file_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
-    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+    except Exception:
+        # L4: catch every launch failure (FileNotFoundError, OSError,
+        # PermissionError, ValueError, subprocess.SubprocessError,
+        # TimeoutExpired, …). The helper's contract is "True on apparent
+        # success", so any exception means the launch did not succeed
+        # and the caller should fall back to the next browser. The outer
+        # open_in_browser() also has a generic try/except that prints a
+        # user-friendly message — but routing every failure through the
+        # False return keeps this helper's behaviour predictable.
         return False
 
 
@@ -3327,7 +3342,11 @@ def generate_fbfsvg_animation():
         # Check if output file already exists
         if os.path.exists(svgoutputpath):
             backup_path = svgoutputpath + ".bak"
-            os.rename(svgoutputpath, backup_path)
+            # Use os.replace() instead of os.rename() because on Windows
+            # os.rename() raises FileExistsError if a stale .bak from a
+            # previous run already exists. os.replace() overwrites
+            # atomically on every supported platform.
+            os.replace(svgoutputpath, backup_path)
             add2log(f"Backed up existing output file to {backup_path}")
 
         # Find and validate input files
@@ -6130,7 +6149,10 @@ def convert_css_stylesheet_to_svg_attributes(xml_doc, options):
         # if this node is a style element, parse its text into CSS
         if node.nodeName == "style" and node.namespaceURI == NS["SVG"]:
             node.normalize()
-            stylesheet = "".join(child.nodeValue for child in node.childNodes)
+            # nodeValue is None for Element/ProcessingInstruction children;
+            # coalesce to "" so a malformed <style> with non-text children
+            # does not crash with TypeError during the join.
+            stylesheet = "".join(child.nodeValue or "" for child in node.childNodes)
             stylesheet = stylesheet.strip()
             cssClassesDict = {}
             if stylesheet != "":
@@ -7387,22 +7409,31 @@ def embed_rasters(element, options):
     """
     Embed external raster image references as inline base64 data URIs.
 
-    Handles all image source types:
-    - Local files (relative and absolute paths)
-    - Remote URLs (http://, https://)
-    - file:// protocol URIs
-    - Network/UNC paths (//server/share/...)
+    Handles image source types (security model in _fetch_image_data):
+    - Local files (relative and absolute filesystem paths) — always allowed
+    - Remote URLs (http://, https://) — only with --allow-remote-images
+    - Every other scheme (file://, gopher://, ftp://, smb://, …) — refused
 
-    Supports image formats: png, jpg/jpeg, gif, webp, bmp, tiff, ico, svg+xml.
-    No artificial size limits — the full image is embedded regardless of size.
+    Supports image formats: png, jpg/jpeg, gif, webp, bmp, tiff, ico,
+    svg+xml (and .svgz, transparently gunzipped before embedding).
+
+    Image data is capped at options.max_image_bytes (default 50 MB);
+    larger references are skipped with a warning.
+
+    The `options` parameter is consumed by _fetch_image_data for the
+    network-allow-list and size-cap knobs.
     """
     num_rasters_embedded = 0
 
-    # Check both xlink:href (SVG 1.1) and href (SVG 2.0) attributes
+    # Check both xlink:href (SVG 1.1) and href (SVG 2.0) attributes.
+    # Why: legal one-character relative filenames like "a" must NOT be
+    # silently dropped. Fragment-only refs (#id) and data URIs are filtered
+    # by the dedicated startswith() checks below — no need to also reject
+    # short hrefs here.
     href = element.getAttributeNS(NS["XLINK"], "href")
-    if not href or len(href) <= 1:
+    if not href:
         href = element.getAttribute("href")
-    if not href or len(href) <= 1:
+    if not href:
         return 0
 
     # Skip already-embedded data URIs and internal references (#id)
@@ -7412,8 +7443,9 @@ def embed_rasters(element, options):
     # Determine file extension for MIME type mapping
     ext = os.path.splitext(os.path.basename(urllib.parse.urlparse(href).path))[1].lower().lstrip(".")
 
-    # Map of supported extensions to MIME subtypes
-    # No restrictions on image format — embed anything with a known MIME type
+    # Map of supported extensions to MIME subtypes.
+    # Embed only known raster/SVG image formats; unknown extensions log a
+    # warning and the original href is preserved untouched.
     ext_to_mime = {
         "png": "png",
         "jpg": "jpeg",
@@ -7440,7 +7472,18 @@ def embed_rasters(element, options):
     if rasterdata is None or len(rasterdata) == 0:
         return 0
 
-    # Base64-encode and set as data URI (no size limit)
+    # .svgz is gzip-compressed SVG. Browsers receiving
+    # `data:image/svg+xml;base64,<gzipped-bytes>` cannot decode the SVG —
+    # they expect plain XML inside the data URI. Decompress to plain SVG
+    # before embedding so the data URI is actually renderable.
+    if ext == "svgz":
+        try:
+            rasterdata = gzip.decompress(rasterdata)
+        except (OSError, gzip.BadGzipFile) as e:
+            add2log(f"WARNING: Failed to gunzip .svgz '{href}' for embedding: {e}. File: {current_filepath}")
+            return 0
+
+    # Base64-encode and set as data URI (size already capped by _fetch_image_data)
     b64_data = base64.b64encode(rasterdata).decode("ascii")
     data_uri = f"data:image/{mime_subtype};base64,{b64_data}"
 
@@ -7456,73 +7499,135 @@ def embed_rasters(element, options):
 
 def _fetch_image_data(href, options):
     """
-    Fetch image data from any supported source: local file, remote URL,
-    file:// URI, or network path.
+    Fetch image data from a supported, security-vetted source.
+
+    Security model:
+    - Local files (relative paths) are always allowed; resolved relative to
+      the input frame's directory (or cwd as fallback).
+    - Absolute filesystem paths are allowed (the user already controls them).
+    - http(s):// URLs are allowed only when --allow-remote-images is set.
+      Without that flag we refuse to make outbound network calls (SSRF
+      mitigation; avoids leaking input data to attacker-controlled hosts).
+    - file:// URIs are rejected by default. The user can pass an absolute
+      filesystem path directly if they really want to embed a local file.
+    - Every other scheme (gopher, ldap, ftp, smb, javascript, data on a
+      <use> element …) is hard-rejected.
+    - All reads (local or remote) are capped at options.max_image_bytes
+      (default 50 MB) to bound memory use under hostile input.
 
     Returns bytes on success, None on failure (with warning logged).
     """
     parsed = urllib.parse.urlparse(href)
+    max_bytes = getattr(options, "max_image_bytes", 50 * 1024 * 1024)
 
-    # Case 1: Remote URL (http/https) — fetch directly via urllib
-    if parsed.scheme in ("http", "https"):
-        try:
-            req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
-            with urllib.request.urlopen(req, timeout=30) as response:
-                return response.read()
-        except Exception as e:
-            add2log(f"WARNING: Failed to fetch remote image '{href}': {e}. File: {current_filepath}")
-            return None
+    # Detect "looks like a Windows drive-letter path" without conflating
+    # with a bona-fide single-letter URI scheme. urlparse turns "C:foo.png"
+    # into scheme="c", path="foo.png", but on POSIX a relative filename
+    # like "c:01.png" is NOT a drive letter — it's a legal filename.
+    is_windows_drive_letter = os.name == "nt" and len(parsed.scheme) == 1 and parsed.scheme.isalpha()
 
-    # Case 2: file:// URI — convert to local path and read
-    if parsed.scheme == "file":
-        try:
-            # urllib.request.url2pathname handles platform-specific conversions
-            # (Windows drive letters, URL-encoded chars, etc.)
-            local_path = urllib.request.url2pathname(parsed.path)
-            return Path(local_path).read_bytes()
-        except Exception as e:
-            add2log(f"WARNING: Failed to read file URI '{href}': {e}. File: {current_filepath}")
-            return None
-
-    # Case 3: No scheme — treat as local file path (relative or absolute)
-    if parsed.scheme == "" or (len(parsed.scheme) == 1 and os.name == "nt"):
-        # On Windows, single-letter schemes are drive letters (e.g., C:)
+    # Local file path (no scheme, or Windows drive letter on Windows)
+    if parsed.scheme == "" or is_windows_drive_letter:
         file_path = href
-
-        # Resolve relative paths against the input file's directory (not cwd)
-        # This avoids thread-unsafe os.chdir() and handles paths correctly
-        # regardless of where svg2fbf was invoked from
         resolved = Path(file_path)
         if not resolved.is_absolute():
-            # Try relative to input file's directory first
+            # Try relative to the input frame's directory first (not cwd —
+            # cwd depends on where svg2fbf was invoked from and would be
+            # thread-unsafe to mutate).
             input_dir = Path(current_filepath).parent if current_filepath else Path.cwd()
             resolved = input_dir / file_path
-
         try:
-            return resolved.read_bytes()
-        except FileNotFoundError:
-            # If not found relative to input dir, try relative to cwd as fallback
+            return _read_path_capped(resolved, max_bytes, href)
+        except FileNotFoundError as primary_err:
+            # Fallback: try relative to cwd.
             try:
-                return Path(file_path).resolve().read_bytes()
-            except Exception:
-                pass
-            add2log(f"WARNING: Image file not found '{href}' (resolved to: {resolved}). File: {current_filepath}")
-            return None
+                return _read_path_capped(Path(file_path).resolve(), max_bytes, href)
+            except Exception as fallback_err:
+                add2log(f"WARNING: Image file not found '{href}' (tried '{resolved}': {primary_err}; fallback '{Path(file_path).resolve()}': {fallback_err}). File: {current_filepath}")
+                return None
         except Exception as e:
             add2log(f"WARNING: Failed to read image file '{href}': {e}. File: {current_filepath}")
             return None
 
-    # Case 4: Other schemes (ftp://, smb://, etc.) — try urlopen as generic handler
-    try:
-        req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
-        with urllib.request.urlopen(req, timeout=30) as response:
-            return response.read()
-    except Exception as e:
-        add2log(f"WARNING: Failed to fetch image from '{href}': {e}. File: {current_filepath}")
-        return None
+    # http/https — only with explicit user opt-in.
+    if parsed.scheme in ("http", "https"):
+        if not getattr(options, "allow_remote_images", False):
+            add2log(f"WARNING: Refusing to fetch remote image '{href}' — pass --allow-remote-images to enable network image embedding (default OFF for SSRF protection). File: {current_filepath}")
+            return None
+        try:
+            req = urllib.request.Request(href, headers={"User-Agent": "svg2fbf"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                return _read_response_capped(response, max_bytes, href)
+        except Exception as e:
+            add2log(f"WARNING: Failed to fetch remote image '{href}': {e}. File: {current_filepath}")
+            return None
+
+    # Every other scheme (file://, gopher://, ldap://, ftp://, smb://,
+    # javascript:, data: on <image> with a non-trivial source, …) is
+    # hard-rejected. file:// is intentionally blocked because it bypasses
+    # the input-directory containment we apply to bare relative paths and
+    # has been used for arbitrary local-file disclosure via crafted SVGs.
+    add2log(f"WARNING: Refusing to fetch image with unsupported scheme '{parsed.scheme}://' in href '{href}'. Use a relative path, an absolute filesystem path, or --allow-remote-images for http(s). File: {current_filepath}")
+    return None
 
 
-def _auto_repair_viewbox(filepath: str, docElement, options) -> None:
+def _read_path_capped(path: Path, max_bytes: int, href_for_log: str) -> bytes:
+    """Read a local file but abort if it exceeds max_bytes.
+
+    Why: an unbounded `path.read_bytes()` will OOM the process on a
+    crafted multi-GB image reference. Streaming with a hard cap protects
+    both memory and downstream embed size (one frame easily blows up the
+    final FBF if no cap is enforced).
+    """
+    size = path.stat().st_size
+    if size > max_bytes:
+        raise OSError(f"image '{href_for_log}' is {size} bytes which exceeds --max-image-bytes={max_bytes}; raise the limit or strip the reference")
+    return path.read_bytes()
+
+
+def _read_response_capped(response, max_bytes: int, href_for_log: str) -> bytes:
+    """Read an HTTP response in chunks, aborting past max_bytes.
+
+    Why: response.read() with no argument will load the entire body into
+    memory regardless of size, so a malicious server can OOM us with a
+    fast 100 GB delivery. Chunked reading with a running total lets us
+    bail out before the allocator starts thrashing.
+    """
+    chunks = []
+    total = 0
+    chunk_size = 64 * 1024
+    while True:
+        chunk = response.read(chunk_size)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise OSError(f"remote image '{href_for_log}' exceeded --max-image-bytes={max_bytes} after {total} bytes; aborting")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+# Single source of truth for the user-facing flag name. Referenced by
+# _auto_repair_viewbox error strings so renaming the flag only touches
+# argparse + this constant. See L6 in the recent-changes audit.
+_AUTO_REPAIR_FLAG = "--auto-repair-viewbox"
+
+
+class AutoRepairError(RuntimeError):
+    """Raised by _auto_repair_viewbox when in-place repair cannot complete.
+
+    Why a typed exception instead of sys.exit():
+    - the helper becomes unit-testable with pytest.raises(...);
+    - the orchestrator can decide whether to abort or fall through (e.g.
+      a future caller may want to log + skip + continue);
+    - cleanup hooks (temp file removal, partial-output deletion) get a
+      chance to run before the process dies.
+    The orchestrator (properlySizeDoc) catches this and exits with a
+    formatted error log so the user-visible behaviour is unchanged.
+    """
+
+
+def _auto_repair_viewbox(filepath, docElement, options) -> None:
     """Repair a missing viewBox in-place by invoking svg-repair-viewbox.
 
     Why: svg2fbf requires viewBox on every input frame. The user can
@@ -7535,21 +7640,30 @@ def _auto_repair_viewbox(filepath: str, docElement, options) -> None:
     edits in place). After repair, we reparse the file and update the
     in-memory docElement so the rest of preprocessing sees the new
     viewBox without needing a second pass.
+
+    Raises AutoRepairError on any failure (import, dependency install,
+    repair invocation, reparse, missing viewBox post-repair). The caller
+    is expected to log via add2log + print_log_and_exit so the error
+    survives into the final error log.
     """
+    if not filepath:
+        # H4/L9: the global current_filepath may legitimately be None
+        # (after the per-frame loop has finished). Fail loud rather than
+        # passing None down to Path() which would raise a confusing
+        # TypeError far from the call site.
+        raise AutoRepairError(f"{_AUTO_REPAIR_FLAG}: cannot repair — no input file path is set (current_filepath is None). This usually means the helper was called from outside the per-frame import loop.")
+
     try:
         from svg_viewbox_repair.main import ensure_dependencies, repair_animation_sequence_viewbox
     except Exception as e:
-        ppp(f"\n❌ --auto-repair-viewbox: cannot load svg_viewbox_repair: {e}\n")
-        sys.exit(1)
+        raise AutoRepairError(f"{_AUTO_REPAIR_FLAG}: cannot load svg_viewbox_repair: {e}") from e
 
     if not options.quiet_mode:
-        ppp(f"🔧 --auto-repair-viewbox: file '{filepath}' is missing viewBox; repairing automatically.")
+        ppp(f"🔧 {_AUTO_REPAIR_FLAG}: file '{filepath}' is missing viewBox; repairing automatically.")
 
     # Trigger the bootstrap path (Node.js + Puppeteer install on first use).
     if not ensure_dependencies():
-        ppp("\n❌ --auto-repair-viewbox: failed to install required dependencies (Node.js / Puppeteer).")
-        ppp("   See above for the install error. Fix the environment or repair the SVG manually with svg-repair-viewbox.\n")
-        sys.exit(1)
+        raise AutoRepairError(f"{_AUTO_REPAIR_FLAG}: failed to install required dependencies (Node.js / Puppeteer). See above for the install error. Fix the environment or repair the SVG manually with svg-repair-viewbox.")
 
     try:
         # repair_animation_sequence_viewbox edits files in place. We pass
@@ -7557,22 +7671,66 @@ def _auto_repair_viewbox(filepath: str, docElement, options) -> None:
         # sequence will trigger their own repair calls (or already pass).
         repair_animation_sequence_viewbox([Path(filepath)], verbose=not options.quiet_mode)
     except Exception as e:
-        ppp(f"\n❌ --auto-repair-viewbox: repair failed for '{filepath}': {e}\n")
-        sys.exit(1)
+        # M6: arm64-Linux / Alpine / musl users hit Puppeteer launch
+        # failures here even when ensure_dependencies() succeeds (npm
+        # install ran fine, but the bundled Chromium can't actually
+        # start). Detect that failure mode and surface actionable
+        # guidance instead of just the raw exception.
+        msg = str(e)
+        msg_lower = msg.lower()
+        is_browser_launch_failure = "Could not find expected browser" in msg or "Failed to launch the browser" in msg or "browser_revision" in msg_lower or ("chromium" in msg_lower and ("launch" in msg_lower or "spawn" in msg_lower))
+        if is_browser_launch_failure:
+            raise AutoRepairError(
+                f"{_AUTO_REPAIR_FLAG}: Puppeteer could not launch Chromium for '{filepath}': {e}\n"
+                f"   On Linux ARM64 / Alpine / musl-based images, Puppeteer's bundled\n"
+                f"   Chromium often cannot start. Install the system Chromium package\n"
+                f"   (e.g. 'apt install chromium' or 'apk add chromium') and set\n"
+                f"   PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium before retrying.\n"
+                f"   In rootless containers you may also need PUPPETEER_ARGS='--no-sandbox'."
+            ) from e
+        raise AutoRepairError(f"{_AUTO_REPAIR_FLAG}: repair failed for '{filepath}': {e}") from e
 
     # Reparse the (now-repaired) file and copy the new viewBox attribute
-    # into the in-memory docElement so callers see it.
+    # into the in-memory docElement so callers see it. M5: copy ALL
+    # attributes the upstream repair touched, not just viewBox — the
+    # upstream library's docstring mentions "harmonize" as a possible
+    # future feature, and silently dropping width/height changes would
+    # leave svg2fbf operating on a stale in-memory tree.
+    repaired_doc = None
     try:
         repaired_doc = defusedxml.minidom.parse(filepath)
         repaired_root = repaired_doc.documentElement
-        if repaired_root.hasAttribute("viewBox"):
-            docElement.setAttribute("viewBox", repaired_root.getAttribute("viewBox"))
-        else:
-            ppp(f"\n❌ --auto-repair-viewbox: repair produced no viewBox for '{filepath}'.\n")
-            sys.exit(1)
+        if not repaired_root.hasAttribute("viewBox"):
+            raise AutoRepairError(f"{_AUTO_REPAIR_FLAG}: repair produced no viewBox for '{filepath}'.")
+        # Mirror EVERY attribute from the repaired root onto the live
+        # docElement. The upstream contract today only writes viewBox,
+        # but this is forward-compatible if it ever also harmonises
+        # width/height across a sequence.
+        if repaired_root.attributes is not None:
+            for i in range(repaired_root.attributes.length):
+                attr = repaired_root.attributes.item(i)
+                if attr.namespaceURI:
+                    docElement.setAttributeNS(attr.namespaceURI, attr.name, attr.value)
+                else:
+                    docElement.setAttribute(attr.name, attr.value)
+    except AutoRepairError:
+        raise
     except Exception as e:
-        ppp(f"\n❌ --auto-repair-viewbox: cannot reparse repaired file '{filepath}': {e}\n")
-        sys.exit(1)
+        raise AutoRepairError(f"{_AUTO_REPAIR_FLAG}: cannot reparse repaired file '{filepath}': {e}") from e
+    finally:
+        # L5: minidom needs explicit unlink() to break circular refs
+        # (the same KeyError trap the per-frame loop already hits — see
+        # the try/except KeyError around input_doc.unlink() in the main
+        # import loop). Letting this go out of scope without unlink
+        # leaves a tree that the GC cannot reclaim eagerly, which adds
+        # up over a 100-frame animation.
+        if repaired_doc is not None:
+            try:
+                repaired_doc.unlink()
+            except KeyError:
+                # Same Python DOM bug with namespaced attributes. The
+                # GC will eventually reclaim the tree.
+                pass
 
 
 def properlySizeDoc(docElement, options):
@@ -7607,12 +7765,20 @@ def properlySizeDoc(docElement, options):
         # Node.js + Puppeteer auto-install on first use). Otherwise
         # fail loud with the manual fix instructions.
         if getattr(options, "auto_repair_viewbox", False):
-            _auto_repair_viewbox(current_filepath, docElement, options)
+            try:
+                _auto_repair_viewbox(current_filepath, docElement, options)
+            except AutoRepairError as e:
+                # H3: helper raises a typed exception; orchestrator
+                # decides how to surface it. Route through add2log so
+                # the message survives into the final error log dump
+                # (ppp output is not captured by print_log_and_exit).
+                add2log(str(e))
+                print_log_and_exit(1)
         else:
             ppp(f'\n❌ ERROR IMPORTING FRAMES: The file "{current_filepath}" is missing the viewBox attribute.')
             ppp(f'   Use the global command "svg-repair-viewbox {current_filepath}" to fix it.')
             ppp("   Or run: svg-repair-viewbox <input_folder>/ to fix all SVG files in a directory.")
-            ppp("   Or rerun svg2fbf with --auto-repair-viewbox to repair automatically.\n")
+            ppp(f"   Or rerun svg2fbf with {_AUTO_REPAIR_FLAG} to repair automatically.\n")
             sys.exit(1)
 
     # parse viewBox attribute
@@ -8341,7 +8507,10 @@ def renameID(idFrom, idTo, identifiedElements, referringNodes):
                     # there's a CDATASection node surrounded by whitespace
                     # nodes
                     # (node.normalize() will NOT work here, it only acts on Text nodes)
-                    oldValue = "".join(child.nodeValue for child in node.childNodes)
+                    # nodeValue is None for Element/ProcessingInstruction
+                    # children; coalesce to "" so a malformed <style> with
+                    # non-text children does not crash with TypeError.
+                    oldValue = "".join(child.nodeValue or "" for child in node.childNodes)
                     # not going to reparse the whole thing
                     newValue = oldValue.replace("url(#" + idFrom + ")", "url(#" + idTo + ")")
                     newValue = newValue.replace("url('#" + idFrom + "')", "url(#" + idTo + ")")
@@ -8525,7 +8694,10 @@ def findReferencedElements(node, ids=None):
         ids = {}
     # if this node is a style element, parse its text into CSS
     if node.nodeName == "style" and node.namespaceURI == NS["SVG"]:
-        stylesheet = "".join(child.nodeValue for child in node.childNodes)
+        # nodeValue is None for Element/ProcessingInstruction children;
+        # coalesce to "" so a malformed <style> with non-text children does
+        # not crash with TypeError during the join.
+        stylesheet = "".join(child.nodeValue or "" for child in node.childNodes)
         if stylesheet != "":
             cssRules = parseCssString(stylesheet)
             for rule in cssRules:
@@ -10468,6 +10640,12 @@ def generate_fbf_metadata(metadata_dict):
     # Why: Generator information - required by spec
     add_field("generator", "fbf", "generator")
     add_field("generatorVersion", "fbf", "generatorVersion")
+    # generatedDate is INTENTIONALLY OPTIONAL: when --skip-date is set,
+    # metadata_dict["generatedDate"] is never written, so add_field()
+    # falls into its else branch and emits an empty self-closing
+    # <fbf:generatedDate /> element. Downstream FBF-spec consumers MUST
+    # tolerate an empty generatedDate (the field is always present, only
+    # its content is conditional). See L8 in the recent-changes audit.
     add_field("generatedDate", "fbf", "generatedDate")
     add_field("formatVersion", "fbf", "formatVersion")
     add_field("precisionDigits", "fbf", "precisionDigits")
