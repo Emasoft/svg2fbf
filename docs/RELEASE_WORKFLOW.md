@@ -195,18 +195,19 @@ For each channel, the script:
 1. **Checkout** the branch
 2. **Sync check** - ensures branch is up to date with origin
 3. **Clean check** - ensures no uncommitted changes
-4. **Version bump** - automatically bumps version:
+4. **Docker E2E gate** - runs `scripts/test_release_clean.sh`, which builds a clean `python:3.12-slim` image with `fonts-dejavu` + `fonts-liberation` and runs the full **T1–T13** suite inside it (auto-install, byte-exact FBF compare, and the text→path per-frame visual diff added in TRDD-c2a3199d). A failure here aborts the release before any version bump.
+5. **Version bump** - automatically bumps version:
    - `alpha`: `0.1.2` → `0.1.3a1` or `0.1.2a1` → `0.1.2a2`
    - `beta`: `0.1.2` → `0.1.3b1` or `0.1.2b1` → `0.1.2b2`
    - `rc`: `0.1.2` → `0.1.3rc1` or `0.1.2rc1` → `0.1.2rc2`
    - `stable`: `0.1.2rc1` → `0.1.2` or `0.1.2` → `0.1.3`
-5. **Changelog** - regenerates CHANGELOG.md with git-cliff
-6. **Commit** - commits version bump + changelog
-7. **Build** - builds wheel and sdist with `uv build`
-8. **Tag** - creates git tag (e.g., `v0.1.3`)
-9. **Push** - pushes branch and tag to origin
-10. **GitHub Release** - creates GitHub release (pre-release for alpha/beta/rc)
-11. **PyPI Publish** - publishes to PyPI (**stable only**)
+6. **Changelog** - regenerates CHANGELOG.md with git-cliff
+7. **Commit** - commits version bump + changelog
+8. **Build** - builds wheel and sdist with `uv build`
+9. **Tag** - creates git tag (e.g., `v0.1.3`)
+10. **Push** - pushes branch and tag to origin
+11. **GitHub Release** - creates GitHub release (pre-release for alpha/beta/rc)
+12. **PyPI Publish** - publishes to PyPI (**stable only**)
 
 ### Release Notes
 

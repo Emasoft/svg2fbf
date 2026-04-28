@@ -797,6 +797,29 @@ Results:
 9. ⏳ Vertical text (`writing-mode`)
 10. ⏳ Path optimization (merge segments, simplify curves)
 
+## Test Coverage (TRDD-c2a3199d)
+
+The text→path conversion is exercised end-to-end inside the Docker E2E
+suite (`scripts/test_release_clean.sh` → run inside a clean
+`python:3.12-slim` image with `fonts-dejavu` + `fonts-liberation`
+preinstalled so glyph metrics are deterministic across runners):
+
+- **T_setup / T11** — installs the svg-bbox harness via npm, runs `svg2fbf --text2path` against the 5-frame fixture in `tests/fixtures/e2e/text_frames/`, and verifies an FBF.SVG is produced without errors.
+- **T12** — byte-exact compare of the fresh FBF against the committed golden `tests/fixtures/e2e/text_frames/expected.fbf.svg`.
+- **T13** — per-frame visual diff: each input fixture SVG is compared against its corresponding extracted-from-FBF SVG via `sbb-compare --json`, with a per-pixel-channel threshold of 32/256 and an image-wide `diffPercentage` budget of 3 % per frame. The two thresholds are independent: the per-pixel one defines what counts as "different"; the image-wide one bounds how many such pixels are tolerated. T13 calibrates against the golden at ~1.8 %, leaving healthy headroom for legitimate AA-fringe drift between hinted-text rendering and path-rendering of the same glyphs.
+
+The fixtures intentionally exercise text + textPath (text laid out along
+a static curve, no animation) at varied positions, rotations, and
+transforms. Both hinted (`<text>`) and unhinted (`<path>`) renderings
+go through `sbb-compare`'s internal Chrome rasteriser so the comparison
+is apples-to-apples on the same renderer.
+
+Tooling specific to text→path testing:
+
+- `scripts/visual_diff_text_frames.py` — T13 harness.
+- `scripts/extract_fbf_frame.py` — XML-level extraction of `FRAME0000N` + `SHARED_DEFINITIONS` into a standalone SVG (per-frame comparison without animation playback).
+- `scripts/pin_fbf_frame_to_png.py` — calibration utility that pins PROSKENION's `xlink:href` to frame N, drops the `<animate>` child, and renders the full FBF wrapper to PNG via `sbb-svg2png`. Use this when you need to verify the golden FBF is a faithful conversion of the original input frame, with full ancestor inheritance preserved.
+
 ## References
 
 - **SVG 2.0 Text Anchoring**: https://www.w3.org/TR/SVG2/text.html#TextAnchoringProperties
@@ -805,3 +828,5 @@ Results:
 - **python-bidi**: https://github.com/MeirKriheli/python-bidi
 - **SVG Text Specification**: https://www.w3.org/TR/SVG11/text.html
 - **Unicode BiDi Algorithm**: https://unicode.org/reports/tr9/
+- **TRDD-c2a3199d** — `design/tasks/TRDD-c2a3199d-…-text2path-docker-e2e.md`
+- **Emasoft/SVG-BBOX#3** — feat-req for first-class FBF→PNG frame export in `sbb-svg2png` (would obsolete `pin_fbf_frame_to_png.py`).
