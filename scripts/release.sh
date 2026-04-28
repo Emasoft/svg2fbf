@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 
-# Prevent concurrent releases - acquire exclusive lock
-# This ensures only one release process can run at a time to avoid conflicts
-LOCK_FILE="/tmp/svg2fbf-release.lock"
+# Prevent concurrent releases - acquire exclusive lock.
+# Use a per-user cache directory rather than world-writable /tmp so a
+# malicious user on a shared host cannot pre-create the file (DoS) or
+# point it at a symlink to trick `exec 200>` into truncating arbitrary
+# files. Honors XDG_CACHE_HOME if set, otherwise falls back to
+# $HOME/.cache, and as a last resort to $TMPDIR or /tmp with a
+# user-namespaced filename.
+_lock_dir="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/svg2fbf"
+mkdir -p "$_lock_dir" 2>/dev/null || _lock_dir="${TMPDIR:-/tmp}"
+LOCK_FILE="$_lock_dir/release.lock.${UID:-$(id -u)}"
+unset _lock_dir
 exec 200>"$LOCK_FILE"
 if ! flock -n 200; then
   echo "ERROR: Another release process is already running."
@@ -183,6 +191,12 @@ start_branch="$(git rev-parse --abbrev-ref HEAD)"
 # This provides explicit control over what gets deleted instead of using wildcards.
 declare -a RELEASE_NOTES_FILES=()
 
+# Track the commit SHA captured immediately before the release commit is created.
+# rollback_release uses this to `git reset --hard` back to the pre-release state, so
+# that aborted releases never leave dangling "Release …" commits in branch history.
+# Empty string means no release commit has been made yet (rollback only reverts files).
+PRE_RELEASE_COMMIT_SHA=""
+
 # Validate branch name to prevent shell injection
 # Only allow alphanumeric characters, dots, underscores, dashes, and slashes
 # This prevents malicious branch names from being used in git commands
@@ -201,6 +215,17 @@ switch_to_branch() {
   local target_branch="$1"
   local current_branch
   current_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  # Reject branch names that begin with `-`. Without this guard,
+  # `git checkout -<flag>` interprets the value as an option (e.g. `-b`),
+  # which can create or move branches in surprising ways. There is no
+  # supported `--` form for `git checkout <branch>` that disambiguates a
+  # leading-hyphen branch from a flag, so the safest fix is to refuse the
+  # input outright.
+  if [[ "$target_branch" == -* ]]; then
+    echo "Error: refusing to switch to branch starting with '-': $target_branch" >&2
+    exit 1
+  fi
 
   # Only checkout if we're not already on the target branch
   if [[ "$current_branch" != "$target_branch" ]]; then
@@ -775,10 +800,13 @@ archive_previous_stages() {
 
   for suffix in "${stages_to_archive[@]}"; do
     local pattern="v${new_base}${suffix}*"
-    local old_tags
-    old_tags=$(git tag -l "$pattern" 2>/dev/null)
-
-    for old_tag in $old_tags; do
+    # Read tags one-per-line via process substitution + `while IFS= read -r`
+    # so that tag names containing whitespace or glob metacharacters are
+    # processed verbatim. The previous unquoted `for old_tag in $old_tags`
+    # split on IFS and re-globbed each name, which can mishandle exotic
+    # tag names that git itself permits.
+    while IFS= read -r old_tag; do
+      [[ -z "$old_tag" ]] && continue
       if gh release view "$old_tag" >/dev/null 2>&1; then
         echo "  Archiving: $old_tag (marking as pre-release)"
         # Mark as pre-release to indicate it's superseded
@@ -787,7 +815,7 @@ archive_previous_stages() {
           echo "  Warning: Could not archive $old_tag (non-fatal)" >&2
         fi
       fi
-    done
+    done < <(git tag -l "$pattern" 2>/dev/null)
   done
 }
 
@@ -945,10 +973,27 @@ generate_changelog_and_notes() {
 # Restores pyproject.toml, returns to original branch, cleans up temporary files
 rollback_release() {
   echo "Rolling back release..." >&2
-  # Restore pyproject.toml to its original state
-  git checkout -- pyproject.toml 2>/dev/null || true
-  # Restore CHANGELOG.md if it was modified
-  git checkout -- CHANGELOG.md 2>/dev/null || true
+  # If a release commit was already created on the branch, reset hard to the
+  # pre-release SHA. Without this, an aborted release (uv sync/build/tag/push
+  # failure after `git commit "Release …"`) leaves a dangling release commit in
+  # the local branch history that does not correspond to any tag or artifact.
+  # Only reset when we are still on the branch where the commit was made — if
+  # restore_original_branch already moved us, the SHA still belongs to that
+  # branch and resetting here would corrupt the wrong branch.
+  if [[ -n "$PRE_RELEASE_COMMIT_SHA" ]]; then
+    if git rev-parse --verify "$PRE_RELEASE_COMMIT_SHA" >/dev/null 2>&1; then
+      echo "  Reverting local release commit(s) — resetting to ${PRE_RELEASE_COMMIT_SHA}" >&2
+      git reset --hard "$PRE_RELEASE_COMMIT_SHA" 2>/dev/null || \
+        echo "  Warning: could not reset to ${PRE_RELEASE_COMMIT_SHA}; manual cleanup required." >&2
+    else
+      echo "  Warning: pre-release SHA ${PRE_RELEASE_COMMIT_SHA} no longer exists; skipping reset." >&2
+    fi
+    PRE_RELEASE_COMMIT_SHA=""
+  else
+    # No release commit yet — just discard uncommitted edits to tracked release files.
+    git checkout -- pyproject.toml 2>/dev/null || true
+    git checkout -- CHANGELOG.md 2>/dev/null || true
+  fi
   # Return to the original branch
   restore_original_branch
   # Clean up any temporary files created during this release attempt
@@ -1155,6 +1200,13 @@ release_channel() {
   # Rely on git-cliff having created or updated this file before this stage.
   [[ -f CHANGELOG.md ]] && git add CHANGELOG.md
 
+  # Capture the current HEAD SHA so rollback_release can `git reset --hard` back
+  # to this point if any subsequent step (uv sync/build, tag, push) fails. This
+  # is the rollback target for ALL commits that follow on this branch in this
+  # release_channel run — release commit, optional uv.lock commit, optional
+  # dist/ commit. Resetting to this SHA wipes them all atomically.
+  PRE_RELEASE_COMMIT_SHA="$(git rev-parse HEAD)"
+
   # Create a commit that encapsulates both the version bump and the changelog update.
   # Use a descriptive commit message including channel and version information.
   # Treat this commit as the canonical representation of the release in git history.
@@ -1230,6 +1282,22 @@ release_channel() {
   local title="$tag"
   local fallback_notes="Automated ${channel} release ${new_version}"
 
+  # Expand the dist/ artifacts via a quoted array (with `nullglob` enabled
+  # locally) so that filenames containing spaces or shell metacharacters are
+  # passed as individual arguments to `gh release create` instead of being
+  # word-split. If the glob has no matches, the array is empty and we abort
+  # before invoking gh — uploading a release with zero artifacts is always a
+  # bug at this point in the pipeline.
+  local dist_files=()
+  shopt -s nullglob
+  dist_files=(dist/*)
+  shopt -u nullglob
+  if [[ ${#dist_files[@]} -eq 0 ]]; then
+    echo "ERROR: dist/ is empty, refusing to create GitHub release without artifacts." >&2
+    rollback_release
+    exit 1
+  fi
+
   # Decide whether to mark the GitHub release as a pre-release based on the channel.
   # Treat alpha, beta, and rc channels as prereleases in GitHub’s UI.
   # Treat stable releases as fully official, non-prerelease releases.
@@ -1238,18 +1306,18 @@ release_channel() {
     # Prefer to use this notes file as the GitHub release body when it exists.
     # Fall back to a short text description if the notes file is missing or empty.
     if [[ -n "$notes_file" && -s "$notes_file" ]]; then
-      gh release create "$tag" dist/* --title "$title" --notes-file "$notes_file" --prerelease
+      gh release create "$tag" "${dist_files[@]}" --title "$title" --notes-file "$notes_file" --prerelease
     else
-      gh release create "$tag" dist/* --title "$title" --notes "$fallback_notes" --prerelease
+      gh release create "$tag" "${dist_files[@]}" --title "$title" --notes "$fallback_notes" --prerelease
     fi
   else
     # Handle the GitHub release behavior for stable (non-prerelease) channels.
     # Again, prefer a notes file when available, otherwise use fallback text.
     # Avoid marking stable releases as prereleases in the GitHub interface.
     if [[ -n "$notes_file" && -s "$notes_file" ]]; then
-      gh release create "$tag" dist/* --title "$title" --notes-file "$notes_file"
+      gh release create "$tag" "${dist_files[@]}" --title "$title" --notes-file "$notes_file"
     else
-      gh release create "$tag" dist/* --title "$title" --notes "$fallback_notes"
+      gh release create "$tag" "${dist_files[@]}" --title "$title" --notes "$fallback_notes"
     fi
   fi
 

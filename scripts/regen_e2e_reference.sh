@@ -34,7 +34,11 @@ if [[ ! -f "$NEW" ]]; then
     exit 1
 fi
 
-if cmp -s "$OLD" "$NEW"; then
+if [[ ! -f "$OLD" ]]; then
+    # First-time generation: no existing reference to compare against.
+    # cmp would exit 2 (file missing) and set -e would abort, so handle it explicitly.
+    echo "ℹ No existing reference at $OLD — will create it."
+elif cmp -s "$OLD" "$NEW"; then
     echo "✓ Reference is already up to date — no regen needed."
     exit 0
 fi

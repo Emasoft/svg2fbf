@@ -251,8 +251,8 @@ class YAMLConfigValidator:
             for section in unknown:
                 self.warning("STRUCTURE", f"Unknown top-level section: '{section}'")
 
-        # At least one section should be present
-        if not found_sections:
+        # At least one VALID section should be present (unknown sections only trigger warnings)
+        if not (found_sections & valid_sections):
             self.error(
                 "STRUCTURE",
                 ("No valid sections found (expected 'metadata' and/or 'generation_parameters')"),

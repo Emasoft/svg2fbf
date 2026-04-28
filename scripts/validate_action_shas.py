@@ -55,7 +55,7 @@ def validate_sha_exists(repo: str, sha: str) -> tuple[bool, str]:
 
     if result.returncode == 0:
         return True, "valid"
-    elif "Not Found" in result.stderr or result.returncode == 1:
+    elif "Not Found" in result.stderr or "HTTP 404" in result.stderr:
         return False, "SHA does not exist in repository"
     else:
         return False, f"API error: {result.stderr.strip()}"

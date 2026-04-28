@@ -43,7 +43,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 WORK_DIR="$(mktemp -d -t svg2fbf-test-XXXXXX)"
-trap 'rm -rf "$WORK_DIR"' EXIT
+# Compose the per-run Docker image tag here (not at the docker-build site)
+# so the EXIT trap can remove it even if we abort before reaching the
+# Docker section. tag is forced to lowercase because Docker rejects
+# uppercase characters in the image-name segment.
+IMG="svg2fbf-clean-test:$(basename "$WORK_DIR" | tr '[:upper:]' '[:lower:]')"
+trap 'rm -rf "$WORK_DIR"; docker image rm -f "$IMG" >/dev/null 2>&1 || true' EXIT
 
 DO_LOCAL=true
 DO_DOCKER=true
@@ -65,34 +70,43 @@ done
 # ----------------------------------------------------------------------
 echo "▶ Pre-flight: running all source-level checks (lint + types + tests)..."
 
+# Pre-flight log files live under the per-run mktemp $WORK_DIR rather than
+# the world-writable /tmp. /tmp paths are predictable, leak across users on
+# shared hosts, race between concurrent runs, and are a classic symlink-
+# attack target on multi-tenant CI runners.
+RUFF_LINT_LOG="$WORK_DIR/ruff-lint.log"
+RUFF_FMT_LOG="$WORK_DIR/ruff-fmt.log"
+PYRIGHT_LOG="$WORK_DIR/pyright.log"
+PYTEST_LOG="$WORK_DIR/pytest.log"
+
 echo "  - ruff lint..."
-if ! uv run ruff check src/ tests/ scripts/ >/tmp/ruff-lint.log 2>&1; then
+if ! uv run ruff check src/ tests/ scripts/ >"$RUFF_LINT_LOG" 2>&1; then
     echo "    ✗ ruff lint failed:"
-    sed 's/^/      /' /tmp/ruff-lint.log | tail -20
+    sed 's/^/      /' "$RUFF_LINT_LOG" | tail -20
     exit 1
 fi
 
 echo "  - ruff format check..."
-if ! uv run ruff format --check src/ tests/ scripts/ >/tmp/ruff-fmt.log 2>&1; then
+if ! uv run ruff format --check src/ tests/ scripts/ >"$RUFF_FMT_LOG" 2>&1; then
     echo "    ✗ ruff format check failed:"
-    sed 's/^/      /' /tmp/ruff-fmt.log | tail -20
+    sed 's/^/      /' "$RUFF_FMT_LOG" | tail -20
     exit 1
 fi
 
 echo "  - pyright type check (errors only)..."
-if ! uv run pyright src/ >/tmp/pyright.log 2>&1; then
-    if grep -q "error:" /tmp/pyright.log; then
+if ! uv run pyright src/ >"$PYRIGHT_LOG" 2>&1; then
+    if grep -q "error:" "$PYRIGHT_LOG"; then
         echo "    ✗ pyright reported errors:"
-        grep "error:" /tmp/pyright.log | sed 's/^/      /' | head -20
+        grep "error:" "$PYRIGHT_LOG" | sed 's/^/      /' | head -20
         exit 1
     fi
     # exit code may be non-zero due to warnings only — accept that
 fi
 
 echo "  - pytest..."
-if ! uv run pytest tests/ -q --no-header >/tmp/pytest.log 2>&1; then
+if ! uv run pytest tests/ -q --no-header >"$PYTEST_LOG" 2>&1; then
     echo "    ✗ pytest failed:"
-    sed 's/^/      /' /tmp/pytest.log | tail -30
+    sed 's/^/      /' "$PYTEST_LOG" | tail -30
     exit 1
 fi
 
@@ -155,15 +169,16 @@ if $DO_LOCAL; then
     uv pip install --python "$LOCAL_VENV/bin/python" "$WORK_DIR/$WHEEL_NAME" >/dev/null 2>&1
 
     LOCAL_PASS=0; LOCAL_FAIL=0
+    LOCAL_TEST_OUT="$WORK_DIR/local-test-out"
 
     run_local() {
         local name="$1"; shift
-        if "$@" >/tmp/local-test-out 2>&1; then
+        if "$@" >"$LOCAL_TEST_OUT" 2>&1; then
             echo "  ✓ $name"
             LOCAL_PASS=$((LOCAL_PASS + 1))
         else
             echo "  ✗ $name"
-            sed 's/^/    /' /tmp/local-test-out | tail -10
+            sed 's/^/    /' "$LOCAL_TEST_OUT" | tail -10
             LOCAL_FAIL=$((LOCAL_FAIL + 1))
         fi
     }
@@ -307,7 +322,10 @@ DOCKERFILE
 
         cat > "$WORK_DIR/run_tests.sh" <<'INNER'
 #!/bin/bash
-set -u
+# set -eo pipefail: fail fast inside multi-line test blocks. Without -e, a
+# crash in an intermediate command (e.g. svg2fbf in a multi-step bash -c)
+# would be masked by the final command's exit code, producing false passes.
+set -euo pipefail
 PASS=0; FAIL=0; FAILS=()
 run() {
     local name="$1"; shift
@@ -392,7 +410,9 @@ exit 0
 INNER
         chmod +x "$WORK_DIR/run_tests.sh"
 
-        IMG="svg2fbf-clean-test:latest"
+        # The per-run image tag $IMG was set at the top of the script so the
+        # EXIT trap can clean it up even if we abort before this point.
+        # See the trap definition near `mktemp -d` for rationale.
         # Pass --platform on BOTH build and run so the container CPU
         # matches the host exactly. Without --platform Docker falls back
         # to its default (which on multi-arch Docker Desktop is x86_64
@@ -408,8 +428,14 @@ INNER
             # Puppeteer's Chromium leaked under emulation. Capping the
             # container forces the leak to surface as an OOM kill INSIDE
             # the container instead of consuming all host swap.
-            #   --memory=4g       : RSS cap
-            #   --memory-swap=4g  : disable swap (memory-swap == memory)
+            #   --memory=6g       : RSS cap. Bumped from 4g because
+            #                       puppeteer's first-install peak is
+            #                       ~3.1 GB and growing ~10% per minor
+            #                       version; 4g was getting OOM-killed
+            #                       mid-install. 6g is still safely
+            #                       below the release_all.sh host-swap
+            #                       watchdog (4 GB swap threshold).
+            #   --memory-swap=6g  : disable swap (memory-swap == memory)
             #   --pids-limit=512  : prevent fork bombs from spawning
             #                       runaway chromium tabs
             #   --shm-size=512m   : explicit shm so Chromium's /dev/shm
@@ -417,8 +443,8 @@ INNER
             #                       consume large amounts of host shm)
             if ! docker run \
                 --platform="$DOCKER_PLATFORM" \
-                --memory=4g \
-                --memory-swap=4g \
+                --memory=6g \
+                --memory-swap=6g \
                 --pids-limit=512 \
                 --shm-size=512m \
                 --rm \

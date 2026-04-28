@@ -62,6 +62,28 @@
 
 set -uo pipefail
 
+# Re-exec under setsid so we are guaranteed to be the leader of our own
+# process group / session. This makes `kill -- -$$` in the memory
+# watchdog deterministic: it targets exactly the pgid we just created,
+# and the kernel cannot route the signal to the parent shell or runner.
+# Without this, when stdin is not a tty (CI runners, sourced from
+# another script, piped through tee, etc.), bash often does NOT make
+# this script the pgid leader and the watchdog's kill becomes a
+# permission-denied no-op — exactly the failure mode the watchdog is
+# supposed to prevent.
+if [[ -z "${RELEASE_ALL_REEXEC:-}" ]]; then
+    export RELEASE_ALL_REEXEC=1
+    if command -v setsid >/dev/null 2>&1; then
+        # Linux setsid; -w waits for the child so exit codes propagate.
+        exec setsid -w "$0" "$@"
+    else
+        # macOS lacks setsid(1). Use bash -c with job-control mode to
+        # force a new pgid for the inner exec. The double-exec trick
+        # ensures the inner bash IS the pgid leader.
+        exec /usr/bin/env bash -c 'set -m; exec "$0" "$@"' "$0" "$@"
+    fi
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -95,7 +117,7 @@ log()  { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
 err()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; }
 
-# Background watchdog: every 10s, if host swap usage grows above 8 GB
+# Background watchdog: every 2s, if host swap usage grows above 4 GB
 # (a sane proxy for "memory leak running away"), kill our own pgid so
 # all docker subprocesses die. Without this, a Chromium leak inside
 # Docker Desktop or under Rosetta can balloon swap to 200GB+ on a
@@ -103,21 +125,32 @@ err()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; }
 # the container's --memory cap because Docker Desktop on macOS uses a
 # Linux VM, and memory accounting between the VM and the host is not
 # direct.
+#
+# Why 2s / 4 GB instead of 10s / 8 GB: empirically Chromium under
+# emulation can grow swap by tens of GB per second when leaking. With
+# a 10 s poll on a 100 GB/min leak, the *effective* trigger ends up
+# closer to 25 GB even though we wanted to abort at 8 GB. Polling
+# every 2 s with a 4 GB threshold catches the runaway much sooner; the
+# awk cost every 2 s is negligible.
 WATCHDOG_PID=
 start_memory_watchdog() {
     (
         while true; do
-            sleep 10
+            sleep 2
             if [[ "$(uname -s)" == "Darwin" ]]; then
-                # macOS: swap used in MB (sysctl returns "M = 1234.50")
-                SWAP_GB=$(sysctl vm.swapusage 2>/dev/null \
+                # macOS: swap used in MB (sysctl returns "M = 1234.50").
+                # MUST force LC_ALL=C — sysctl localizes the decimal
+                # separator to ',' under de_DE / fr_FR / it_IT, which the
+                # gsub below would strip and then print 100x the real
+                # value, instantly tripping the watchdog.
+                SWAP_GB=$(LC_ALL=C sysctl vm.swapusage 2>/dev/null \
                     | awk '{for(i=1;i<=NF;i++)if($i=="used"){gsub(/[^0-9.]/,"",$(i+2));print int($(i+2)/1024+0.5);exit}}')
             else
                 # Linux: /proc/meminfo SwapTotal-SwapFree, in GB
                 SWAP_GB=$(awk '/SwapTotal/{tot=$2}/SwapFree/{free=$2}END{print int((tot-free)/1024/1024+0.5)}' /proc/meminfo 2>/dev/null || echo 0)
             fi
             SWAP_GB=${SWAP_GB:-0}
-            if (( SWAP_GB > 8 )); then
+            if (( SWAP_GB > 4 )); then
                 err "🚨 MEMORY WATCHDOG: host swap usage is ${SWAP_GB}GB — aborting to protect the system."
                 err "   Likely cause: Chromium leak inside Docker. Killing our process group."
                 # Kill our entire process group, which includes Docker
@@ -177,9 +210,12 @@ ok "Docker daemon reachable (context: $(docker context show 2>/dev/null), engine
 # prevents this in the gate, but we also want a host-level guard that
 # fails fast BEFORE we start any builds.
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    # macOS: memory_pressure reports system memory state
-    FREE_BYTES="$(sysctl -n hw.memsize)"
-    PAGE_USED="$(vm_stat | awk '/Pages free|Pages inactive|Pages purgeable/{sum+=$3+0} END{print sum*4096}')"
+    # macOS: vm_stat reports memory in pages; page size differs between
+    # Intel (4096) and Apple Silicon (16384) — must read it from sysctl,
+    # NOT hardcode. Force LC_ALL=C so awk and sysctl produce '.' decimals
+    # regardless of user locale.
+    PAGE_SIZE="$(LC_ALL=C sysctl -n hw.pagesize)"
+    PAGE_USED="$(LC_ALL=C vm_stat | awk -v ps="$PAGE_SIZE" '/Pages free|Pages inactive|Pages purgeable/{sum+=$3+0} END{print sum*ps}')"
     HOST_FREE_GB=$(( PAGE_USED / 1024 / 1024 / 1024 ))
 else
     # Linux: /proc/meminfo
@@ -230,9 +266,9 @@ log "STEP 2/6: Running full quality gate (lint + types + tests + Docker E2E)"
 
 # Arm the host-side memory watchdog before the heavy Docker work
 # starts. Watchdog auto-kills the process group if host swap usage
-# exceeds 8 GB.
+# exceeds 4 GB (poll every 2 s).
 start_memory_watchdog
-ok "Memory watchdog armed (pid $WATCHDOG_PID, threshold: 8GB swap)"
+ok "Memory watchdog armed (pid $WATCHDOG_PID, threshold: 4GB swap, poll: 2s)"
 
 if ! "$PROJECT_ROOT/scripts/test_release_clean.sh"; then
     abort "Quality gate FAILED — release aborted. Fix issues and rerun." 2
@@ -282,18 +318,35 @@ forward_merge() {
     local source="$2"
     log "  Merge $source → $target"
 
+    # Snapshot source's tip BEFORE the merge so we can verify afterwards
+    # that $target now contains $source's commits (defensive check
+    # against a force-pushed/rebased $source making the merge a silent
+    # no-op).
+    local source_sha
+    source_sha="$(git rev-parse "$source")"
+
     git checkout "$target" || abort "Cannot checkout $target" 3
+    # CRITICAL: this MUST abort on persistent failure, not silently break
+    # out and proceed to merge. Otherwise an unreachable origin during
+    # the inner pull would let us merge against a stale base, push, and
+    # publish a release that does not contain origin/$target's commits.
     i=0
     until git -c http.lowSpeedLimit=100 -c http.lowSpeedTime=300 pull --ff-only origin "$target" 2>&1; do
         i=$((i + 1))
-        [[ $i -ge 3 ]] && break
+        [[ $i -ge 5 ]] && abort "Cannot fast-forward $target from origin (ran out of retries)" 3
         sleep 4
     done
 
     if ! git merge --no-ff "$source" -m "merge: forward $source → $target via release_all.sh" 2>/dev/null; then
-        # Resolve known version-bump conflicts in dev's favor.
-        # These three files are version-bump artifacts where dev is always the
-        # source of truth during a release pipeline.
+        # Resolve known version-bump conflicts using `--theirs`, where
+        # `--theirs` = the incoming branch (the one we are merging FROM).
+        # For dev → testing, that's dev; for testing → review, that's
+        # testing (which already contains dev's bumps from the previous
+        # step); for review → master, that's review. In all three steps
+        # this picks the version-bump artifacts from the upstream branch
+        # of the chain, which is what we want — pyproject.toml, uv.lock
+        # and CHANGELOG.md are always sourced from the upstream branch
+        # during a forward-merge release.
         local conflicts
         conflicts="$(git diff --name-only --diff-filter=U)"
         if [[ -n "$conflicts" ]]; then
@@ -303,14 +356,34 @@ forward_merge() {
                     git add "$f"
                 fi
             done
-            # Any unresolved conflicts left? Bail.
+            # Any unresolved conflicts left? Bail — but FIRST run
+            # `git merge --abort` so we leave the working tree on $target
+            # at its pre-merge state instead of in a half-merged state
+            # that requires manual `git merge --abort` before the user
+            # can rerun the script.
             if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
-                abort "Unresolved conflicts on $target: $(git diff --name-only --diff-filter=U | tr '\n' ' ')" 3
+                local unresolved
+                unresolved="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
+                git merge --abort 2>/dev/null || true
+                abort "Unresolved conflicts on $target: $unresolved" 3
             fi
             git commit --no-edit || abort "Cannot finalize merge on $target" 3
         else
+            # Merge failed but produced no conflict markers (e.g. hook
+            # rejection, pre-commit failure). Reset back to a clean
+            # state so the script is rerunnable without manual recovery.
+            git merge --abort 2>/dev/null || true
             abort "Merge $source → $target failed for unknown reason" 3
         fi
+    fi
+
+    # Verify the merge actually advanced $target to include $source's
+    # tip. If $source was force-pushed/rebased between the snapshot
+    # above and the merge, the merge could appear to succeed but leave
+    # $target without $source's commits — and we'd then publish a
+    # release whose contents don't match the dev branch the user expected.
+    if ! git merge-base --is-ancestor "$source_sha" HEAD; then
+        abort "After merge, $target does NOT contain $source ($source_sha) — was $source force-pushed during the release?" 3
     fi
 }
 
@@ -369,15 +442,23 @@ if $SKIP_VERIFY || $NO_PYPI; then
 else
     log "STEP 5/6: Re-running clean Docker test against the PyPI release"
 
-    # Wait for PyPI to make the new version visible
-    log "  Waiting for PyPI index to refresh..."
-    for i in 1 2 3 4 5 6; do
-        if curl -sf "https://pypi.org/pypi/svg2fbf/$PUBLISHED_VERSION/json" -o /tmp/pypi-check.json; then
+    # Wait for PyPI to make the new version visible. PyPI's CDN (Fastly
+    # + CloudFront origin shield) can take 2-5 minutes to serve a
+    # newly-published release on every edge — we've seen ~3 min lag in
+    # practice. 5 min total budget = 30 attempts × 10 s.
+    log "  Waiting for PyPI index to refresh (up to 5 min)..."
+    PYPI_CHECK_FILE="$(mktemp -t svg2fbf-pypi-check-XXXXXX.json)"
+    for i in $(seq 1 30); do
+        if curl -sf "https://pypi.org/pypi/svg2fbf/$PUBLISHED_VERSION/json" -o "$PYPI_CHECK_FILE"; then
             ok "  PyPI sees v$PUBLISHED_VERSION"
+            rm -f "$PYPI_CHECK_FILE"
             break
         fi
         sleep 10
-        [[ $i -eq 6 ]] && abort "PyPI did not pick up v$PUBLISHED_VERSION within 60s" 5
+        if [[ $i -eq 30 ]]; then
+            rm -f "$PYPI_CHECK_FILE"
+            abort "PyPI did not pick up v$PUBLISHED_VERSION within 5 min" 5
+        fi
     done
 
     # Run the Docker gate against the PyPI version (NOT the local wheel)
@@ -392,6 +473,21 @@ else
     log "  Using --platform=$DOCKER_PLATFORM (host: $HOST_ARCH)"
 
     PYPI_VERIFY_DIR="$(mktemp -d -t svg2fbf-pypi-verify-XXXXXX)"
+    # Make sure the temp dir AND the verify image are removed even if
+    # the script aborts mid-verification (build failure, byte-exact
+    # mismatch, signal). Chain the existing watchdog trap so we don't
+    # clobber it.
+    cleanup_verify() {
+        rm -rf "$PYPI_VERIFY_DIR" 2>/dev/null || true
+        docker rmi -f "svg2fbf-pypi-verify:$PUBLISHED_VERSION" >/dev/null 2>&1 || true
+    }
+    trap 'cleanup_verify; kill "$WATCHDOG_PID" 2>/dev/null || true' EXIT
+    # FIRST heredoc: UNQUOTED `<<DOCKERFILE` — this is intentional. We
+    # WANT $PUBLISHED_VERSION (and the literal-escaped \\, \$ pairs) to
+    # be expanded by the parent shell BEFORE the file is written, so the
+    # version pin gets baked into the Dockerfile. Anything you add here
+    # that uses `$VAR` will be expanded by bash; use `\$VAR` to keep it
+    # literal for Docker.
     cat > "$PYPI_VERIFY_DIR/Dockerfile" <<DOCKERFILE
 FROM python:3.12-slim
 RUN apt-get update && \\
@@ -405,10 +501,26 @@ RUN python -m venv /opt/venv && \\
 ENV PATH="/opt/venv/bin:\$PATH"
 RUN mkdir -p /test/tests/fixtures/e2e/frames /test/tests/fixtures/e2e/broken_frames
 DOCKERFILE
-    cat "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00001.svg" > "$PYPI_VERIFY_DIR/f1.svg"
-    cat "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00002.svg" > "$PYPI_VERIFY_DIR/f2.svg"
-    cat "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00003.svg" > "$PYPI_VERIFY_DIR/f3.svg"
-    cat "$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg" > "$PYPI_VERIFY_DIR/expected.fbf.svg"
+    # Guard each fixture copy: if a fixture is missing, `cat` on a
+    # non-existent file would print to stderr and create an empty
+    # destination, leaving the Docker build to silently produce a
+    # broken byte-exact comparison instead of aborting now.
+    for src in \
+        "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00001.svg" \
+        "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00002.svg" \
+        "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00003.svg" \
+        "$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg"
+    do
+        [[ -s "$src" ]] || abort "PyPI verification fixture missing or empty: $src" 5
+    done
+    cat "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00001.svg" > "$PYPI_VERIFY_DIR/f1.svg" || abort "Cannot copy fixture frame00001.svg" 5
+    cat "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00002.svg" > "$PYPI_VERIFY_DIR/f2.svg" || abort "Cannot copy fixture frame00002.svg" 5
+    cat "$PROJECT_ROOT/tests/fixtures/e2e/frames/frame00003.svg" > "$PYPI_VERIFY_DIR/f3.svg" || abort "Cannot copy fixture frame00003.svg" 5
+    cat "$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg" > "$PYPI_VERIFY_DIR/expected.fbf.svg" || abort "Cannot copy fixture animation.fbf.svg" 5
+    # SECOND heredoc: QUOTED `<<'DOCKERFILE2'` — this is intentional.
+    # No shell expansion; everything goes through verbatim. Adding a
+    # line that needs $PUBLISHED_VERSION here would NOT expand — switch
+    # to the unquoted heredoc above instead.
     cat >> "$PYPI_VERIFY_DIR/Dockerfile" <<'DOCKERFILE2'
 COPY f1.svg /test/tests/fixtures/e2e/frames/frame00001.svg
 COPY f2.svg /test/tests/fixtures/e2e/frames/frame00002.svg
@@ -421,16 +533,35 @@ DOCKERFILE2
         abort "PyPI verification: Docker build failed" 5
     fi
     # See test_release_clean.sh for why these limits are required.
+    # Memory bumped to 6g (from 4g): puppeteer first-install peak is
+    # ~3.1 GB and growing ~10% per minor; 4g leaves <500 MB headroom and
+    # has been getting OOM-killed mid-install on recent puppeteer
+    # versions. 6g is still safely under the host swap watchdog limit.
+    # Capture both stdout/stderr AND the docker exit code separately.
+    # Without `set -e`, a non-zero docker exit (e.g. container OOM-killed
+    # AFTER printing BYTE-EXACT-OK, or an unrelated docker daemon error)
+    # would silently pass the grep below and falsely greenlight a broken
+    # release. The `|| RC=$?` pattern works under `set -uo pipefail`
+    # because the parens make `RC=0` the default initialiser.
+    RC=0
     OUT="$(docker run \
         --platform="$DOCKER_PLATFORM" \
-        --memory=4g --memory-swap=4g --pids-limit=512 --shm-size=512m \
-        --rm "svg2fbf-pypi-verify:$PUBLISHED_VERSION" 2>&1)"
+        --memory=6g --memory-swap=6g --pids-limit=512 --shm-size=512m \
+        --rm "svg2fbf-pypi-verify:$PUBLISHED_VERSION" 2>&1)" || RC=$?
     docker rmi -f "svg2fbf-pypi-verify:$PUBLISHED_VERSION" >/dev/null 2>&1 || true
+    if (( RC != 0 )); then
+        echo "$OUT" >&2
+        abort "PyPI verification: docker run exited with code $RC" 5
+    fi
     if ! echo "$OUT" | grep -q BYTE-EXACT-OK; then
         echo "$OUT" >&2
         abort "PyPI verification: byte-exact comparison FAILED against published artifact" 5
     fi
     rm -rf "$PYPI_VERIFY_DIR"
+    # Restore the simple watchdog-only EXIT trap now that verify is
+    # complete and the temp dir is gone — no more verify resources to
+    # clean up.
+    trap 'kill "$WATCHDOG_PID" 2>/dev/null || true' EXIT
     ok "Post-publish PyPI verification: PyPI artifact matches the byte-exact reference"
 fi
 
