@@ -153,6 +153,23 @@ cp "$PROJECT_ROOT/tests/fixtures/e2e/expected/animation.fbf.svg" "$WORK_DIR/e2e/
 cp "$PROJECT_ROOT/tests/fixtures/e2e/broken_frames/frame00001.svg" "$WORK_DIR/e2e/broken_frames/"
 cp "$PROJECT_ROOT/tests/fixtures/e2e/broken_frames/frame00002.svg" "$WORK_DIR/e2e/broken_frames/"
 
+# Text→path Docker E2E fixtures (TRDD-c2a3199d). Five SVG frames using
+# fonts that the Docker image installs deterministically via apt
+# (DejaVu Sans/Serif + Liberation Mono). Plus the golden FBF and the
+# stdlib helper that extracts a single frame from an FBF for visual
+# diffing inside the container.
+mkdir -p "$WORK_DIR/text_frames"
+for n in 1 2 3 4 5; do
+    cp "$PROJECT_ROOT/tests/fixtures/e2e/text_frames/frame0000$n.svg" "$WORK_DIR/text_frames/"
+done
+# Golden FBF is committed once captured; on the first run the file may
+# be absent (T12 will fail with a clear message instead of crashing).
+if [[ -f "$PROJECT_ROOT/tests/fixtures/e2e/text_frames/expected.fbf.svg" ]]; then
+    cp "$PROJECT_ROOT/tests/fixtures/e2e/text_frames/expected.fbf.svg" "$WORK_DIR/text_frames/expected.fbf.svg"
+fi
+cp "$PROJECT_ROOT/scripts/extract_fbf_frame.py" "$WORK_DIR/extract_fbf_frame.py"
+cp "$PROJECT_ROOT/scripts/visual_diff_text_frames.py" "$WORK_DIR/visual_diff_text_frames.py"
+
 OVERALL_FAIL=0
 
 # ----------------------------------------------------------------------
@@ -284,8 +301,18 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium'
 # Truly clean: ONLY Python. svg2fbf must auto-install everything else.
 FROM python:3.12-slim
 
+# fonts-dejavu + fonts-liberation are required by the text→path Docker
+# E2E (T11/T12/T13). They give svg-text2path's HarfBuzz shaper the exact
+# Latin font faces our committed fixtures reference by name, so the
+# byte-exact and visual-diff comparisons stay deterministic across host
+# Linux distributions and CI runners. These add ~14 MB to the image
+# and do not affect the auto-install tests (T1–T10), which exercise
+# Node/Puppeteer bootstrap and not font resolution.
 RUN apt-get update && \\
-    apt-get install -y --no-install-recommends libxml2-utils $EXTRA_PKGS && \\
+    apt-get install -y --no-install-recommends \\
+        libxml2-utils \\
+        fonts-dejavu fonts-liberation \\
+        $EXTRA_PKGS && \\
     rm -rf /var/lib/apt/lists/*
 
 $EXTRA_ENV
@@ -314,6 +341,23 @@ COPY e2e/expected.fbf.svg /test/tests/fixtures/e2e/expected.fbf.svg
 RUN mkdir -p /test/broken_frames
 COPY e2e/broken_frames/frame00001.svg /test/broken_frames/
 COPY e2e/broken_frames/frame00002.svg /test/broken_frames/
+
+# Text→path E2E fixtures (TRDD-c2a3199d). The five frames live at
+# tests/fixtures/e2e/text_frames so svg2fbf's --text2path output embeds
+# the same <fbf:sourceFramesPath> as on the host, which is required for
+# the byte-exact comparison.
+RUN mkdir -p /test/tests/fixtures/e2e/text_frames
+COPY text_frames/frame00001.svg /test/tests/fixtures/e2e/text_frames/
+COPY text_frames/frame00002.svg /test/tests/fixtures/e2e/text_frames/
+COPY text_frames/frame00003.svg /test/tests/fixtures/e2e/text_frames/
+COPY text_frames/frame00004.svg /test/tests/fixtures/e2e/text_frames/
+COPY text_frames/frame00005.svg /test/tests/fixtures/e2e/text_frames/
+# expected.fbf.svg may not yet exist on the very first run — captured
+# from the run output and committed afterwards. Use a one-line guard so
+# the COPY isn't fatal when missing (BuildKit needed for COPY --link).
+COPY text_frames/expected.fbf.sv[g] /test/tests/fixtures/e2e/text_frames/expected.fbf.svg
+COPY extract_fbf_frame.py /test/extract_fbf_frame.py
+COPY visual_diff_text_frames.py /test/visual_diff_text_frames.py
 
 COPY run_tests.sh /test/run_tests.sh
 RUN chmod +x /test/run_tests.sh
@@ -404,6 +448,131 @@ run "E2E byte-exact (fixtures → reference)" bash -c '
     fi
 '
 
+# ─────────────────────────────────────────────────────────────────────
+# Text→path E2E (TRDD-c2a3199d).
+#
+# These tests run AFTER the auto-repair-viewbox test above so Node.js
+# is already bootstrapped in the container. They install the Emasoft
+# verification harness (svg-bbox + svg-matrix) into the same global
+# npm prefix and then exercise svg2fbf --text2path end-to-end.
+# ─────────────────────────────────────────────────────────────────────
+
+# T_setup: install the verification harness (svg-bbox CLI from
+# Emasoft/SVG-BBOX). This is internal scaffolding, not a regression
+# test of svg2fbf itself, so we exit non-zero only if the install or
+# the binary lookup fails.
+run "T_setup: install svg-bbox harness via npm" bash -c '
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "FAIL: npm is not on PATH; the auto-repair test should have bootstrapped Node."
+        exit 1
+    fi
+    npm install -g svg-bbox >/tmp/npm-setup.log 2>&1
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "FAIL: npm install -g svg-bbox exited $rc"
+        tail -30 /tmp/npm-setup.log
+        exit 1
+    fi
+    for bin in sbb-svg2png sbb-compare sbb-extract sbb-getbbox; do
+        if ! command -v "$bin" >/dev/null 2>&1; then
+            echo "FAIL: $bin not on PATH after npm install -g svg-bbox"
+            exit 1
+        fi
+    done
+'
+
+# T11: --text2path bootstraps Bun (auto-install path) and converts text
+# to vector paths via the bundled svg-text2path/HarfBuzz pipeline.
+run "T11: svg2fbf --text2path bootstraps Bun + converts text→paths" bash -c '
+    cd /test
+    # Pre-condition: Bun must NOT be installed yet so we observe the
+    # auto-install path of svg2fbf actually firing.
+    if command -v bun >/dev/null 2>&1; then
+        echo "WARN: bun was already on PATH before T11; uninstalling so the test can verify auto-install."
+        npm uninstall -g bun >/dev/null 2>&1 || true
+        # Strip any residual symlink directly so the test starts clean.
+        rm -f "$(npm config get prefix)/bin/bun" 2>/dev/null || true
+    fi
+    if command -v bun >/dev/null 2>&1; then
+        echo "FAIL: could not remove pre-existing bun before T11."
+        exit 1
+    fi
+    rm -rf /tmp/text-out
+    svg2fbf \
+        -i tests/fixtures/e2e/text_frames \
+        -o /tmp/text-out \
+        --no-browser --skip-date --text2path \
+        -s 2.0 -a once -d 6 -c 6 -q
+    [[ -f /tmp/text-out/animation.fbf.svg ]] || { echo "FAIL: no FBF output produced"; exit 1; }
+    # If a host bind-mount is present at /captured (set via
+    # CAPTURE_GOLDEN=1 in the host invocation), drop a copy of the
+    # freshly generated FBF there so the operator can promote it to
+    # the committed golden after the very first run.
+    if [[ -d /captured ]]; then
+        cp /tmp/text-out/animation.fbf.svg /captured/expected.fbf.svg
+        echo "    captured golden FBF -> /captured/expected.fbf.svg"
+    fi
+    # Validate the FBF output is well-formed XML. xmllint is in the
+    # base Docker image (libxml2-utils) and is sufficient for syntax-
+    # level validation; FBF spec semantics are exercised by T12
+    # (byte-exact match) and T13 (visual diff).
+    xmllint --noout /tmp/text-out/animation.fbf.svg \
+        || { echo "FAIL: xmllint reported errors on FBF output"; exit 1; }
+    # Post-condition: Bun must now be on PATH (svg2fbf auto-installed it
+    # for SVG validation during text2path conversion).
+    command -v bun >/dev/null 2>&1 \
+        || { echo "FAIL: bun was not auto-installed by svg2fbf --text2path"; exit 1; }
+    # Conversion sanity: zero <text> elements remain, many <path> elements present.
+    text_count=$(grep -c "<text" /tmp/text-out/animation.fbf.svg || true)
+    path_count=$(grep -c "<path" /tmp/text-out/animation.fbf.svg || true)
+    if [[ "$text_count" != "0" ]]; then
+        echo "FAIL: expected 0 <text> elements in FBF output, got $text_count"
+        exit 1
+    fi
+    if [[ "$path_count" -lt 5 ]]; then
+        echo "FAIL: expected many <path> elements in FBF output, got $path_count"
+        exit 1
+    fi
+    echo "    text→path conversion verified: <text>=$text_count, <path>=$path_count"
+'
+
+# T12: byte-exact match of the text2path output against the committed
+# golden FBF. On the very first run the golden is missing — we surface
+# a clear actionable message so the operator can capture the freshly
+# generated FBF as the new golden.
+run "T12: text fixture E2E byte-exact (text2path mode)" bash -c '
+    cd /test
+    if [[ ! -f /test/tests/fixtures/e2e/text_frames/expected.fbf.svg ]]; then
+        echo "FAIL: no golden expected.fbf.svg yet."
+        echo "       To capture: copy /tmp/text-out/animation.fbf.svg from this"
+        echo "       run to tests/fixtures/e2e/text_frames/expected.fbf.svg and rerun."
+        exit 1
+    fi
+    if ! cmp /tmp/text-out/animation.fbf.svg /test/tests/fixtures/e2e/text_frames/expected.fbf.svg; then
+        echo "BYTE-EXACT MISMATCH (text2path):"
+        diff /tmp/text-out/animation.fbf.svg /test/tests/fixtures/e2e/text_frames/expected.fbf.svg | head -30
+        exit 1
+    fi
+'
+
+# T13: per-frame visual diff via the Python helper that drives
+# sbb-svg2png + sbb-compare. The pass threshold is sbb-compare's
+# diffPercentage (% of pixels that exceed the per-channel threshold).
+# Defaults: --pixel-threshold 32 (per-channel cutoff that ignores AA
+# fringe drift between hinted-text and unhinted-path renders) and
+# --max-diff-pct 3.0 (max share of differing pixels allowed). Both
+# can be overridden from the host shell via T13_PIXEL_THRESHOLD and
+# T13_MAX_DIFF_PCT respectively, useful for calibration runs.
+run "T13: text rendering frame-by-frame visual diff" \
+    python3 /test/visual_diff_text_frames.py \
+        --fbf /tmp/text-out/animation.fbf.svg \
+        --frames-dir /test/tests/fixtures/e2e/text_frames \
+        --frame-count 5 \
+        --pixel-threshold "${T13_PIXEL_THRESHOLD:-32}" \
+        --max-diff-pct "${T13_MAX_DIFF_PCT:-3.0}" \
+        --workdir /tmp/t13 \
+        --extractor /test/extract_fbf_frame.py
+
 echo "  Docker result: $PASS passed, $FAIL failed"
 [[ $FAIL -gt 0 ]] && { for f in "${FAILS[@]}"; do echo "    - $f"; done; exit 1; }
 exit 0
@@ -441,6 +610,28 @@ INNER
             #   --shm-size=512m   : explicit shm so Chromium's /dev/shm
             #                       is bounded (Chromium can otherwise
             #                       consume large amounts of host shm)
+            # CAPTURE_GOLDEN=1 enables a host bind-mount at /captured so
+            # T11 inside the container can drop the freshly generated
+            # text→path FBF on the host filesystem. Used during initial
+            # golden capture and after svg-text2path / font version bumps
+            # via scripts/regen_text_e2e_reference.sh.
+            CAPTURE_VOL_ARGS=()
+            if [[ "${CAPTURE_GOLDEN:-0}" = "1" ]]; then
+                mkdir -p "$WORK_DIR/captured"
+                CAPTURE_VOL_ARGS=(-v "$WORK_DIR/captured:/captured")
+                echo "  CAPTURE_GOLDEN=1 — mounting $WORK_DIR/captured:/captured"
+            fi
+            # CAPTURE_T13=1 mounts /tmp/t13 (where T13 stores PNGs and
+            # diff images) so the operator can inspect the rendered
+            # frames, the diff overlays, and the sbb-compare logs after
+            # the container exits — essential for calibrating the
+            # threshold.
+            if [[ "${CAPTURE_T13:-0}" = "1" ]]; then
+                mkdir -p "$WORK_DIR/t13"
+                CAPTURE_VOL_ARGS+=(-v "$WORK_DIR/t13:/tmp/t13")
+                echo "  CAPTURE_T13=1 — mounting $WORK_DIR/t13:/tmp/t13"
+            fi
+
             if ! docker run \
                 --platform="$DOCKER_PLATFORM" \
                 --memory=6g \
@@ -448,8 +639,30 @@ INNER
                 --pids-limit=512 \
                 --shm-size=512m \
                 --rm \
+                "${CAPTURE_VOL_ARGS[@]}" \
                 "$IMG"; then
                 OVERALL_FAIL=1
+            fi
+            # If we asked to capture the golden, copy it out of the
+            # ephemeral $WORK_DIR (which gets rm -rf'd on EXIT) into a
+            # stable user-visible location with a timestamp so the
+            # operator can review and promote it.
+            if [[ "${CAPTURE_GOLDEN:-0}" = "1" && -f "$WORK_DIR/captured/expected.fbf.svg" ]]; then
+                STABLE_DIR="$PROJECT_ROOT/reports/text2path-golden"
+                mkdir -p "$STABLE_DIR"
+                STABLE_PATH="$STABLE_DIR/$(date +%Y%m%d_%H%M%S%z)-expected.fbf.svg"
+                cp "$WORK_DIR/captured/expected.fbf.svg" "$STABLE_PATH"
+                echo "  Captured golden FBF: $STABLE_PATH"
+                echo "  Promote with: cp '$STABLE_PATH' tests/fixtures/e2e/text_frames/expected.fbf.svg"
+            fi
+            # Same idea for T13 outputs: copy out the rendered PNGs +
+            # diff overlays + logs so the threshold can be calibrated
+            # from the actual measured numbers.
+            if [[ "${CAPTURE_T13:-0}" = "1" && -d "$WORK_DIR/t13" ]]; then
+                STABLE_T13="$PROJECT_ROOT/reports/text2path-t13/$(date +%Y%m%d_%H%M%S%z)"
+                mkdir -p "$STABLE_T13"
+                cp -R "$WORK_DIR/t13/." "$STABLE_T13/"
+                echo "  Captured T13 artifacts: $STABLE_T13"
             fi
         fi
         # Always clean up the test image to prevent disk bloat (each
