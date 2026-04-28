@@ -37,7 +37,13 @@ def _sudo_prefix() -> list[str]:
     return [] if os.geteuid() == 0 else ["sudo"]
 
 
-def run_command(cmd: list[str], description: str, check: bool = True, cwd: str | None = None) -> tuple[bool, str]:
+def run_command(
+    cmd: list[str],
+    description: str,
+    check: bool = True,
+    cwd: str | None = None,
+    timeout: int = 1800,
+) -> tuple[bool, str]:
     """
     Run a shell command and return success status and output.
 
@@ -46,26 +52,89 @@ def run_command(cmd: list[str], description: str, check: bool = True, cwd: str |
         description: Human-readable description for error messages
         check: Whether to raise on non-zero exit code
         cwd: Optional working directory for command execution
+        timeout: Per-command timeout in seconds. Defaults to 30 minutes
+            because `npm install puppeteer` downloads ~170 MB of Chromium
+            and unpacks it; the previous 5-minute cap routinely failed on
+            slow networks (cellular tethering, corporate proxies, regions
+            far from CDN edges) and reported the install as broken even
+            though it would have succeeded.
 
     Returns:
         Tuple of (success: bool, output: str)
     """
+    # Use Popen + start_new_session=True so the command lives in its own
+    # process group. On TimeoutExpired we send SIGTERM (then SIGKILL after
+    # a short grace period) to the WHOLE process group instead of just the
+    # immediate child — `npm install` spawns a tree of node/gyp/curl
+    # subprocesses and orphaning them on timeout was the qwen-flagged
+    # source of background CPU/network usage long after the CLI exited.
+    proc: subprocess.Popen[str] | None = None
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minutes max
-            check=check,
-            cwd=cwd,
-        )
-        return True, result.stdout + result.stderr
-    except subprocess.CalledProcessError as e:
-        return False, f"{description} failed: {e.stderr}"
-    except subprocess.TimeoutExpired:
-        return False, f"{description} timed out after 5 minutes"
+        kwargs: dict = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+            "cwd": cwd,
+        }
+        if hasattr(os, "setsid"):
+            # POSIX: create a fresh session+pgid so killpg targets the tree.
+            kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **kwargs)
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _terminate_process_group(proc)
+            return False, f"{description} timed out after {timeout} seconds"
+        rc = proc.returncode
+        # Why: when check=False, a non-zero exit still has to surface as a
+        # failure or a failing `npm install` / `apt install` would silently
+        # return success, causing install_puppeteer / install_nodejs to
+        # report "✅ installed successfully" on actual failures.
+        if rc != 0:
+            if check:
+                return False, f"{description} failed (exit {rc}): {stdout}{stderr}"
+            return False, f"{description} failed: {stdout}{stderr}"
+        return True, stdout + stderr
+    except FileNotFoundError as e:
+        return False, f"{description} error: command not found: {e.filename}"
     except Exception as e:
+        if proc is not None and proc.poll() is None:
+            _terminate_process_group(proc)
         return False, f"{description} error: {e}"
+
+
+def _terminate_process_group(proc: "subprocess.Popen[str]") -> None:
+    """Best-effort termination of a Popen and its child process tree.
+
+    On POSIX we send SIGTERM to the leader's process group, wait briefly,
+    then escalate to SIGKILL. On Windows fall back to ``proc.kill()`` since
+    ``os.killpg`` is not available there.
+    """
+    import signal
+    import time
+
+    try:
+        if hasattr(os, "killpg") and proc.pid:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+            for _ in range(20):  # up to ~2 s grace
+                if proc.poll() is not None:
+                    return
+                time.sleep(0.1)
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+        else:
+            proc.kill()
+    finally:
+        # Always reap so the zombie is collected.
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def detect_package_manager() -> str | None:

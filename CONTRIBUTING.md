@@ -136,6 +136,38 @@ uv run pytest tests/test_frame_rendering.py
 uv run pytest tests/ --cov=svg2fbf
 ```
 
+#### Docker end-to-end suite (T1–T13)
+
+For changes that touch the conversion pipeline (especially `--text2path`,
+text rendering, FBF assembly, or auto-install), run the Docker E2E
+suite — it builds a clean `python:3.12-slim` image with deterministic
+fonts and exercises every release-blocking path:
+
+```bash
+./scripts/test_release_clean.sh --docker-only
+```
+
+It runs T1–T10 (Node/Puppeteer auto-install), T_setup/T11 (svg-bbox
+harness + `--text2path` end-to-end), T12 (byte-exact FBF compare against
+the golden) and T13 (per-frame visual diff of the FBF against the input
+fixtures, budget < 3 % `diffPercentage`).
+
+Relevant scripts and fixtures:
+
+- `tests/fixtures/e2e/text_frames/` — 5 deterministic text fixture SVGs (DejaVu Sans/Serif + Liberation Mono only) and the golden `expected.fbf.svg`. The `*.fbf.svg` ignore rule has an explicit exception for this golden in `tests/.gitignore`; if you regenerate the golden, the exception is what keeps it tracked.
+- `scripts/visual_diff_text_frames.py` — T13 harness (cwd-stages inputs and runs `sbb-compare --json`).
+- `scripts/extract_fbf_frame.py` — XML-level extraction of one frame from an FBF.
+- `scripts/pin_fbf_frame_to_png.py` — calibration utility: pins PROSKENION to frame N and renders the full FBF wrapper to PNG via `sbb-svg2png`. Useful when calibrating the T13 thresholds.
+
+`sbb-svg2png` and `sbb-compare` v1.0.14 sandbox file paths to
+`process.cwd()` and have no `--allow-paths` flag — always invoke them
+with `cwd=` set to a directory that contains every input/output, or
+stage files into one. The harness scripts above already do this.
+
+Tracked upstream: [Emasoft/SVG-BBOX#3](https://github.com/Emasoft/SVG-BBOX/issues/3) — first-class
+FBF→PNG frame export in `sbb-svg2png` would obsolete the pin-and-render
+workaround in `pin_fbf_frame_to_png.py`.
+
 ## Development Setup (UV-only)
 
 1. Install global tools (one-time):

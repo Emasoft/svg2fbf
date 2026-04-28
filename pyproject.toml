@@ -86,10 +86,9 @@ dependencies = [
     "defusedxml>=0.7.1",
     "numpy>=2.2.0",
     "pyyaml>=6.0",
-]
-
-[project.optional-dependencies]
-text2path = [
+    # svg-text2path is REQUIRED, not optional — needed by the --text2path
+    # flag which is part of the standard svg2fbf workflow. Pulls in
+    # uharfbuzz (HarfBuzz Python bindings) for accurate text shaping.
     "svg-text2path>=0.5.0",
 ]
 

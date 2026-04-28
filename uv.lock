@@ -1182,10 +1182,6 @@ dependencies = [
     { name = "defusedxml" },
     { name = "numpy" },
     { name = "pyyaml" },
-]
-
-[package.optional-dependencies]
-text2path = [
     { name = "svg-text2path" },
 ]
 
@@ -1211,9 +1207,8 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "numpy", specifier = ">=2.2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "svg-text2path", marker = "extra == 'text2path'", specifier = ">=0.5.0" },
+    { name = "svg-text2path", specifier = ">=0.5.0" },
 ]
-provides-extras = ["text2path"]
 
 [package.metadata.requires-dev]
 dev = [

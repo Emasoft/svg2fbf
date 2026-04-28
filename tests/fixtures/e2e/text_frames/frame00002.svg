@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <path id="curve_00002" d="M 20,120.0 C 70,91.2 130,108.8 180,120.0" fill="none"/>
+  </defs>
+  <rect width="200" height="200" fill="#ffffff"/>
+  <text font-family="DejaVu Sans" font-weight="400" font-style="normal" font-size="14" fill="#000000" transform="translate(45.00,40.00) rotate(8.49) scale(1.000)">Hello</text>
+  <text font-family="DejaVu Sans" font-weight="700" font-style="normal" font-size="14" fill="#000000" transform="translate(70.44,55.56) rotate(11.12) scale(1.185)">World</text>
+  <text font-family="DejaVu Serif" font-weight="400" font-style="normal" font-size="14" fill="#000000" transform="translate(88.94,74.15) rotate(7.00) scale(1.000)">svg2fbf</text>
+  <text font-family="Liberation Mono" font-weight="400" font-style="normal" font-size="14" fill="#000000" transform="translate(121.55,97.37) rotate(10.98) scale(1.000)">frame2</text>
+  <text font-family="DejaVu Sans" font-weight="400" font-size="12" fill="#0033aa">
+    <textPath href="#curve_00002" xlink:href="#curve_00002">Animation along curve</textPath>
+  </text>
+</svg>

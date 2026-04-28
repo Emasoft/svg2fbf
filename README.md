@@ -887,6 +887,103 @@ svg2fbf -i frames/ -o output/ -f loop.fbf.svg -s 12 -p -a pingpong_once_reversed
 | `-q, --quiet` | 🔇 Suppress status messages | `False` |
 | `--keep-xml-space` | Keep xml:space="preserve" attribute | `False` |
 | `--no-keep-ratio` | Don't add preserveAspectRatio | `False` |
+| `--skip-date` | ⏱️  Omit `fbf:generatedDate` metadata for byte-exact reproducible builds | `False` |
+| `--auto-repair-viewbox` | 🔧 Auto-run `svg-repair-viewbox` on frames missing a viewBox (installs Node.js + Puppeteer + Chromium on first use, ~170 MB) | `False` |
+| `--allow-remote-images` | 🌐 Allow embedding images fetched over `http(s)://` (off by default for SSRF protection) | `False` |
+| `--max-image-bytes` | 🛡️  Maximum bytes per embedded image | `52428800` (50 MB) |
+
+#### Reproducible builds (`--skip-date`)
+
+Every svg2fbf invocation embeds a `fbf:generatedDate` timestamp in the
+output FBF metadata, so two runs with identical inputs produce
+byte-different files by design. Pass `--skip-date` to omit that field
+entirely. This is intended for:
+
+- **CI / regression tests** — diff the output against a known-good fixture
+  without filtering the timestamp out post-hoc.
+- **Reproducible builds** — guarantee bit-exact rebuilds for supply-chain
+  audits.
+- **Cache-key stability** — the same input always produces the same FBF
+  hash.
+
+```bash
+svg2fbf -i frames/ -o output/ --skip-date
+```
+
+The `fbf:generatedDate` element is still emitted (empty self-closing
+tag) so downstream FBF-spec consumers see a consistent schema; only the
+ISO-8601 timestamp content is dropped.
+
+#### Auto-repairing missing viewBoxes (`--auto-repair-viewbox`)
+
+svg2fbf requires every input frame to declare a `viewBox` attribute on
+the root `<svg>` element. Frames without one are rejected up front,
+because guessing dimensions per-frame produces visually inconsistent
+animations. When a viewBox is missing, you have three choices:
+
+1. Repair manually with the standalone tool
+   (`svg-repair-viewbox <input_folder>`); see the
+   [SVG ViewBox Repair Utility](#svg-viewbox-repair-utility) section
+   above.
+2. Pre-process frames in your own pipeline (e.g. an Inkscape batch).
+3. Pass `--auto-repair-viewbox` to make svg2fbf invoke
+   `svg-repair-viewbox` automatically on the first missing-viewBox frame
+   it sees.
+
+```bash
+svg2fbf -i frames/ -o output/ --auto-repair-viewbox
+```
+
+**What gets installed on first use:** the repair tool relies on a
+headless browser to compute accurate bounding boxes. The first time
+`--auto-repair-viewbox` runs, svg2fbf will trigger
+`svg-repair-viewbox`'s bootstrap path, which downloads Node.js (if not
+already present) and `npm install`s Puppeteer (which itself bundles
+Chromium, ~170 MB). That download happens once per machine and is
+cached for subsequent runs. The flag is opt-in specifically so this
+download is never triggered by accident.
+
+**Linux ARM64 / Alpine / musl:** Puppeteer's bundled Chromium is x86_64
+glibc only. On non-glibc Linux you must install the system Chromium
+package and point Puppeteer at it:
+
+```bash
+# Debian/Ubuntu
+apt install chromium && export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+# Alpine
+apk add chromium && export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+```
+
+In rootless containers add `PUPPETEER_ARGS='--no-sandbox'`.
+
+#### Embedding remote images (`--allow-remote-images`, `--max-image-bytes`)
+
+When svg2fbf flattens animation frames it inlines `<image href="...">`
+references as base64 data URIs so the output FBF is fully
+self-contained. By default only **local file references** (relative
+paths or absolute filesystem paths) are followed:
+
+- Relative `href`s are resolved against the input frame's directory.
+- Absolute filesystem paths are read directly.
+- `http://` and `https://` URLs are **refused** unless you explicitly
+  pass `--allow-remote-images`.
+- `file://` URIs and every other scheme (`gopher://`, `ldap://`,
+  `ftp://`, `smb://`, …) are hard-rejected — they have been used for
+  SSRF and local-file disclosure via crafted SVGs.
+
+```bash
+# Default (safe): remote URLs are skipped with a warning.
+svg2fbf -i frames/ -o output/
+
+# Allow http(s) image embedding (only enable on trusted inputs).
+svg2fbf -i frames/ -o output/ --allow-remote-images
+```
+
+Every read — local OR remote — is capped at `--max-image-bytes` bytes
+(default 50 MB). This protects against accidentally embedding a 4K
+sprite sheet or a malicious oversized payload that would OOM the
+process.
 
 ### Text-to-Path Conversion
 
@@ -897,9 +994,12 @@ Convert text elements in SVG frames to vector paths before processing. This enab
 - ✅ **Smaller file sizes** - For animations with repeated text across frames
 
 **Installation:**
+
+`svg-text2path` ships as a standard runtime dependency of svg2fbf (no extras
+syntax needed). A normal install gives you `--text2path` automatically:
 ```bash
-# Install svg2fbf with text2path support
-uv tool install 'svg2fbf[text2path]'
+# First-time install
+uv tool install svg2fbf
 
 # Or upgrade existing installation
 uv tool upgrade svg2fbf

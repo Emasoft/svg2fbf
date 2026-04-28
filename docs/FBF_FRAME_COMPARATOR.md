@@ -255,6 +255,9 @@ The comparator shares infrastructure with `test_frame_rendering.py`:
 - **svg2fbf** - Generates FBF animations from SVG frames
 - **test_frame_rendering.py** - Tests svg2fbf output accuracy
 - **testrunner.py** - Session-based testing for svg2fbf
+- **scripts/extract_fbf_frame.py** - XML-level lift of `<g id="FRAME0000N">` + `<g id="SHARED_DEFINITIONS">` from an FBF.SVG into a fresh standalone SVG. Used by the T13 Docker E2E harness for per-frame comparison without playing back the animation timeline. Loses ancestor inheritance from `ANIMATION_BACKDROP > ANIMATION_STAGE > ANIMATED_GROUP > PROSKENION` and any `STAGE_FOREGROUND` / `OVERLAY_LAYER` content (empty by default).
+- **scripts/pin_fbf_frame_to_png.py** - Calibration utility. Mutates a copy of an FBF.SVG (pin PROSKENION's `xlink:href`, drop the `<animate>` child) and renders to PNG via `sbb-svg2png`. Preserves the full FBF wrapper — ancestor inheritance, foreground/overlay layers, root SVG attrs — so the rendered PNG matches what a viewer truly sees at frame N. First-class FBF→PNG frame export is tracked upstream as [Emasoft/SVG-BBOX#3](https://github.com/Emasoft/SVG-BBOX/issues/3); when that lands, the pin-and-render workaround in this script becomes obsolete.
+- **scripts/visual_diff_text_frames.py** - T13 harness in the Docker E2E suite. Stages input fixtures into `--workdir` and runs `sbb-compare --json` with `cwd=workdir` (sbb tools v1.0.14 sandbox file paths to `process.cwd()` and have no `--allow-paths` flag). Defaults: per-pixel-channel threshold 32/256, image-wide diffPercentage budget 3 %.
 
 ## License
 
