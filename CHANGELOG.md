@@ -91,6 +91,7 @@ take this rc1 to 0.1.20 stable.
 - Merge dev into testing - feature complete, ready for testing
 - Testing → review (all CI green at aeb8f2eda476650134dd0b7d362c280c0734ce3b)
 - Review → master (bootstrap; one-off manual merge to deploy workflow self-counting fix)
+- Release stable 0.1.21
 
 ### Testing
 
@@ -116,6 +117,7 @@ take this rc1 to 0.1.20 stable.
 
 - Gitignore /reports/ and /reports_dev/ per agent-reports rule
 - Add CODEOWNERS — make Emasoft the code owner of everything
+- Update uv.lock for stable 0.1.21
 
 ### CI/CD
 
