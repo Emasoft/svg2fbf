@@ -11175,6 +11175,25 @@ def cli():
     """
     global options
 
+    # Force UTF-8 on stdout/stderr before any print/help.
+    # Why: Windows defaults sys.stdout/sys.stderr to cp1252, which
+    # cannot encode the non-ASCII characters in the help banner
+    # (arrows, emoji, box-drawing). `argparse.print_help()` raises
+    # UnicodeEncodeError as soon as one of those bytes hits the
+    # stream. Reconfiguring with errors='replace' keeps the CLI
+    # usable on legacy consoles even if the active code page can't
+    # render every glyph — better to show a `?` than to crash.
+    # macOS / Linux are already UTF-8 by default, so reconfigure is
+    # a no-op there.
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            # AttributeError: very old Python or non-TextIOWrapper
+            # (e.g. captured StringIO in tests). ValueError: stream
+            # is detached. Either way, nothing to reconfigure.
+            pass
+
     cl_parser = setup_command_line_parser()
     options = cl_parser.parse_args()
 
