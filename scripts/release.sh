@@ -1187,6 +1187,22 @@ release_channel() {
       _tag_exists=true
     fi
     if $_tag_exists; then
+      # If there are new commits past the existing tag, this is NOT a
+      # partial-publish recovery — it's a normal new-release run where
+      # pyproject.toml hasn't been bumped yet (still reads the previous
+      # released version). Fall through to the normal bump flow so the
+      # new commits ship as the next version. Without this check, the
+      # recovery branch below would no-op (or re-publish the already-
+      # published version) and silently strand all post-tag work.
+      local _commits_past_tag
+      _commits_past_tag=$(git rev-list --count "${_resume_tag}..HEAD" 2>/dev/null || echo "0")
+      if [[ "$_commits_past_tag" -gt 0 ]]; then
+        echo ""
+        echo "ℹ️  Tag ${_resume_tag} exists but HEAD has ${_commits_past_tag} commit(s) past it."
+        echo "    This is a normal new-release run, not a partial-publish recovery."
+        echo "    Falling through to bump flow (will produce next version after ${current_version})."
+        echo ""
+      else
       local _pypi_status
       _pypi_status="$(curl -s -o /dev/null -w '%{http_code}' \
         "https://pypi.org/pypi/svg2fbf/${current_version}/json" 2>/dev/null || echo '000')"
@@ -1303,6 +1319,7 @@ release_channel() {
       fi
 
       return 0
+      fi
     fi
   fi
   # ----------------------------------------------------------------------
