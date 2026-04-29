@@ -132,6 +132,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.sha.outputs.sha }}
           FORCE: ${{ github.event.inputs.force }}
+          SELF_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -146,8 +147,13 @@ jobs:
           #   - completed + success/skipped  → green
           #   - completed + anything else    → red
           #   - !completed                   → in-flight (silent retry)
-          inflight=$(echo "$runs_json" | jq '[.[] | select(.status != "completed")] | length')
-          failed_runs=$(echo "$runs_json" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")]')
+          # Exclude this workflow's own run from the in-flight count: when
+          # triggered by workflow_dispatch / pull_request_review / push,
+          # the current run shows up in the list keyed by the same SHA
+          # with status=in_progress, which would otherwise gate against
+          # itself forever.
+          inflight=$(echo "$runs_json" | jq --argjson self "$SELF_RUN_ID" '[.[] | select(.status != "completed" and .databaseId != $self)] | length')
+          failed_runs=$(echo "$runs_json" | jq --argjson self "$SELF_RUN_ID" '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .databaseId != $self)]')
           failed_count=$(echo "$failed_runs" | jq 'length')
 
           echo "in-flight runs: $inflight"
