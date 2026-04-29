@@ -289,6 +289,11 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      # claude-code-action needs OIDC to call Anthropic's API.
+      # Observed in run 25119731837 / job 73618812534:
+      # "Could not fetch an OIDC token. Did you remember to add
+      # id-token: write to your workflow permissions?"
+      id-token: write
     steps:
       - name: Checkout review branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
