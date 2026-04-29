@@ -70,7 +70,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Hardcoded workflow-name prefix (NOT ${{ github.workflow }}) so
+  # when called via workflow_call from release-pipeline.yml, this
+  # reusable workflow does NOT share a concurrency group with sibling
+  # workflow_call invocations (release-dry-run.yml etc.) — they would
+  # all otherwise get github.workflow="Release Pipeline".
+  #
+  # `inputs.ref || github.ref` so each workflow_call invocation
+  # within the same pipeline run (ci-testing-cross-platform,
+  # ci-review-cross-platform, ci-master-cross-platform) gets a
+  # distinct group keyed by the SHA being checked, rather than all
+  # three sharing the caller's `github.ref` (refs/heads/dev) and
+  # cancelling each other.
+  group: cross-platform-verify-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 env:

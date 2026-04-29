@@ -49,7 +49,9 @@ on:
         default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Hardcoded workflow-name prefix + per-invocation ref — see
+  # cross-platform-verify.yml for the full rationale.
+  group: release-dry-run-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
