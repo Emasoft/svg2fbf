@@ -5,6 +5,57 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.23] - 2026-04-29
+
+### Fixed
+
+- **release:** Make release.sh idempotent — partial-publish recovery
+- **release:** Run master→main sync in the 'fully published' no-op path too
+- **release-pipeline:** Use deploy key for branch pushes (bypass ruleset)
+- **release:** Fall through to bump flow when commits exist past tag
+
+### Other
+
+- Merge dev into testing - feature complete, ready for testing
+- Testing → review (all CI green at 3ccd694fdf3c9cfc643f5986dd62677c9543e665)
+- **actions:** Bump anthropics/claude-code-action db388438 → ef50f12 (v1.0.110)
+- Merge dev into testing - feature complete, ready for testing
+- Testing → review (all CI green at bfa438fdd7c7b469e4a555c6571ff8b693ef4677)
+- Merge dev into testing - feature complete, ready for testing
+
+# Conflicts:
+#	.github/workflows/release-dry-run.yml
+- Testing → review (all CI green at f974edf8cdf9f82745a99493be12a8dc7a9576fb)
+- Review → master (approved by Emasoft at 5373f56b7a3bea0364e70de58859ef017837056d)
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Merge testing into review - bugs fixed, ready for release candidate
+- Review → master (approved via stable-release environment)
+- Merge dev into testing - feature complete, ready for testing
+- Merge testing into review - bugs fixed, ready for release candidate
+- Review → master (approved via stable-release environment)
+
+### CI/CD
+
+- Fire pull_request:synchronize for PR #18 (claude-code-action SHA bump)
+- **pipeline:** Consolidate release flow into single workflow with needs+environments
+- Drop push triggers from cross-platform-verify + release-dry-run
+- **release-pipeline:** Drop human-approval gate, add advisory AI review
+- Fix concurrency-group collision in workflow_call invocations
+- **ai-review:** Add id-token: write so claude-code-action can fetch OIDC
+
+## [0.1.22] - 2026-04-29
+
+### Other
+
+- Release stable 0.1.22
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.22
+
 ## [0.1.21] - 2026-04-29
 
 ### Added
