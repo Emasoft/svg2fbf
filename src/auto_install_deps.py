@@ -14,6 +14,24 @@ import sys
 from pathlib import Path
 
 
+# Windows defaults stdout/stderr to cp1252 (or whatever the active code page
+# is) which cannot encode the emoji used in our status messages — the
+# resulting UnicodeEncodeError aborts the auto-installer mid-flight on real
+# Windows boxes, before any install actually happens. Reconfigure to UTF-8
+# at import time, matching what `python -X utf8` or `PYTHONIOENCODING=utf-8`
+# would do, with errors='replace' so a broken codec elsewhere can't kill us.
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, OSError, ValueError):
+            # reconfigure is missing on some embedded interpreters and on
+            # streams that aren't TextIOWrapper. Falling through is safe —
+            # callers will still see the underlying UnicodeEncodeError if
+            # one fires, just no worse than today.
+            pass
+
+
 def check_command_exists(command: str) -> bool:
     """Check if a command exists in PATH."""
     return shutil.which(command) is not None

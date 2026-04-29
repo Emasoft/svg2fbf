@@ -158,18 +158,27 @@ jobs:
 
       - name: Uninstall pre-existing Node so the test starts clean
         shell: pwsh
-        # The runner ships with Node baked in; remove it to force the
-        # auto-installer to reinstall via its own code path.
+        # The runner ships with Node baked in via the cached toolcache, NOT
+        # via choco — so `choco uninstall` typically reports "not installed"
+        # and exits non-zero. We don't care: the goal is just to make node
+        # un-resolvable on PATH for the next step. ErrorActionPreference =
+        # 'Continue' prevents pwsh from converting the non-zero exit into
+        # a step failure; instead we explicitly verify the post-condition
+        # (node not on PATH) at the end.
         run: |
-          choco uninstall nodejs -y --skip-autouninstaller --no-progress 2>$null
-          choco uninstall nodejs.install -y --skip-autouninstaller --no-progress 2>$null
+          $ErrorActionPreference = 'Continue'
+          choco uninstall nodejs -y --skip-autouninstaller --no-progress | Out-Null
+          choco uninstall nodejs.install -y --skip-autouninstaller --no-progress | Out-Null
           if (Get-Command node -ErrorAction SilentlyContinue) {
             $nodePath = (Get-Command node).Source
-            Write-Host "Node still on PATH at $nodePath — removing parent dir from PATH for this job."
+            Write-Host "Node still on PATH at $nodePath - removing parent dir from PATH for the next job step."
             $parent = Split-Path $nodePath
             $newPath = ($Env:PATH -split ';' | Where-Object { $_ -ne $parent }) -join ';'
             Add-Content -Path $Env:GITHUB_ENV -Value "PATH=$newPath"
+          } else {
+            Write-Host "Node successfully removed from PATH."
           }
+          exit 0
 
       - name: setup_dependencies on a fresh runner
         shell: pwsh
