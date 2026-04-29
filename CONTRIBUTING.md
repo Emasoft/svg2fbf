@@ -394,13 +394,43 @@ For detailed rules and examples, see **[CLAUDE.md](CLAUDE.md#version-release-rul
 
 ### Release Workflow
 
-```bash
-# Promote through branches
-just promote-to-testing    # dev → testing
-just promote-to-review     # testing → review
-just promote-to-stable     # review → master
+**TL;DR — as a contributor you only ever interact with `dev`.** The
+three downstream branches are mechanically promoted by the auto-promote
+workflows (TRDD-bbd4b1f0 — see `docs/RELEASE_WORKFLOW.md` for the full
+spec):
 
-# Create releases
+- `testing → review` — fires automatically as soon as every CI check on
+  `testing@HEAD` is `success`/`skipped`. A 15-min cron is the safety net
+  for missed events and docs-only commits.
+- `review → master` — fires when an account in `APPROVERS_ALLOWLIST`
+  approves the auto-opened `review → master` PR. The reviewer can be a
+  human or an AI-review bot; both paths are treated identically.
+- `master → PyPI + GitHub Release + main sync` — fires automatically on
+  any push to `master` authored by `github-actions[bot]`. Direct human
+  pushes to master are refused.
+
+### How releases happen now
+
+You write code on `dev`. When the feature is ready for beta:
+
+```bash
+just promote-to-testing    # dev → testing  (this is the ONLY hop you initiate)
+```
+
+Everything after that runs without you. If something breaks, the
+sticky issue **"Auto-Pipeline status: open issues"** will be reopened
+on the repo with the failing run linked.
+
+### Manual fallback (emergency only)
+
+The pre-automation recipes still work if the auto-pipeline itself is
+broken:
+
+```bash
+just promote-to-review                                # testing → review (verifies CI green first)
+PROMOTE_TO_STABLE_APPROVED=y just promote-to-stable  # review → master (non-interactive approval)
+PROMOTE_FORCE=y just promote-to-review                # bypass the CI gate (only when the gate is the bug)
+
 just release               # GitHub only (all channels)
 just publish               # GitHub + PyPI (stable to PyPI)
 ```

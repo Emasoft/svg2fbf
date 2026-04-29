@@ -1,0 +1,37 @@
+name: Validate Promotion Pipeline
+
+# Why this workflow:
+#   tests/scripts/test_promotion_pipeline.sh runs static checks on the
+#   four auto-promotion workflows introduced in TRDD-bbd4b1f0 — YAML
+#   syntax, cross-workflow references, declared permissions, and the
+#   release.sh --from-ci wiring. The TRDD specifies it should be
+#   workflow_dispatch only — no automatic triggers, since the checks
+#   are infrastructure-level smoke and don't gate normal commits.
+#
+#   This wrapper lets a maintainer run the smoke test from the Actions
+#   UI without pulling the repo.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Promotion-pipeline smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install pyyaml (for YAML parse checks)
+        run: python3 -m pip install --upgrade pyyaml
+
+      - name: Run promotion-pipeline smoke test
+        run: bash tests/scripts/test_promotion_pipeline.sh
