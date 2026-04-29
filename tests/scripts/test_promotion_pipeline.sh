@@ -53,6 +53,7 @@ required_files=(
   "$WORKFLOW_DIR/auto-promote-review-to-stable.yml"
   "$WORKFLOW_DIR/auto-publish-stable.yml"
   "$WORKFLOW_DIR/pipeline-failure-notifier.yml"
+  "$WORKFLOW_DIR/cross-platform-verify.yml"
 )
 for f in "${required_files[@]}"; do
   check "exists: $f" test -f "$f"
@@ -107,6 +108,23 @@ check "fail-closed: empty allowlist refuses to merge" \
   grep -q "APPROVERS_ALLOWLIST repository variable is empty" "$WORKFLOW_DIR/auto-promote-review-to-stable.yml"
 check "auto-publish-stable rejects non-bot pushes to master" \
   grep -q "github-actions\[bot\]" "$WORKFLOW_DIR/auto-publish-stable.yml"
+
+# ---- 6. Cross-Platform Verify gate is wired up -------------------------
+echo "[6/6] Cross-Platform Verify gating"
+check "cross-platform-verify covers all 3 OSes" \
+  bash -c "grep -q 'ubuntu-latest' $WORKFLOW_DIR/cross-platform-verify.yml && grep -q 'macos-latest' $WORKFLOW_DIR/cross-platform-verify.yml && grep -q 'windows-latest' $WORKFLOW_DIR/cross-platform-verify.yml"
+check "cross-platform-verify covers Python 3.11/3.12/3.13" \
+  bash -c "grep -q '\"3.11\"' $WORKFLOW_DIR/cross-platform-verify.yml && grep -q '\"3.12\"' $WORKFLOW_DIR/cross-platform-verify.yml && grep -q '\"3.13\"' $WORKFLOW_DIR/cross-platform-verify.yml"
+check "cross-platform-verify has NO path filter (always fires)" \
+  bash -c "! grep -B1 -A1 'paths:' $WORKFLOW_DIR/cross-platform-verify.yml | grep -q 'pyproject\\|src/'"
+check "cross-platform-verify smoke covers numpy + svg_text2path + uharfbuzz" \
+  bash -c "grep -q 'import numpy' $WORKFLOW_DIR/cross-platform-verify.yml && grep -q 'import svg_text2path' $WORKFLOW_DIR/cross-platform-verify.yml && grep -q 'uharfbuzz' $WORKFLOW_DIR/cross-platform-verify.yml"
+check "auto-publish-stable's publish job depends on wait-for-cross-platform" \
+  grep -q "needs: wait-for-cross-platform" "$WORKFLOW_DIR/auto-publish-stable.yml"
+check "wait-for-cross-platform polls 'Cross-Platform Verify' workflow by name" \
+  grep -q '"Cross-Platform Verify"' "$WORKFLOW_DIR/auto-publish-stable.yml"
+check "wait-for-cross-platform fails closed on non-success conclusion" \
+  grep -q "Refusing to publish — fix the platform-specific" "$WORKFLOW_DIR/auto-publish-stable.yml"
 
 # ---- Summary -----------------------------------------------------------
 echo

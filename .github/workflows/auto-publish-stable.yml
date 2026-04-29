@@ -45,8 +45,84 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Hard gate: refuse to publish to PyPI unless the cross-platform
+  # wheel install passed on master@HEAD across the full
+  # {linux, macos, windows} × {3.11, 3.12, 3.13} matrix.
+  #
+  # The Cross-Platform Verify workflow fires in parallel on the same
+  # push event, so this job polls `gh run list --commit` and waits
+  # for it to finish before letting `publish` proceed. Without this
+  # gate, a regression in compiled deps (numpy / uharfbuzz) on a
+  # single platform/Python combo could ship to PyPI and break end
+  # users on first install.
+  wait-for-cross-platform:
+    name: Wait for Cross-Platform Verify on master@HEAD
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Skip when explicitly invoked via workflow_dispatch with no_pypi=true
+    # (the "dry-run the release flow" path) — that's the operator opting
+    # out and they accept the lower bar.
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.no_pypi != 'true'
+    steps:
+      - name: Poll for Cross-Platform Verify result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          deadline=$(($(date +%s) + 1800))   # 30 min hard cap
+          interval=20                         # poll every 20s
+
+          echo "Waiting for 'Cross-Platform Verify' to complete on $SHA..."
+          while true; do
+            # `gh run list --workflow` accepts the workflow name (the
+            # `name:` field at the top of the .yml). Limit=5 in case
+            # of retries; we always pick the most recent.
+            run_json=$(gh run list \
+              --repo "$REPO" \
+              --commit "$SHA" \
+              --workflow "Cross-Platform Verify" \
+              --json status,conclusion,databaseId,url \
+              --limit 5 \
+              --jq '[.[]] | sort_by(.databaseId) | reverse | .[0] // {}')
+            status=$(echo "$run_json" | jq -r '.status // empty')
+            conclusion=$(echo "$run_json" | jq -r '.conclusion // empty')
+            url=$(echo "$run_json" | jq -r '.url // empty')
+
+            if [[ "$status" == "completed" ]]; then
+              if [[ "$conclusion" == "success" ]]; then
+                echo "::notice::Cross-Platform Verify passed on $SHA."
+                echo "  run: $url"
+                exit 0
+              else
+                echo "::error::Cross-Platform Verify completed with conclusion='$conclusion' on $SHA."
+                echo "::error::Refusing to publish — fix the platform-specific failure first."
+                echo "::error::Run log: $url"
+                exit 1
+              fi
+            fi
+
+            now=$(date +%s)
+            if (( now > deadline )); then
+              echo "::error::Timed out waiting for Cross-Platform Verify on $SHA after 30 minutes."
+              echo "::error::Refusing to publish."
+              exit 1
+            fi
+
+            if [[ -z "$status" ]]; then
+              echo "  Cross-Platform Verify run not yet enqueued for $SHA. Waiting..."
+            else
+              echo "  status=$status (waiting ${interval}s)"
+            fi
+            sleep "$interval"
+          done
+
   publish:
     name: Run release.sh --stable master --from-ci
+    needs: wait-for-cross-platform
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
