@@ -100,6 +100,13 @@ class TestText2PathConversion:
             ],
             capture_output=True,
             text=True,
+            # Force UTF-8 decoding of subprocess stdout/stderr.
+            # Without this, Windows uses the active code page
+            # (cp1252) and barfs on the non-ASCII characters
+            # svg2fbf writes — UnicodeDecodeError 'charmap' codec
+            # can't decode byte 0x90.
+            encoding="utf-8",
+            errors="replace",
         )
 
         # Should fail with helpful error message about installing the package
@@ -128,6 +135,13 @@ class TestText2PathConversion:
             ],
             capture_output=True,
             text=True,
+            # Force UTF-8 decoding of subprocess stdout/stderr.
+            # Without this, Windows uses the active code page
+            # (cp1252) and barfs on the non-ASCII characters
+            # svg2fbf writes — UnicodeDecodeError 'charmap' codec
+            # can't decode byte 0x90.
+            encoding="utf-8",
+            errors="replace",
         )
 
         assert result.returncode == 0, f"svg2fbf failed with: {result.stderr}"
@@ -164,6 +178,13 @@ class TestText2PathConversion:
             ],
             capture_output=True,
             text=True,
+            # Force UTF-8 decoding of subprocess stdout/stderr.
+            # Without this, Windows uses the active code page
+            # (cp1252) and barfs on the non-ASCII characters
+            # svg2fbf writes — UnicodeDecodeError 'charmap' codec
+            # can't decode byte 0x90.
+            encoding="utf-8",
+            errors="replace",
         )
         assert result_default.returncode == 0, f"svg2fbf failed with default precision: {result_default.stderr}"
 
@@ -188,6 +209,13 @@ class TestText2PathConversion:
             ],
             capture_output=True,
             text=True,
+            # Force UTF-8 decoding of subprocess stdout/stderr.
+            # Without this, Windows uses the active code page
+            # (cp1252) and barfs on the non-ASCII characters
+            # svg2fbf writes — UnicodeDecodeError 'charmap' codec
+            # can't decode byte 0x90.
+            encoding="utf-8",
+            errors="replace",
         )
         assert result_low.returncode == 0, f"svg2fbf failed with low precision: {result_low.stderr}"
 
@@ -227,6 +255,13 @@ class TestText2PathConversion:
             ],
             capture_output=True,
             text=True,
+            # Force UTF-8 decoding of subprocess stdout/stderr.
+            # Without this, Windows uses the active code page
+            # (cp1252) and barfs on the non-ASCII characters
+            # svg2fbf writes — UnicodeDecodeError 'charmap' codec
+            # can't decode byte 0x90.
+            encoding="utf-8",
+            errors="replace",
         )
 
         assert result.returncode == 0, f"svg2fbf failed with --text2path-no-validate: {result.stderr}"
