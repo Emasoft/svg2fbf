@@ -210,9 +210,15 @@ class FBFValidator:
             return
 
         # Check xmlns - ElementTree embeds namespace in tag as {namespace}tagname
-        # Extract namespace from tag
+        # Extract namespace from tag. Use .find() instead of .index() so that
+        # a malformed tag like "{abc" without a closing "}" doesn't raise
+        # ValueError before we can report it as a structural error.
         if root.tag.startswith("{"):
-            xmlns = root.tag[1 : root.tag.index("}")]
+            close_idx = root.tag.find("}")
+            if close_idx == -1:
+                self.error("structure", f"Malformed namespaced root tag: {root.tag}")
+                return
+            xmlns = root.tag[1:close_idx]
             if xmlns != SVG_NS:
                 self.error(
                     "structure",
@@ -221,9 +227,22 @@ class FBFValidator:
         else:
             self.error("structure", "Missing xmlns attribute, root element has no namespace")
 
-        # Check xmlns:xlink
-        xlink_xmlns = root.get(f"{{{XLINK_NS}}}xlink") or root.get("xmlns:xlink")
-        if xlink_xmlns != XLINK_NS:
+        # Check xmlns:xlink — ElementTree does NOT expose namespace declarations
+        # as attributes via .get(), so we infer presence from any element/attribute
+        # in the xlink namespace. If anything in the document uses xlink, the
+        # declaration must have been present for the parser to resolve it.
+        xlink_used = False
+        for elem in root.iter():
+            if elem.tag.startswith(f"{{{XLINK_NS}}}"):
+                xlink_used = True
+                break
+            for attr_name in elem.attrib:
+                if attr_name.startswith(f"{{{XLINK_NS}}}"):
+                    xlink_used = True
+                    break
+            if xlink_used:
+                break
+        if not xlink_used:
             self.warning("structure", "Missing xmlns:xlink declaration")
 
         # Check viewBox
@@ -232,7 +251,10 @@ class FBFValidator:
             self.error("structure", "Missing required viewBox attribute on root <svg>")
         else:
             # Validate viewBox format: "minX minY width height"
-            parts = viewBox.split()
+            # SVG spec (https://www.w3.org/TR/SVG11/coords.html#ViewBoxAttribute)
+            # allows commas and/or whitespace as separators. Normalize commas
+            # to spaces before splitting so "0,0,100,100" is accepted.
+            parts = viewBox.replace(",", " ").split()
             if len(parts) != 4:
                 self.error(
                     "structure",
@@ -748,13 +770,17 @@ class FBFValidator:
             # Check xlink:href attributes
             href = elem.get(f"{{{XLINK_NS}}}href") or elem.get("href")
             if href:
-                if href.startswith("http://") or href.startswith("https://") or href.startswith("//"):
+                # URL schemes are case-insensitive per RFC 3986 §3.1, so a
+                # malicious "HTTPS://evil.example" attribute must be flagged
+                # the same as the lowercase form.
+                href_lower = href.lower()
+                if href_lower.startswith("http://") or href_lower.startswith("https://") or href_lower.startswith("//"):
                     self.error(
                         "security",
                         f"External resource reference forbidden: {href}",
                         elem.tag,
                     )
-                elif not href.startswith("#") and not href.startswith("data:"):
+                elif not href.startswith("#") and not href_lower.startswith("data:"):
                     # Could be external file reference
                     self.warning(
                         "security",
@@ -762,9 +788,13 @@ class FBFValidator:
                         elem.tag,
                     )
 
-            # Check for event handlers
+            # Check for event handlers. Strip the optional `{namespace}`
+            # prefix that ElementTree puts on namespaced attributes so that
+            # a `xmlns:foo="..."`-prefixed `foo:onclick` cannot bypass the
+            # check by appearing as `{foo_ns}onclick`.
             for attr_name in elem.attrib:
-                if attr_name.startswith("on"):  # onclick, onload, etc.
+                local_name = attr_name.split("}", 1)[1] if attr_name.startswith("{") else attr_name
+                if local_name.lower().startswith("on"):  # onclick, onload, etc.
                     self.error(
                         "security",
                         f"Event handler attribute forbidden: {attr_name}",
@@ -825,8 +855,10 @@ class FBFValidator:
         if not values:
             self.error("animation", "animate element missing 'values' attribute")
         else:
-            # Parse frame references
-            frame_refs = values.split(";")
+            # Parse frame references. SMIL "values" is a list of values separated
+            # by ";" with optional surrounding whitespace per the spec — strip
+            # each entry so "#A; #B" is accepted exactly like "#A;#B".
+            frame_refs = [r.strip() for r in values.split(";") if r.strip()]
             if len(frame_refs) < 2:
                 self.error(
                     "animation",
@@ -848,14 +880,17 @@ class FBFValidator:
                             f"Invalid frame ID format: {frame_id} (expected FRAMExxxxx)",
                         )
 
-        # Check dur attribute
+        # Check dur attribute. Per the SMIL spec, a Timecount-value may be a
+        # full decimal (`2.5s`), a leading-zero-omitted fraction (`.5s`), or
+        # an integer with trailing decimal (`2.s`). The previous regex
+        # `^[0-9]+(\.[0-9]+)?s$` rejected `.5s` even though it is valid SMIL.
         dur = animate.get("dur")
         if not dur:
             self.error("animation", "animate element missing 'dur' attribute")
-        elif not re.match(r"^[0-9]+(\.[0-9]+)?s$", dur):
+        elif not re.match(r"^([0-9]+(\.[0-9]*)?|\.[0-9]+)s$", dur):
             self.error(
                 "animation",
-                f"Invalid dur format: {dur} (expected decimal followed by 's', e.g., '2.5s')",
+                f"Invalid dur format: {dur} (expected decimal followed by 's', e.g., '2.5s' or '.5s')",
             )
 
         # Check repeatCount attribute
@@ -878,8 +913,9 @@ class FBFValidator:
 
         self.log("Validating against XSD schema...")
 
-        # Find XSD schema file
-        schema_path = Path(__file__).parent / "docs" / "fbf-svg.xsd"
+        # Find XSD schema file (project root: <repo>/FBF.SVG/fbf-svg.xsd)
+        # __file__ lives in <repo>/scripts/, so we need parent.parent to reach repo root.
+        schema_path = Path(__file__).parent.parent / "FBF.SVG" / "fbf-svg.xsd"
         if not schema_path.exists():
             self.warning("xsd", f"XSD schema not found at {schema_path}")
             return

@@ -1,0 +1,1 @@
+svg2fbf -i tests/fixtures/e2e/text_frames -o <output_dir> --no-browser --skip-date --text2path -s 2.0 -a once -d 6 -c 6 -q

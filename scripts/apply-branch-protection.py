@@ -23,6 +23,7 @@ import argparse
 import json
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -56,6 +57,10 @@ class BranchProtectionManager:
                 "name": info["name"],
                 "owner": info["owner"]["login"],
             }
+        except FileNotFoundError:
+            print("❌ Error: gh CLI not found in PATH")
+            print("Install from: https://cli.github.com")
+            sys.exit(1)
         except subprocess.CalledProcessError as e:
             print("❌ Error: Failed to get repository info via gh CLI")
             print(f"   {e.stderr}")
@@ -101,41 +106,41 @@ class BranchProtectionManager:
             print(f"   {json.dumps(payload, indent=2)}")
             return True
 
-        # Apply via gh API
+        # Apply via gh API. We pipe a JSON document via stdin instead of using
+        # repeated `--field key=value` arguments because:
+        #   1) `gh api --field` sends `application/x-www-form-urlencoded`, but
+        #      the GitHub Branch Protection API requires `application/json`
+        #      for nested structures (`required_status_checks.checks`, etc.).
+        #   2) `--field` string formatting cannot represent JSON `null`,
+        #      booleans, integers, and arrays of objects unambiguously — `=`
+        #      or spaces in values would be split into multiple fields.
+        #   3) `--input -` passes the body as-is so any payload buildable in
+        #      Python `json.dumps` is delivered to the API verbatim.
+        #
+        # The branch name is URL-encoded (`urllib.parse.quote(safe="")`)
+        # because branch names may legally contain `/` (e.g. `release/v1`)
+        # which would otherwise be interpreted as a path separator. Encoding
+        # also blocks attempts to traverse the API URL with `..`.
         try:
+            quoted_branch = urllib.parse.quote(branch, safe="")
             cmd = [
                 "gh",
                 "api",
-                f"repos/{self.repo_info['full_name']}/branches/{branch}/protection",
+                f"repos/{self.repo_info['full_name']}/branches/{quoted_branch}/protection",
                 "--method",
                 "PUT",
+                "--input",
+                "-",
             ]
 
-            # Add payload fields
-            for key, value in payload.items():
-                if value is None:
-                    cmd.extend(["--field", f"{key}=null"])
-                elif isinstance(value, bool):
-                    cmd.extend(["--field", f"{key}={str(value).lower()}"])
-                elif isinstance(value, dict):
-                    # Nested objects need special handling
-                    for subkey, subvalue in value.items():
-                        if isinstance(subvalue, list):
-                            if len(subvalue) == 0:
-                                cmd.extend(["--field", f"{key}[{subkey}][]="])
-                            else:
-                                for item in subvalue:
-                                    cmd.extend(["--field", f"{key}[{subkey}][]={item}"])
-                        elif isinstance(subvalue, bool):
-                            cmd.extend(["--field", f"{key}[{subkey}]={str(subvalue).lower()}"])
-                        elif isinstance(subvalue, int):
-                            cmd.extend(["--field", f"{key}[{subkey}]={subvalue}"])
-                        else:
-                            cmd.extend(["--field", f"{key}[{subkey}]={subvalue}"])
-                else:
-                    cmd.extend(["--field", f"{key}={value}"])
-
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            payload_json = json.dumps(payload)
+            subprocess.run(
+                cmd,
+                input=payload_json,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
             print(f"   ✅ Protected {branch}")
             return True
 

@@ -1,0 +1,121 @@
+name: Pipeline Failure Notifier
+
+# Why this workflow:
+#   The three auto-promotion workflows (auto-promote-testing-to-review,
+#   auto-promote-review-to-stable, auto-publish-stable) each have their
+#   own "I tried to advance the pipeline and couldn't" failure mode.
+#   Without a single notification surface they would each create their
+#   own issue, drowning the developer in noise — exactly the
+#   notification-fatigue trap the project owner flagged when the
+#   four-branch model was designed.
+#
+#   This is a *reusable* workflow (workflow_call) — the auto-promotion
+#   workflows invoke it on their failure paths instead of calling
+#   `gh issue create` directly. It maintains ONE sticky issue
+#   ("Auto-Pipeline status") and either reopens-and-comments it (if it
+#   exists) or creates it (if it never has). All three failure paths
+#   funnel into one watchable thread.
+#
+# Sticky-issue model:
+#   Title: "Auto-Pipeline status: open issues" (constant — used as the
+#   lookup key).
+#   On failure: appends a timestamped comment with
+#     - which workflow hit the snag (testing→review / review→master /
+#       publish-stable)
+#     - the SHA the failure was associated with
+#     - the GitHub Actions run URL (so the developer can read the log)
+#     - the human-readable failure summary supplied by the caller
+#   If the issue is closed, it is reopened so the failure cannot be
+#   silently swallowed by an over-eager triage close.
+#
+#   On the *next* successful auto-promotion the upstream workflows do
+#   NOT auto-close this issue — closing-on-green is fragile (a one-shot
+#   green run can hide a chronic flake). The developer closes it
+#   manually after triage.
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: "Which stage failed (testing-to-review | review-to-stable | publish-stable)"
+        required: true
+        type: string
+      sha:
+        description: "Commit SHA the failure is associated with (40-char or 'unknown')"
+        required: true
+        type: string
+      summary:
+        description: "Human-readable one-line failure summary"
+        required: true
+        type: string
+      run_url:
+        description: "Optional GitHub Actions run URL of the caller (defaults to the called workflow's own run, which is less useful)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  notify:
+    name: Append to sticky issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Find or create sticky issue and append failure comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STICKY_TITLE: "Auto-Pipeline status: open issues"
+          STAGE: ${{ inputs.stage }}
+          SHA: ${{ inputs.sha }}
+          SUMMARY: ${{ inputs.summary }}
+          RUN_URL: ${{ inputs.run_url }}
+          REPO: ${{ github.repository }}
+          DEFAULT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # Choose the run URL the developer will actually want to read.
+          # The caller's run URL (where the real failure lives) is much
+          # more useful than this notifier workflow's own run URL.
+          link_url="${RUN_URL:-$DEFAULT_RUN_URL}"
+          if [[ -z "$link_url" ]]; then
+            link_url="$DEFAULT_RUN_URL"
+          fi
+
+          # Look up the sticky issue by exact title. We restrict to
+          # state=all so a previously-closed sticky is still found and
+          # can be reopened.
+          issue_num=$(gh issue list \
+            --repo "$REPO" \
+            --state all \
+            --search "in:title \"$STICKY_TITLE\"" \
+            --json number,title,state \
+            --jq "[.[] | select(.title == \"$STICKY_TITLE\")] | .[0].number // empty")
+
+          # Compose the comment body in Markdown. We avoid heredocs
+          # here because GitHub-Actions' YAML-controlled indentation
+          # would either bleed into the body (plain `<<EOF`) or require
+          # tabs (`<<-EOF`), neither of which renders cleanly. printf
+          # with explicit `\n` keeps the rendered comment flush-left.
+          ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          body=$(printf '### Auto-pipeline failure: `%s` at %s\n\n- **Stage:** %s\n- **Associated SHA:** `%s`\n- **Run log:** %s\n\n**Summary:**\n%s\n\n---\n\n*Posted by the pipeline-failure-notifier reusable workflow. The sticky issue is reopened on every failure; close it manually after triage.*\n' \
+            "$STAGE" "$ts" "$STAGE" "$SHA" "$link_url" "$SUMMARY")
+
+          if [[ -z "$issue_num" ]]; then
+            # First-ever failure — create the sticky issue.
+            gh issue create \
+              --repo "$REPO" \
+              --title "$STICKY_TITLE" \
+              --body "$body"
+          else
+            # Reopen if closed, then append the comment.
+            state=$(gh issue view "$issue_num" --repo "$REPO" --json state --jq .state)
+            if [[ "$state" == "CLOSED" ]]; then
+              gh issue reopen "$issue_num" --repo "$REPO" \
+                --comment "Reopening: a new auto-pipeline failure was reported."
+            fi
+            gh issue comment "$issue_num" --repo "$REPO" --body "$body"
+          fi

@@ -1,0 +1,28 @@
+# GitHub CODEOWNERS for svg2fbf
+#
+# This file lets the repository's branch rulesets enforce
+# `require_code_owner_review`: every PR targeting a protected branch
+# (dev, testing) must be reviewed and approved by a code owner before
+# it can be merged.
+#
+# The single global pattern below makes Emasoft (the project owner) the
+# code owner of EVERY path in the repo. Combined with the rulesets'
+# `required_approving_review_count: 1` + `require_code_owner_review:
+# true`, this means:
+#
+#   - dev: external contributors can open PRs; only Emasoft's review
+#     approval lets them merge.
+#   - testing: bug-fix PRs (the only kind allowed here) can be opened
+#     by anyone but only Emasoft's approval merges them.
+#   - review/master/main: no PR-based merges happen anyway (those
+#     branches advance via the auto-promote-* workflows running as
+#     github-actions[bot] with bypass).
+#
+# To delegate reviews to specific paths in the future, add per-path
+# entries BELOW the catch-all (later patterns win — that's how
+# CODEOWNERS resolution works). Example:
+#
+#   /docs/      @Emasoft @some-doc-collaborator
+#   /scripts/   @Emasoft
+
+* @Emasoft

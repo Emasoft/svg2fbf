@@ -46,6 +46,10 @@ tmp/
 # Release process temporary files
 .release-notes-*.md  # git-cliff temporary release notes
 
+# Agent / tooling reports — contain private paths, tokens, internal notes
+/reports/
+/reports_dev/
+
 # Temporary analysis files (hound-agent, etc.)
 hound_found_*.md
 /.json
@@ -55,7 +59,22 @@ hound_found_*.md
 tests/results/
 tests/samples/
 tests/examples/
-tests/fixtures/
+
+# AI Maestro plugin runtime state (heartbeat, drift detection logs, etc.)
+.janitor/
+# Plugin recheck state
+.rechecker/
+# tldr-code cache
+.tldr/
+.tldrignore
+
+# Don't ignore tests/fixtures/ wholesale — the e2e/ subtree is required
+# for the byte-exact regression test in scripts/test_release_clean.sh
+# and tests/test_e2e_byte_exact.py. Ignore only the OTHER fixture dirs
+# that are large/transient and shouldn't be in git.
+tests/fixtures/sessions/
+tests/fixtures/temp/
+tests/fixtures/tmp/
 tests/node_modules/
 tests/package-lock.json
 tests/invalid_svg_example_frames.json
