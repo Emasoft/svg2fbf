@@ -6,15 +6,19 @@
 #   svg2fbf's --text2path mode rasterizes each <text> element into glyph
 #   <path d="…"> data using fontconfig + the system fonts. Linux DejaVu
 #   Sans and macOS DejaVu Sans have slightly different glyph metric
-#   tables, so the byte-level coordinates differ between the two
-#   platforms. The Docker E2E test (T12) compares against a golden
-#   that MUST therefore have been generated on Linux. Running this on
-#   the macOS host produces a non-Linux golden that breaks T12.
+#   tables, so the rendered pixels differ between the two platforms.
+#   The Docker E2E test (T12) is now a per-frame visual diff
+#   (`sbb-compare --json`, <3% diffPercentage per frame) — it tolerates
+#   sub-pixel font drift but still flags real regressions. The golden
+#   must still be generated on Linux to keep the calibrated baseline
+#   near 0% rather than the ~1-2% cross-platform AA drift floor.
+#   Running this on the macOS host would produce a non-Linux golden
+#   that gives T12 less headroom for legitimate Linux-side font drift.
 #
 #   This script always regenerates the golden inside a clean Linux
-#   container that mirrors the T13 image (python:3.12-slim with
-#   fonts-dejavu + fonts-liberation), so the output is byte-exact with
-#   what the Docker T12 test expects to see.
+#   container that mirrors the T12/T13 image (python:3.12-slim with
+#   fonts-dejavu + fonts-liberation), so the output is the closest
+#   visual match to what the Docker T12 test produces on every run.
 #
 # DOES NOT REGENERATE the non-text golden (tests/fixtures/e2e/expected/
 # animation.fbf.svg) — that one has no font-rasterized content, so
@@ -57,7 +61,13 @@ done
 
 # Detect arch — Apple Silicon needs system chromium because Puppeteer's
 # bundled Chrome is x86_64-only on Linux. Mirrors test_release_clean.sh.
-HOST_ARCH="$(uname -m)"
+#
+# HOST_ARCH override: allows regenerating on a different platform than
+# the host (e.g., amd64 emulation on arm64 Mac via Docker buildx) so
+# the golden matches what CI's amd64 runners produce. Defaults to the
+# host's actual arch when unset. Common override:
+#   HOST_ARCH=x86_64 ./scripts/regen_text_frames_golden.sh
+HOST_ARCH="${HOST_ARCH:-$(uname -m)}"
 case "$HOST_ARCH" in
     arm64|aarch64)
         PLATFORM=linux/arm64

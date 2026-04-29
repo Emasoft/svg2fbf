@@ -43,6 +43,11 @@ on:
         description: "The SHA on review being approved (40-char)"
         required: true
         type: string
+      force:
+        description: "Bypass the CI-green gate (use only when the gate itself is broken — e.g. self-counting wedge)"
+        required: false
+        default: "false"
+        type: string
 
 permissions:
   contents: write
@@ -195,15 +200,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.sha.outputs.sha }}
+          FORCE: ${{ github.event.inputs.force }}
+          SELF_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
+
+          if [[ "$FORCE" == "true" ]]; then
+            echo "::warning::Force-promote requested — bypassing CI gate. Use only when the gate itself is wedged."
+            exit 0
+          fi
+
           runs_json=$(gh run list \
             --commit "$SHA" \
-            --json conclusion,status,name,workflowName,url \
+            --json conclusion,status,name,workflowName,databaseId,url \
             --limit 200)
 
-          inflight=$(echo "$runs_json" | jq '[.[] | select(.status != "completed")] | length')
-          failed_runs=$(echo "$runs_json" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")]')
+          # Exclude this workflow's own run from the in-flight count: when
+          # triggered by pull_request_review / workflow_dispatch / push,
+          # the current run shows up in the list keyed by the same SHA
+          # with status=in_progress, which would otherwise gate against
+          # itself forever.
+          inflight=$(echo "$runs_json" | jq --argjson self "$SELF_RUN_ID" '[.[] | select(.status != "completed" and .databaseId != $self)] | length')
+          failed_runs=$(echo "$runs_json" | jq --argjson self "$SELF_RUN_ID" '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .databaseId != $self)]')
           failed_count=$(echo "$failed_runs" | jq 'length')
 
           if (( inflight > 0 )); then
