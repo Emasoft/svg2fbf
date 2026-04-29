@@ -1,0 +1,189 @@
+name: Windows Auto-Install
+
+# Why a dedicated Windows workflow:
+#   src/auto_install_deps.py has a cluster of Windows-only code paths
+#   (npm-as-batch-wrapper, registry PATH refresh, admin detection,
+#   scoop, long-path check, portable Node fallback) that the Linux
+#   docker e2e never touches. This workflow exercises each of those
+#   on a real windows-latest runner so regressions surface in CI
+#   instead of in user issue reports.
+
+on:
+  push:
+    branches: [dev, testing, review, master, main]
+    paths:
+      - 'src/auto_install_deps.py'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-autoinstall.yml'
+  pull_request:
+    branches: [dev, testing, review, master, main]
+    paths:
+      - 'src/auto_install_deps.py'
+      - 'pyproject.toml'
+      - '.github/workflows/windows-autoinstall.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Smoke job: just import the module and exercise the helpers that have
+  # no side effects. Catches dumb regressions (typos, bad type hints,
+  # missing winreg import) cheaply on every push.
+  # ---------------------------------------------------------------------
+  windows-import-smoke:
+    name: import + helper smoke
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Install svg2fbf into a venv
+        run: uv sync --no-dev
+
+      - name: Import + helper checks
+        shell: pwsh
+        run: |
+          uv run python -c "
+          import sys
+          import auto_install_deps as m
+          assert sys.platform == 'win32', 'expected Windows runner'
+          # Helpers must not crash and must return sane types.
+          admin = m._is_windows_admin()
+          print(f'_is_windows_admin -> {admin!r}')
+          assert isinstance(admin, bool)
+          long_ok, hint = m._check_long_paths_enabled_windows()
+          print(f'_check_long_paths_enabled_windows -> ({long_ok!r}, hint_len={len(hint)})')
+          assert isinstance(long_ok, bool) and isinstance(hint, str)
+          # _needs_shell_on_windows must say True for npm (.cmd wrapper).
+          import shutil
+          assert shutil.which('npm') is not None, 'npm should be pre-installed on windows-latest'
+          assert m._needs_shell_on_windows(['npm', '--version']) is True
+          # detect_package_manager must return one of the supported values
+          # or None (windows-latest has choco AND winget pre-installed).
+          pm = m.detect_package_manager()
+          print(f'detect_package_manager -> {pm!r}')
+          assert pm in ('choco', 'winget', 'scoop', None)
+          # PATH refresh must not crash.
+          m._refresh_path_from_registry_windows()
+          print('All Windows helpers OK.')
+          "
+
+      - name: Run npm via the auto-installer's run_command
+        # Exercise fix A directly: invoke npm (a .cmd batch wrapper) via
+        # run_command and confirm we get exit code 0 instead of the
+        # FileNotFoundError that bites the un-patched code path.
+        shell: pwsh
+        run: |
+          uv run python -c "
+          from auto_install_deps import run_command
+          ok, out = run_command(['npm', '--version'], 'npm version', check=False, timeout=60)
+          print(f'npm --version returned: ok={ok}, output={out.strip()}')
+          assert ok, f'npm via run_command failed: {out}'
+          "
+
+  # ---------------------------------------------------------------------
+  # Auto-install dry-run: the runner already has Node + npm; we just
+  # confirm setup_dependencies() recognises this and returns True without
+  # trying to reinstall. Catches regressions in check_dependencies and
+  # the "already installed" branch of setup_dependencies.
+  # ---------------------------------------------------------------------
+  windows-autoinstall-recognises-existing:
+    name: auto-install recognises pre-installed Node
+    runs-on: windows-latest
+    needs: windows-import-smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Install svg2fbf into a venv
+        run: uv sync --no-dev
+
+      - name: setup_dependencies on a runner that already has node + npm
+        shell: pwsh
+        run: |
+          uv run python -c "
+          from auto_install_deps import setup_dependencies, check_dependencies
+          # Runner already has node + npm + (probably) puppeteer not yet
+          # installed in the scripts dir. setup_dependencies should
+          # recognise node, install puppeteer locally, and return True.
+          ok = setup_dependencies(silent=False)
+          print(f'setup_dependencies returned {ok!r}')
+          assert ok, 'setup_dependencies failed on pre-installed runner'
+          ready, msg = check_dependencies()
+          print(f'check_dependencies: ready={ready!r}, msg={msg!r}')
+          assert ready, f'check_dependencies says not ready: {msg}'
+          "
+
+  # ---------------------------------------------------------------------
+  # Fresh-install scenario: uninstall pre-existing Node, then run
+  # setup_dependencies() and verify it bootstraps via the runner's
+  # available package manager (winget on windows-latest). Exercises
+  # fixes A (shell=True for batch wrapper), B (PATH refresh), and the
+  # winget branch of install_nodejs.
+  # ---------------------------------------------------------------------
+  windows-autoinstall-from-scratch:
+    name: auto-install from a fresh state (winget path)
+    runs-on: windows-latest
+    needs: windows-import-smoke
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Install svg2fbf into a venv
+        run: uv sync --no-dev
+
+      - name: Uninstall pre-existing Node so the test starts clean
+        shell: pwsh
+        # The runner ships with Node baked in; remove it to force the
+        # auto-installer to reinstall via its own code path.
+        run: |
+          choco uninstall nodejs -y --skip-autouninstaller --no-progress 2>$null
+          choco uninstall nodejs.install -y --skip-autouninstaller --no-progress 2>$null
+          if (Get-Command node -ErrorAction SilentlyContinue) {
+            $nodePath = (Get-Command node).Source
+            Write-Host "Node still on PATH at $nodePath — removing parent dir from PATH for this job."
+            $parent = Split-Path $nodePath
+            $newPath = ($Env:PATH -split ';' | Where-Object { $_ -ne $parent }) -join ';'
+            Add-Content -Path $Env:GITHUB_ENV -Value "PATH=$newPath"
+          }
+
+      - name: setup_dependencies on a fresh runner
+        shell: pwsh
+        run: |
+          uv run python -c "
+          import shutil
+          # Verify the precondition for the test.
+          if shutil.which('node') is not None:
+              print(f'WARN: node still resolvable at {shutil.which(\"node\")}; this job may not exercise the fresh-install path')
+          from auto_install_deps import setup_dependencies, check_dependencies
+          ok = setup_dependencies(silent=False)
+          print(f'setup_dependencies returned {ok!r}')
+          assert ok, 'setup_dependencies failed on fresh runner — auto-install path is broken'
+          ready, msg = check_dependencies()
+          print(f'check_dependencies: ready={ready!r}, msg={msg!r}')
+          assert ready, f'check_dependencies says not ready: {msg}'
+          "
