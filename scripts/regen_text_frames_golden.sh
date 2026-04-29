@@ -57,7 +57,13 @@ done
 
 # Detect arch — Apple Silicon needs system chromium because Puppeteer's
 # bundled Chrome is x86_64-only on Linux. Mirrors test_release_clean.sh.
-HOST_ARCH="$(uname -m)"
+#
+# HOST_ARCH override: allows regenerating on a different platform than
+# the host (e.g., amd64 emulation on arm64 Mac via Docker buildx) so
+# the golden matches what CI's amd64 runners produce. Defaults to the
+# host's actual arch when unset. Common override:
+#   HOST_ARCH=x86_64 ./scripts/regen_text_frames_golden.sh
+HOST_ARCH="${HOST_ARCH:-$(uname -m)}"
 case "$HOST_ARCH" in
     arm64|aarch64)
         PLATFORM=linux/arm64
