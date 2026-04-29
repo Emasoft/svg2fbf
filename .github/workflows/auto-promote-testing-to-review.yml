@@ -36,15 +36,12 @@ name: Auto-Promote testing → review
 # short-circuit duplicates.
 
 on:
-  workflow_run:
-    workflows:
-      - "Linux Auto-Install"
-      - "macOS Auto-Install"
-      - "Windows Auto-Install"
-      - "Release Dry-Run (Docker E2E)"
-      - "Cross-Platform Verify"
-    types: [completed]
-    branches: [testing]
+  # SUPERSEDED by `release-pipeline.yml` (single consolidated workflow
+  # with `needs:` chaining + `environment: stable-release` for the
+  # human gate). Kept as a workflow_dispatch-only escape hatch in
+  # case the new pipeline is broken and the operator needs to fall
+  # back to the old chain. Auto-fire triggers (workflow_run, schedule)
+  # have been removed so the two pipelines do not race each other.
   workflow_dispatch:
     inputs:
       force:
@@ -52,10 +49,6 @@ on:
         required: false
         default: "false"
         type: string
-  schedule:
-    # Every 15 minutes — covers missed workflow_run events and
-    # docs-only commits that fire no CI at all.
-    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
