@@ -116,6 +116,16 @@ BEHAVIOR SUMMARY:
       2. Ensures the branch is up to date with origin/<branch>.
       3. Ensures the working tree is clean.
       4. Reads the current version from `uv version`.
+      4.5. PARTIAL-RELEASE RECOVERY: if `v<current_version>` already
+           exists as a tag (locally or on origin) AND PyPI is missing
+           svg2fbf at that version, the script enters recovery mode.
+           Recovery skips the bump / changelog / commit / tag / push /
+           GitHub-release-create steps and resumes from `uv build` +
+           `uv publish` + main-sync. This keeps the script idempotent
+           on rerun and prevents double-bumping (which would strand
+           the partial release and create an empty changelog for the
+           new tag). Only applies to the stable channel — pre-release
+           channels (alpha/beta/rc) never publish to PyPI.
       5. Computes bump arguments for `uv version --bump`:
          - alpha:
              - if already "aN", bump alpha;
@@ -1145,6 +1155,134 @@ release_channel() {
   # Use parameter expansion to remove the project name portion from version_line.
   # Store only the clean version string in current_version for bump logic.
   local current_version="${version_line##* }"
+
+  # ----------------------------------------------------------------------
+  # PARTIAL-RELEASE RECOVERY (idempotent rerun)
+  # ----------------------------------------------------------------------
+  # If `v<current_version>` already exists as a tag (locally or on origin)
+  # and PyPI is missing that exact version, this is a re-run of a
+  # release that completed the bump/tag/push/GitHub-release steps but
+  # crashed before `uv publish` succeeded. On rerun we MUST NOT bump
+  # again — that would strand the partially-published version forever
+  # and produce an empty changelog for the new tag (because git-cliff
+  # finds no real commits between two release tags created seconds
+  # apart, only its own auto-generated chore bump).
+  #
+  # Recovery path: skip the bump / changelog regen / commit / tag /
+  # push / GitHub-release-create steps entirely, rebuild dist/ for
+  # the existing version, retry `uv publish`, then run the main-sync
+  # step. This is fully idempotent — running it on a fully-published
+  # release is a clean no-op.
+  #
+  # Only applies to the stable channel — pre-release channels (alpha/
+  # beta/rc) never publish to PyPI, so the partial-publish failure
+  # mode this guards against does not exist for them.
+  if [[ "$channel" == "stable" && -z "$no_pypi" ]]; then
+    local _resume_tag="v${current_version}"
+    local _tag_exists=false
+    if git rev-parse --verify --quiet "refs/tags/${_resume_tag}" >/dev/null 2>&1; then
+      _tag_exists=true
+    elif git ls-remote --tags origin "${_resume_tag}" 2>/dev/null \
+           | grep -q "refs/tags/${_resume_tag}\$"; then
+      _tag_exists=true
+    fi
+    if $_tag_exists; then
+      local _pypi_status
+      _pypi_status="$(curl -s -o /dev/null -w '%{http_code}' \
+        "https://pypi.org/pypi/svg2fbf/${current_version}/json" 2>/dev/null || echo '000')"
+      if [[ "$_pypi_status" == "200" ]]; then
+        echo ""
+        echo "✓ Tag ${_resume_tag} exists and PyPI already has svg2fbf ${current_version}."
+        echo "  Release is fully published. No-op exit."
+        echo
+        return 0
+      fi
+      echo ""
+      echo "════════════════════════════════════════════════════════════"
+      echo "  PARTIAL-RELEASE RECOVERY MODE"
+      echo "════════════════════════════════════════════════════════════"
+      echo "  Tag:     ${_resume_tag} (already exists)"
+      echo "  Version: ${current_version}"
+      echo "  PyPI:    HTTP ${_pypi_status} — version is missing"
+      echo ""
+      echo "  Skipping: version bump, changelog regen, release commit,"
+      echo "            tag creation, branch/tag push, GitHub release create."
+      echo "  Resuming: uv build, uv publish, main-sync."
+      echo "════════════════════════════════════════════════════════════"
+      echo ""
+
+      if [[ -z "${UV_PUBLISH_TOKEN-}" ]]; then
+        echo "Error: UV_PUBLISH_TOKEN is not set but a stable release was requested." >&2
+        echo "Please export your PyPI token as UV_PUBLISH_TOKEN and rerun." >&2
+        echo "Or use --no-pypi to skip PyPI publishing." >&2
+        return 1
+      fi
+
+      # Verify a GitHub release exists for this tag — if it doesn't,
+      # something more broken is going on (tag pushed but release not
+      # created), and we should not silently proceed to PyPI.
+      if ! gh release view "${_resume_tag}" >/dev/null 2>&1; then
+        echo "Error: tag ${_resume_tag} exists but no GitHub release was found." >&2
+        echo "       This is an inconsistent partial state — investigate manually." >&2
+        echo "       (Expected: tag push → GitHub release create → PyPI publish.)" >&2
+        return 1
+      fi
+      echo "✓ GitHub release ${_resume_tag} verified."
+
+      # Rebuild dist/ for the EXISTING tagged version so uv publish has
+      # something to upload.
+      rm -rf dist/
+      if ! uv sync; then
+        echo "Error: 'uv sync' failed during recovery." >&2
+        return 1
+      fi
+      if ! uv build; then
+        echo "Error: 'uv build' failed during recovery." >&2
+        return 1
+      fi
+
+      echo ""
+      echo "🚨 PUBLISHING TO PyPI (recovery) 🚨"
+      echo "  Version: ${current_version}"
+      echo "  Branch:  ${branch}"
+      echo ""
+      if ! uv publish; then
+        echo "Error: 'uv publish' failed in recovery mode for ${current_version}." >&2
+        echo "Check UV_PUBLISH_TOKEN and PyPI account status." >&2
+        return 1
+      fi
+      echo "✓ Recovery publish complete: svg2fbf ${current_version} now on PyPI."
+      echo ""
+
+      # Run the master → main sync step (same as the normal happy
+      # path) so the recovery rerun leaves the repo in the same final
+      # state a successful first-attempt run would have produced.
+      if [[ "$branch" == "master" ]]; then
+        echo "🔄 Syncing master → main (recovery)..."
+        switch_to_branch main
+        if [[ "$from_ci" == "true" ]]; then
+          echo "  --from-ci: auto-confirming main→master sync"
+          git reset --hard master
+          git push origin main --force-with-lease
+          echo "✅ main branch synced with master"
+        else
+          read -r -p "  Proceed with syncing main to master? [y/N]: " sync_confirm
+          if [[ "$sync_confirm" == "y" || "$sync_confirm" == "Y" ]]; then
+            git reset --hard master
+            git push origin main --force-with-lease
+            echo "✅ main branch synced with master"
+          else
+            echo "  Skipped main→master sync (user declined)" >&2
+          fi
+        fi
+      fi
+
+      return 0
+    fi
+  fi
+  # ----------------------------------------------------------------------
+  # End partial-release recovery — fall through to normal bump flow.
+  # ----------------------------------------------------------------------
 
   # Declare an array to hold the bump arguments returned by compute_bump_args.
   # Use a local array so each call to release_channel has its own bump arguments.
