@@ -25,8 +25,10 @@ name: Auto-Publish Stable (master → PyPI + GitHub Release)
 #   `release.sh` already uses whichever is configured for `uv publish`.
 
 on:
-  push:
-    branches: [master]
+  # SUPERSEDED by `release-pipeline.yml`. The auto-fire push trigger
+  # has been removed so the two pipelines do not race when a single
+  # bot commit lands on master. Kept as a workflow_dispatch-only
+  # escape hatch.
   workflow_dispatch:
     inputs:
       no_pypi:
