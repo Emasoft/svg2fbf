@@ -283,10 +283,19 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium'
                 ;;
             x86_64|amd64)
                 DOCKER_PLATFORM="linux/amd64"
-                # Puppeteer's bundled chromium is fine on x86_64 Linux.
-                EXTRA_PKGS=""
-                EXTRA_ENV=""
-                ARCH_NOTE="(x86_64: using Puppeteer's bundled chromium)"
+                # Use system chromium even on amd64. Puppeteer 22+ no
+                # longer downloads Chrome from `npm install puppeteer`
+                # — it requires a separate `puppeteer browsers install
+                # chrome` step. Relying on that failed in CI ("Could
+                # not find Chrome (ver. 147.x)" because the download
+                # never happened). Installing system chromium via apt
+                # is reliable across the dev box, the GitHub Linux
+                # runner, and any CI provider, at the cost of ~150 MB
+                # in the image.
+                EXTRA_PKGS="chromium"
+                EXTRA_ENV='ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium'
+                ARCH_NOTE="(x86_64: using system chromium for Puppeteer 22+ compatibility)"
                 ;;
             *)
                 # Best-effort fallback for unusual archs (riscv64, ppc64le,
