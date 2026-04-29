@@ -42,7 +42,7 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@db388438c199401cf36c143bb877ba3c3e6a9be5  # v1
+        uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256  # v1.0.110 (2026-04-29) — bumped from db388438 (2.1.36) which had a bundled-SDK execution error
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
