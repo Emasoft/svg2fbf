@@ -42,6 +42,7 @@ on:
       - "macOS Auto-Install"
       - "Windows Auto-Install"
       - "Release Dry-Run (Docker E2E)"
+      - "Cross-Platform Verify"
     types: [completed]
     branches: [testing]
   workflow_dispatch:

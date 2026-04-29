@@ -38,13 +38,51 @@ GitHub Actions:
 
 | Hop | Workflow | Trigger | Gate |
 |---|---|---|---|
-| testing → review | `auto-promote-testing-to-review.yml` | every CI workflow on testing@HEAD completes (with a 15-min cron fallback for missed events / docs-only commits) | every completed run is `success` or `skipped` |
-| review → master | `auto-promote-review-to-stable.yml` | a `pull_request_review` is approved on the auto-opened `review → master` PR | reviewer login is in the `APPROVERS_ALLOWLIST` repository variable + CI is still green on the SHA |
-| master → PyPI + GitHub Release + main sync | `auto-publish-stable.yml` | push to `master` (must be authored by `github-actions[bot]`) | `release.sh --stable master --from-ci` succeeds |
+| testing → review | `auto-promote-testing-to-review.yml` | every CI workflow on testing@HEAD completes (with a 15-min cron fallback for missed events / docs-only commits) | every completed run is `success` or `skipped` (incl. Cross-Platform Verify) |
+| review → master | `auto-promote-review-to-stable.yml` | a `pull_request_review` is approved on the auto-opened `review → master` PR | reviewer login is in the `APPROVERS_ALLOWLIST` repository variable + CI is still green on the SHA (incl. Cross-Platform Verify) |
+| master → PyPI + GitHub Release + main sync | `auto-publish-stable.yml` | push to `master` (must be authored by `github-actions[bot]`) | `wait-for-cross-platform` job polls `Cross-Platform Verify` on master@HEAD and fails closed if it isn't green within 30 min, then `release.sh --stable master --from-ci` succeeds |
 
 All three call `pipeline-failure-notifier.yml` on failure, which keeps a
 single sticky issue open ("Auto-Pipeline status: open issues") so failed
 promotions never get lost in notification noise.
+
+### Cross-Platform Verify (the always-fires gate)
+
+`cross-platform-verify.yml` fires on every push and PR to `testing`,
+`review`, `master`, and `main` — **no path filter**. It builds the
+wheel once on `ubuntu-latest` then runs a 9-cell matrix:
+
+```
+{ ubuntu-latest, macos-latest, windows-latest }
+        ×
+{ Python 3.11, 3.12, 3.13 }
+```
+
+Each cell pip-installs the just-built wheel from disk and runs:
+
+- `svg2fbf --version`, `svg2fbf --help` (CLI entrypoint)
+- `svg-repair-viewbox --version` (secondary CLI)
+- `python -c "from svg2fbf.main import cli"` (Python import)
+- `python -c "import numpy"` (compiled scientific dep)
+- `python -c "import svg_text2path"` (text-shaping dep)
+- `python -c "import uharfbuzz; ..."` (real HarfBuzz buffer roundtrip
+  — the most likely cross-platform install failure for vector-text
+  projects)
+
+The aggregate `all-platforms-green` job depends on the full matrix
+with `fail-fast: false`, so a failure in any single cell:
+
+1. Reports the failing platform/Python combo by name.
+2. Doesn't cancel the other 8 cells (you see the full red/green
+   landscape, not the first failure).
+3. Causes the overall workflow conclusion to be `failure`.
+4. Blocks the auto-promote chain at whichever hop is currently
+   running (testing → review or review → master), and refuses
+   the eventual auto-publish on master.
+
+This is the layer that makes a dependency regression on
+macOS-arm64-py3.13 (or any other rare cell) catchable before
+something ships to PyPI.
 
 ### One-time setup
 

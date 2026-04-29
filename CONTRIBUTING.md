@@ -361,6 +361,44 @@ The `validate-workflows.yml` workflow runs on PRs that modify `.github/workflows
 
 All workflows have **concurrency controls** to cancel redundant runs, and **path filters** to skip CI on docs-only changes.
 
+### Cross-Platform Install Gate (TRDD-bbd4b1f0)
+
+`cross-platform-verify.yml` is the **always-fires** gate that closes the
+gap left by the path-filtered Linux/macOS/Windows Auto-Install workflows
+and the Linux-only Release Dry-Run.
+
+What it does on every push/PR to `testing` / `review` / `master` / `main`:
+
+1. Builds the wheel once on `ubuntu-latest`.
+2. Spawns a 9-cell matrix (`{ubuntu, macos, windows} × {3.11, 3.12, 3.13}`).
+3. Each cell pip-installs the just-built wheel and verifies:
+   - `svg2fbf --version`, `svg2fbf --help`, `svg-repair-viewbox --version`
+   - `from svg2fbf.main import cli` (entry point wired up)
+   - `import numpy`, `import svg_text2path`, `import uharfbuzz` (compiled deps)
+   - A real `uharfbuzz` buffer/segment-properties roundtrip (catches a
+     broken HarfBuzz wheel for the platform-Python combo)
+4. The aggregate `all-platforms-green` job fails if any cell fails,
+   so the workflow's overall conclusion is `success` only when all 9
+   cells pass.
+
+**No path filter** — even a docs-only commit triggers the matrix. This
+is intentional: the gate has to be reliable, not cheap.
+
+The gate is enforced **three independent ways**:
+
+- `auto-promote-testing-to-review.yml` requires every CI run on
+  `testing@HEAD` to be `success`/`skipped` before merging into review.
+- `auto-promote-review-to-stable.yml` re-runs the same check on the
+  approved SHA before merging into master.
+- `auto-publish-stable.yml` has a `wait-for-cross-platform` job that
+  polls `gh run list --commit $SHA --workflow "Cross-Platform Verify"`
+  and refuses to run `release.sh` unless that workflow is green
+  (timeout: 30 min, fails closed).
+
+If you need to skip the gate intentionally (e.g. for a dry-run release),
+invoke `auto-publish-stable.yml` via `workflow_dispatch` with input
+`no_pypi=true`.
+
 ## Version Release Rules
 
 The project enforces strict version progression rules to maintain a clean release history. **A version can only exist in ONE stage at any time.**

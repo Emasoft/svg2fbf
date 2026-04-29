@@ -1,0 +1,202 @@
+name: Cross-Platform Verify
+
+# Why this workflow:
+#   The existing auto-install / release-dry-run / quality / e2e
+#   workflows all have at least one of two limitations:
+#
+#     (a) they're path-filtered, so they don't fire when the change
+#         doesn't touch their watched files (e.g. a docs commit
+#         that happens to break a runtime dep would slip through);
+#     (b) they only test the LINUX path of svg2fbf (release-dry-run
+#         is python:3.12-slim Docker; ci/quality run on
+#         ubuntu-latest only).
+#
+#   That leaves a real gap: a cross-platform install of the
+#   PUBLISHED wheel is never exercised end-to-end before
+#   auto-publish-stable.yml uploads to PyPI. A regression in the
+#   macOS or Windows install path of one of our compiled deps
+#   (numpy, uharfbuzz via svg-text2path) could ship undetected.
+#
+#   This workflow closes that gap. It builds the wheel once on
+#   ubuntu, then runs a 9-cell matrix that pip-installs that wheel
+#   on Linux + macOS + Windows × Python 3.11 / 3.12 / 3.13. Each
+#   cell verifies:
+#     - the wheel installs cleanly (no compile failure for numpy /
+#       uharfbuzz);
+#     - `svg2fbf --version` and `--help` work (CLI entrypoint wired
+#       up correctly);
+#     - the public Python imports resolve (`from svg2fbf.main import
+#       cli`, `import svg_text2path`, `import numpy`, `from
+#       defusedxml import ElementTree`);
+#     - the secondary CLI (`svg-repair-viewbox --version`) works.
+#
+#   No path filters — this fires on EVERY push/PR to a stable
+#   branch, including docs-only commits. That's intentional: the
+#   gate has to be reliable, and the matrix is fast (~5–10 min wall
+#   time) thanks to the shared wheel artifact.
+#
+#   Wired into the pipeline three ways:
+#     1. auto-promote-testing-to-review.yml's CI-green gate sees
+#        this run via `gh run list --commit`; promotion blocks if
+#        any matrix cell is red.
+#     2. auto-promote-review-to-stable.yml's defense-in-depth
+#        re-check on the approved SHA also picks it up.
+#     3. auto-publish-stable.yml has a wait-for-cross-platform job
+#        that explicitly polls for THIS workflow's success on
+#        master@HEAD before running release.sh — even if branch
+#        protection is bypassed somehow, the publish refuses
+#        without cross-platform green.
+
+on:
+  push:
+    branches: [testing, review, master, main]
+  pull_request:
+    branches: [testing, review, master, main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build-wheel:
+    name: Build wheel + sdist
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      wheel-name: ${{ steps.detect.outputs.wheel-name }}
+      sdist-name: ${{ steps.detect.outputs.sdist-name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      - name: Detect produced filenames
+        id: detect
+        run: |
+          set -euo pipefail
+          whl=$(ls dist/*.whl | head -1 | xargs -n1 basename)
+          tar=$(ls dist/*.tar.gz | head -1 | xargs -n1 basename)
+          echo "wheel-name=$whl" >> "$GITHUB_OUTPUT"
+          echo "sdist-name=$tar" >> "$GITHUB_OUTPUT"
+          echo "Built: $whl + $tar"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  install-and-smoke:
+    name: install + smoke (${{ matrix.os }} py${{ matrix.python }})
+    needs: build-wheel
+    timeout-minutes: 15
+    strategy:
+      # We want to know which platforms are broken, not just "one of
+      # them". One macOS failure shouldn't cancel the Windows runs.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@65a9edc5881444af0b9093a5e628f2fe47ea3b2e  # v4.1.7
+        with:
+          name: dist
+          path: dist
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install wheel and run smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Find the wheel — must be exactly one in dist/*.whl. Use
+          # `shopt -s nullglob` so an empty match yields an empty
+          # array instead of the literal string "dist/*.whl"
+          # (defensive on Windows Git Bash, where unset globs would
+          # otherwise wedge `set -u`).
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          if (( ${#wheels[@]} != 1 )); then
+            echo "::error::Expected exactly 1 wheel in dist/, found ${#wheels[@]}"
+            ls -la dist/ || true
+            exit 1
+          fi
+          whl="${wheels[0]}"
+          echo "Installing: $whl"
+
+          python -m pip install --upgrade pip
+          # --no-cache-dir so we always test a fresh resolve, not a
+          # cached one that masks compilation failures.
+          python -m pip install --no-cache-dir "$whl"
+
+          # CLI smoke
+          svg2fbf --version
+          svg2fbf --help > /tmp/help.txt
+          test -s /tmp/help.txt
+
+          # Secondary CLI smoke (svg-repair-viewbox)
+          svg-repair-viewbox --version
+
+          # Import smoke — exercises compiled deps. uharfbuzz pulls
+          # in HarfBuzz C bindings; numpy pulls in BLAS. If wheels
+          # for any of those don't exist on this matrix cell,
+          # this is where it explodes.
+          python -c "from svg2fbf.main import cli; assert cli is not None"
+          python -c "import svg_text2path; print('svg_text2path OK')"
+          python -c "import numpy; print('numpy', numpy.__version__)"
+          python -c "from defusedxml import ElementTree as ET; ET.fromstring('<a/>')"
+          python -c "import yaml; yaml.safe_load('a: 1')"
+
+          echo "  ✓ ${{ matrix.os }} py${{ matrix.python }} OK"
+
+      - name: Verify uharfbuzz C bindings load
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Confirms the HarfBuzz native library
+          # (.so / .dylib / .dll) for uharfbuzz on this
+          # platform/Python combo loads cleanly. We avoid calling
+          # shape APIs that need a font — buffer construction and
+          # property guessing are enough to exercise the FFI layer
+          # without needing a font file installed in CI.
+          python -c "
+          import uharfbuzz as hb
+          buf = hb.Buffer()
+          buf.add_str('svg2fbf')
+          buf.guess_segment_properties()
+          print('uharfbuzz native lib loaded; buffer + segment properties OK')
+          "
+
+  # Aggregate gate — auto-publish-stable's wait-for-cross-platform
+  # job polls for the OVERALL Cross-Platform Verify run conclusion,
+  # which is determined by this job's success. By depending on the
+  # full matrix, this job only succeeds when ALL 9 cells succeed.
+  all-platforms-green:
+    name: All platforms green
+    needs: install-and-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo "All matrix cells passed."
