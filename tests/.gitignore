@@ -14,6 +14,10 @@ __pycache__/
 # Test output files (PNGs, diffs, etc.)
 *.png
 *.fbf.svg
+# Exception: the e2e byte-exact reference IS tracked.
+!fixtures/e2e/expected/animation.fbf.svg
+# Exception: the text→path golden (TRDD-c2a3199d) IS tracked.
+!fixtures/e2e/text_frames/expected.fbf.svg
 
 # HTML reports (large, auto-generated)
 *_report_*.html

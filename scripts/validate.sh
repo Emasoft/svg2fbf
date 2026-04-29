@@ -93,7 +93,9 @@ log_pass() {
     if [[ "$QUIET_MODE" == "false" ]]; then
         echo -e "      ${GREEN}✓ $1${NC}"
     fi
-    ((CHECKS_PASSED++))
+    # Use pre-increment to avoid set -e tripping when var goes 0 -> 1
+    # (post-increment ((x++)) returns OLD value 0 => exit 1 under set -e).
+    ((++CHECKS_PASSED))
 }
 
 log_fail() {
@@ -112,7 +114,7 @@ log_warn() {
 # ============================================================================
 
 run_lint_check() {
-    ((CHECKS_RUN++))
+    ((++CHECKS_RUN))
     log_step "$CHECKS_RUN" "$TOTAL_CHECKS" "🔍" "Running lint check (ruff)..."
 
     if uv run ruff check src/ tests/ --quiet 2>/dev/null; then
@@ -132,7 +134,7 @@ run_lint_check() {
 }
 
 run_format_check() {
-    ((CHECKS_RUN++))
+    ((++CHECKS_RUN))
     log_step "$CHECKS_RUN" "$TOTAL_CHECKS" "✨" "Running format check (ruff format)..."
 
     if uv run ruff format --check src/ tests/ 2>/dev/null; then
@@ -152,7 +154,7 @@ run_format_check() {
 }
 
 run_tests() {
-    ((CHECKS_RUN++))
+    ((++CHECKS_RUN))
     log_step "$CHECKS_RUN" "$TOTAL_CHECKS" "🧪" "Running tests (pytest)..."
 
     if uv run pytest -q --tb=no 2>/dev/null; then
@@ -172,7 +174,7 @@ run_tests() {
 }
 
 run_secret_scan() {
-    ((CHECKS_RUN++))
+    ((++CHECKS_RUN))
     log_step "$CHECKS_RUN" "$TOTAL_CHECKS" "🔐" "Running secret scan (trufflehog)..."
 
     if ! command -v trufflehog &> /dev/null; then
@@ -211,7 +213,7 @@ run_secret_scan() {
 }
 
 run_action_sha_validation() {
-    ((CHECKS_RUN++))
+    ((++CHECKS_RUN))
     log_step "$CHECKS_RUN" "$TOTAL_CHECKS" "🔗" "Validating GitHub Action SHAs..."
 
     # Only run if workflow files exist and gh CLI is available

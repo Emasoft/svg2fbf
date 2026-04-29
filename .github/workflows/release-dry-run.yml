@@ -1,0 +1,86 @@
+name: Release Dry-Run (Docker E2E)
+
+# Why this workflow:
+#   `scripts/test_release_clean.sh --docker-only` is the release-blocking
+#   gate that `scripts/release.sh` runs before any version bump. Today
+#   it is invoked only on the developer's own machine, so a regression
+#   on dev/testing only surfaces when someone tries to cut a release.
+#   This workflow runs the same gate on every push to a stable branch
+#   and on every PR targeting one — so the gate is enforced
+#   continuously, not just at release time.
+#
+# Cost discipline + branch policy:
+#   The full T1–T13 docker run takes 10–20 min on the GitHub-hosted
+#   ubuntu-latest runner. `dev` is work-in-progress and is expected to
+#   fail tests during active development, so it is intentionally
+#   excluded — burning CI minutes on a branch where breakage is the
+#   norm gives no signal. The gate fires once code has been promoted
+#   to beta:
+#     - push to testing/review/master/main (post-promotion lanes)
+#     - pull_request targeting testing/review/master/main, path-filtered
+#       to source + test infra changes only
+#     - workflow_dispatch (manual override for ad-hoc runs)
+
+on:
+  push:
+    branches: [testing, review, master, main]
+  pull_request:
+    branches: [testing, review, master, main]
+    paths:
+      - 'src/**'
+      - 'tests/fixtures/e2e/**'
+      - 'scripts/test_release_clean.sh'
+      - 'scripts/release.sh'
+      - 'scripts/regen_e2e_reference.sh'
+      - 'scripts/regen_text_frames_golden.sh'
+      - 'scripts/extract_fbf_frame.py'
+      - 'scripts/visual_diff_text_frames.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/release-dry-run.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  release-dry-run:
+    name: scripts/test_release_clean.sh --docker-only
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Install svg2fbf dev dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run the release dry-run (docker e2e, T1-T13)
+        # --docker-only skips the local-host venv smoke (already covered
+        # by the cross-platform autoinstall workflows) and just runs the
+        # full T1-T13 inside a clean python:3.12-slim Linux container,
+        # which is the gate scripts/release.sh enforces.
+        run: ./scripts/test_release_clean.sh --docker-only
+
+      - name: Upload run log on failure
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: release-dry-run-log-${{ github.sha }}
+          path: |
+            /tmp/svg2fbf-test-*/
+          if-no-files-found: ignore
+          retention-days: 7

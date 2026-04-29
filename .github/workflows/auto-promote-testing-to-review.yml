@@ -1,0 +1,223 @@
+name: Auto-Promote testing → review
+
+# Why this workflow:
+#   Per TRDD-bbd4b1f0, the developer is expected to interact with `dev`
+#   only — the three downstream branches are mechanically promoted by
+#   automation. This workflow is the first hop: as soon as every CI
+#   check on `testing@HEAD` is green, fast-forward-merge testing into
+#   review and push.
+#
+# Trigger model:
+#   - workflow_run completion for each workflow that actually fires on
+#     testing pushes (`Release Dry-Run` always; the three Auto-Install
+#     workflows when their path filters match). The LAST completion in
+#     the batch is the one that finds everything green and acts.
+#   - workflow_dispatch as a manual escape hatch for the operator (and
+#     to bootstrap the first promotion before the workflow lands on
+#     `main`, where workflow_run normally lives).
+#   - schedule (15-min cron) as a belt-and-suspenders fallback so a
+#     missed workflow_run event doesn't strand testing one commit
+#     behind review forever. It also handles docs-only commits where
+#     no CI workflow fires at all.
+#
+# Logic:
+#   1. Resolve testing@HEAD SHA.
+#   2. If review@HEAD already contains it → no-op (idempotent).
+#   3. List every CI run on the SHA via `gh run list --commit`.
+#   4. Bail out silently if anything is queued/in-progress (the next
+#      workflow_run completion will retry).
+#   5. Fail loudly if any completed run is a non-success/non-skipped
+#      conclusion — and notify via the sticky issue.
+#   6. Otherwise merge `--no-ff` with a self-describing commit
+#      message and push.
+#
+# `cancel-in-progress: false` because cancelling mid-merge could leave
+# the index dirty; we'd rather queue and let the idempotency check
+# short-circuit duplicates.
+
+on:
+  workflow_run:
+    workflows:
+      - "Linux Auto-Install"
+      - "macOS Auto-Install"
+      - "Windows Auto-Install"
+      - "Release Dry-Run (Docker E2E)"
+      - "Cross-Platform Verify"
+    types: [completed]
+    branches: [testing]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Bypass the CI gate (use only when the gate itself is broken)"
+        required: false
+        default: "false"
+        type: string
+  schedule:
+    # Every 15 minutes — covers missed workflow_run events and
+    # docs-only commits that fire no CI at all.
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+  actions: read
+  issues: write
+
+concurrency:
+  group: auto-promote-testing-to-review
+  cancel-in-progress: false
+
+jobs:
+  check-and-promote:
+    name: Verify CI green and merge testing → review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      promoted: ${{ steps.merge.outputs.promoted }}
+    # On workflow_run, exit early if the triggering workflow itself
+    # failed — saves a useless gate scan.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success' ||
+      github.event.workflow_run.conclusion == 'skipped'
+    steps:
+      - name: Checkout (full history needed for the merge)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git identity (github-actions[bot])
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve testing@HEAD SHA
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            git fetch origin testing
+            sha=$(git rev-parse origin/testing)
+          fi
+          if [[ -z "$sha" || "$sha" == "null" ]]; then
+            echo "Could not resolve testing@HEAD SHA" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved testing@HEAD = $sha"
+
+      - name: Idempotency check (review may already contain testing@HEAD)
+        id: idempotent
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin testing review
+          if git merge-base --is-ancestor "$SHA" origin/review; then
+            echo "review already contains testing@HEAD ($SHA) — nothing to promote."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify all completed CI runs on testing@HEAD are success/skipped
+        id: gate
+        if: steps.idempotent.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          set -euo pipefail
+
+          # Pull every workflow run associated with this SHA. limit=200
+          # is more than the project will ever produce per commit.
+          runs_json=$(gh run list \
+            --commit "$SHA" \
+            --json conclusion,status,name,workflowName,databaseId,url \
+            --limit 200)
+
+          # Tally states. We treat:
+          #   - completed + success/skipped  → green
+          #   - completed + anything else    → red
+          #   - !completed                   → in-flight (silent retry)
+          inflight=$(echo "$runs_json" | jq '[.[] | select(.status != "completed")] | length')
+          failed_runs=$(echo "$runs_json" | jq '[.[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped")]')
+          failed_count=$(echo "$failed_runs" | jq 'length')
+
+          echo "in-flight runs: $inflight"
+          echo "failed runs: $failed_count"
+
+          if [[ "$FORCE" == "true" ]]; then
+            echo "::warning::Force-promote requested — bypassing CI gate."
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if (( inflight > 0 )); then
+            echo "::notice::$inflight CI run(s) still in-flight on $SHA — will retry on next workflow_run/cron."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=inflight" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if (( failed_count > 0 )); then
+            echo "::error::CI is red on $SHA — refusing to promote."
+            echo "$failed_runs" | jq -r '.[] | "  - \(.workflowName) [\(.conclusion)] \(.url)"'
+            # Persist a one-line summary for the failure notifier.
+            failed_names=$(echo "$failed_runs" | jq -r '[.[] | "\(.workflowName)[\(.conclusion)]"] | join(", ")')
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "reason=failed" >> "$GITHUB_OUTPUT"
+            {
+              echo "failed_summary<<EOF"
+              echo "Refused to promote testing → review at $SHA — failed CI runs: $failed_names"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "All CI runs on $SHA are success/skipped — proceeding."
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Merge testing → review and push
+        id: merge
+        if: steps.idempotent.outputs.skip == 'false' && steps.gate.outputs.ok == 'true'
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git checkout review
+          git merge --no-ff "$SHA" -m "auto: testing → review (all CI green at $SHA)"
+
+          # Retry the push — Fastweb-class transit hiccups would
+          # otherwise wedge the entire pipeline.
+          i=0
+          until git -c http.lowSpeedLimit=100 -c http.lowSpeedTime=300 push origin review; do
+            i=$((i+1))
+            if (( i >= 10 )); then
+              echo "::error::Push to origin/review failed after 10 retries"
+              exit 1
+            fi
+            sleep 6
+          done
+          echo "promoted=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Promoted testing → review at $SHA"
+
+  notify-failure:
+    name: Notify (sticky issue)
+    needs: check-and-promote
+    if: failure()
+    uses: ./.github/workflows/pipeline-failure-notifier.yml
+    permissions:
+      issues: write
+      contents: read
+    with:
+      stage: testing-to-review
+      sha: ${{ needs.check-and-promote.outputs.sha || 'unknown' }}
+      summary: "auto-promote testing → review failed — see the run log for details"
+      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

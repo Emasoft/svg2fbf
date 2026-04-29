@@ -854,6 +854,44 @@ promote-to-review:
         exit 1
     fi
 
+    # Per project policy: testing (beta) must pass ALL CI checks before
+    # being promoted to review. Verify against the latest commit on
+    # origin/testing — never the local working copy, since CI runs on
+    # what is pushed. Skip with PROMOTE_FORCE=y for emergencies (lights
+    # the audit trail).
+    if [[ "${PROMOTE_FORCE:-}" != "y" ]]; then
+        echo "0. Verifying CI status on origin/testing..."
+        GH_HTTP_TIMEOUT=300 git fetch origin testing
+        TESTING_SHA=$(git rev-parse origin/testing)
+        echo "   testing HEAD: $TESTING_SHA"
+        runs_json=$(GH_HTTP_TIMEOUT=60 gh run list \
+            --commit "$TESTING_SHA" \
+            --json conclusion,name,status \
+            --limit 50)
+        if [[ "$(echo "$runs_json" | jq 'length')" -eq 0 ]]; then
+            echo "❌ Error: no CI runs found for origin/testing@$TESTING_SHA." >&2
+            echo "   Push to testing and wait for CI before promoting." >&2
+            exit 1
+        fi
+        incomplete=$(echo "$runs_json" | jq '[.[] | select(.status != "completed")] | length')
+        if [[ "$incomplete" -gt 0 ]]; then
+            echo "❌ Error: $incomplete CI run(s) on testing are still in flight." >&2
+            echo "$runs_json" | jq -r '.[] | select(.status != "completed") | "   - \(.status): \(.name)"' >&2
+            echo "   Wait for them to finish before promoting." >&2
+            exit 1
+        fi
+        failed=$(echo "$runs_json" | jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped")] | length')
+        if [[ "$failed" -gt 0 ]]; then
+            echo "❌ Error: $failed CI run(s) on testing did not pass." >&2
+            echo "$runs_json" | jq -r '.[] | select(.conclusion != "success" and .conclusion != "skipped") | "   - \(.conclusion): \(.name)"' >&2
+            echo "   Fix on testing first — only promote when all checks are green." >&2
+            exit 1
+        fi
+        echo "   ✓ All CI checks on testing are green."
+    else
+        echo "0. ⚠ PROMOTE_FORCE=y set — skipping CI verification on testing."
+    fi
+
     echo "1. Checking out review branch..."
     git checkout review
 
@@ -901,6 +939,61 @@ promote-to-stable:
     if ! git diff --quiet || ! git diff --cached --quiet; then
         echo "❌ Error: You have uncommitted changes. Please commit or stash them first." >&2
         exit 1
+    fi
+
+    # Per project policy: review (rc) must pass ALL CI checks before
+    # being promoted to stable, AND the user/AI reviewer must
+    # explicitly approve the release. The promote-to-stable step is
+    # the LAST gate before the PyPI publish in scripts/release.sh.
+    if [[ "${PROMOTE_FORCE:-}" != "y" ]]; then
+        echo "0a. Verifying CI status on origin/review..."
+        GH_HTTP_TIMEOUT=300 git fetch origin review
+        REVIEW_SHA=$(git rev-parse origin/review)
+        echo "    review HEAD: $REVIEW_SHA"
+        runs_json=$(GH_HTTP_TIMEOUT=60 gh run list \
+            --commit "$REVIEW_SHA" \
+            --json conclusion,name,status \
+            --limit 50)
+        if [[ "$(echo "$runs_json" | jq 'length')" -eq 0 ]]; then
+            echo "❌ Error: no CI runs found for origin/review@$REVIEW_SHA." >&2
+            echo "   Push to review and wait for CI before promoting." >&2
+            exit 1
+        fi
+        incomplete=$(echo "$runs_json" | jq '[.[] | select(.status != "completed")] | length')
+        if [[ "$incomplete" -gt 0 ]]; then
+            echo "❌ Error: $incomplete CI run(s) on review are still in flight." >&2
+            echo "$runs_json" | jq -r '.[] | select(.status != "completed") | "   - \(.status): \(.name)"' >&2
+            exit 1
+        fi
+        failed=$(echo "$runs_json" | jq '[.[] | select(.conclusion != "success" and .conclusion != "skipped")] | length')
+        if [[ "$failed" -gt 0 ]]; then
+            echo "❌ Error: $failed CI run(s) on review did not pass." >&2
+            echo "$runs_json" | jq -r '.[] | select(.conclusion != "success" and .conclusion != "skipped") | "   - \(.conclusion): \(.name)"' >&2
+            exit 1
+        fi
+        echo "    ✓ All CI checks on review are green."
+
+        # Approval gate. The reviewer (human or AI) must explicitly
+        # confirm before this last-mile push. PROMOTE_TO_STABLE_APPROVED=y
+        # is the non-interactive escape hatch for automation that
+        # already verified the approval out-of-band (e.g. a GitHub PR
+        # review marker). PROMOTE_FORCE=y skips both gates and is for
+        # emergencies only.
+        echo "0b. Final approval gate (the last stop before the PyPI publish)."
+        if [[ "${PROMOTE_TO_STABLE_APPROVED:-}" =~ ^[yY]$ ]]; then
+            echo "    PROMOTE_TO_STABLE_APPROVED=y set — proceeding."
+        else
+            echo "    Type 'release' to confirm review → master + the subsequent"
+            echo "    'release.sh --stable master' will run, or anything else to abort."
+            read -r -p "    confirm: " confirm
+            if [[ "$confirm" != "release" ]]; then
+                echo "    Aborted by reviewer." >&2
+                exit 1
+            fi
+        fi
+    else
+        echo "0. ⚠ PROMOTE_FORCE=y set — skipping CI verification AND approval gate."
+        echo "   This is an emergency override; record the reason in the merge commit."
     fi
 
     echo "1. Checking out master branch..."

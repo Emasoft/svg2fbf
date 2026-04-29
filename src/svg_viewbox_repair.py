@@ -19,6 +19,7 @@ Usage:
 """
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -217,6 +218,11 @@ def calculate_svg_bbox(svg_path: Path) -> dict[str, float]:
             "height": float(bbox_raw["height"]),
         }
 
+        # Reject NaN/Infinity values — they would propagate to viewBox="nan nan nan nan"
+        for k, v in bbox.items():
+            if not math.isfinite(v):
+                raise RuntimeError(f"Invalid bbox: non-finite value for '{k}': {v}")
+
         return bbox
 
     except subprocess.TimeoutExpired as e:
@@ -248,6 +254,14 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
     """
     Add or update viewBox attribute in SVG file.
 
+    Uses string-based editing (not ElementTree.write) so that DOCTYPE
+    declarations, XML comments, processing instructions, original attribute
+    order/quoting, and the original namespace declarations are preserved
+    byte-for-byte outside the modified attribute. Writing back via
+    ``tree.write()`` would (a) inject ``ns0:`` prefixes when the SVG default
+    namespace is not pre-registered, and (b) silently drop DOCTYPEs,
+    comments, and PIs.
+
     Args:
         svg_path: Path to SVG file
         bbox: Bounding box dict with keys: x, y, width, height
@@ -260,7 +274,7 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         with open(svg_path, encoding="utf-8") as f:
             content = f.read()
 
-        # Parse XML
+        # Parse XML to validate the file is well-formed and has an <svg> root.
         tree = ET.parse(svg_path)
         root = tree.getroot()
 
@@ -271,40 +285,48 @@ def add_viewbox_to_svg(svg_path: Path, bbox: dict[str, float]) -> None:
         # Create viewBox string
         viewbox_str = f"{bbox['x']} {bbox['y']} {bbox['width']} {bbox['height']}"
 
-        # Check if viewBox already exists
-        existing_viewbox = root.get("viewBox") or root.get("{http://www.w3.org/2000/svg}viewBox")
+        # Find the <svg opening tag in the original content. Replace XML
+        # comments with whitespace-equivalent placeholders BEFORE searching so
+        # a literal "<svg ...>" string inside a comment cannot fool the regex
+        # — but keep positional offsets identical to the original content so
+        # the matched span still lines up with the real bytes.
+        cleaned = re.sub(r"<!--[\s\S]*?-->", lambda m: " " * len(m.group(0)), content)
+        svg_tag_match = re.search(r"<svg(?:\s[^>]*?)?/?>", cleaned)
+        if not svg_tag_match:
+            raise RuntimeError("Could not find <svg> tag in file")
 
-        if existing_viewbox:
-            # Update existing viewBox
-            root.set("viewBox", viewbox_str)
+        start, end = svg_tag_match.start(), svg_tag_match.end()
+        svg_tag = content[start:end]
+
+        # Look for an existing viewBox attribute (case-sensitive per SVG spec)
+        # supporting both single and double quotes plus an optional XML
+        # namespace prefix like ``svg:viewBox``. Matching the leading
+        # whitespace lets us substitute in place without disturbing
+        # surrounding attributes.
+        viewbox_attr_re = re.compile(r"""(\s)((?:[a-zA-Z_][\w.-]*:)?viewBox)\s*=\s*(["'])[^"']*\3""")
+        m = viewbox_attr_re.search(svg_tag)
+        if m:
+            # Replace existing viewBox value, preserving the leading whitespace
+            # and the original (possibly namespaced) attribute name so we
+            # don't accidentally create a duplicate svg:viewBox + viewBox.
+            new_attr = f'{m.group(1)}{m.group(2)}="{viewbox_str}"'
+            new_svg_tag = svg_tag[: m.start()] + new_attr + svg_tag[m.end() :]
         else:
-            # Add new viewBox attribute
-            # Find the <svg opening tag and add viewBox
-            svg_tag_match = re.search(r"<svg[\s\S]*?>", content)
-            if not svg_tag_match:
-                raise RuntimeError("Could not find <svg> tag in file")
-
-            svg_tag = svg_tag_match.group(0)
-
-            # Insert viewBox attribute before closing >
-            insert_pos = svg_tag.rfind(">")
+            # Insert new viewBox attribute before the closing delimiter.
+            # Must handle self-closing form `<svg ... />` (insert before `/>`),
+            # otherwise we would emit broken XML like `<svg/ viewBox="...">`.
+            if svg_tag.rstrip().endswith("/>"):
+                insert_pos = svg_tag.rfind("/>")
+            else:
+                insert_pos = svg_tag.rfind(">")
             if insert_pos == -1:
                 raise RuntimeError("Malformed <svg> tag")
-
-            # Build new tag with viewBox
             new_svg_tag = svg_tag[:insert_pos] + f' viewBox="{viewbox_str}"' + svg_tag[insert_pos:]
 
-            # Replace in content
-            content = content.replace(svg_tag, new_svg_tag, 1)
+        new_content = content[:start] + new_svg_tag + content[end:]
 
-            # Write back
-            with open(svg_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
-            return
-
-        # For existing viewBox, use ElementTree to write back
-        tree.write(str(svg_path), encoding="utf-8", xml_declaration=True)
+        with open(svg_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
 
     except Exception as e:
         raise RuntimeError(f"Failed to update SVG file: {e}") from e
@@ -409,17 +431,22 @@ def repair_animation_sequence_viewbox(svg_files: list[Path], verbose: bool = Tru
         if verbose:
             print("   ✓ All frames have viewBox - checking consistency...")
 
-        # Extract viewBox from each file
+        # Extract viewBox from each file using ET (handles single/double quotes
+        # and namespaced attributes — regex on raw content would miss those).
         viewboxes = []
         for svg_file in svg_files:
-            with open(svg_file, encoding="utf-8") as f:
-                content = f.read()
-            match = re.search(r'viewBox="([^"]+)"', content)
-            if match:
-                viewboxes.append(match.group(1))
+            tree = ET.parse(svg_file)
+            root = tree.getroot()
+            if root is None:
+                continue
+            vb = root.get("viewBox") or root.get("{http://www.w3.org/2000/svg}viewBox")
+            if vb:
+                # Normalize whitespace so equivalent viewBoxes compare equal
+                viewboxes.append(" ".join(vb.split()))
 
-        # Check if all viewBoxes are identical
-        if len(set(viewboxes)) == 1:
+        # Require one viewBox per frame AND all identical to skip repair.
+        # If extraction missed any frame, fall through to recompute union bbox.
+        if len(viewboxes) == len(svg_files) and len(set(viewboxes)) == 1:
             if verbose:
                 print(f"   ✅ All frames have identical viewBox: {viewboxes[0]}")
                 print("   No repair needed!\n")
