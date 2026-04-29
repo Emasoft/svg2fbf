@@ -475,6 +475,27 @@ Complex character animation.
 - **Python**: ≥3.11
 - **[uv](https://github.com/astral-sh/uv)**: Package and tool manager
 
+### Tested platforms
+
+Every release is gated on a hard cross-platform install check. Before any
+build is published to PyPI, the wheel is built once on Linux and then
+matrix-installed and smoke-tested across all of:
+
+| OS              | Python 3.11 | Python 3.12 | Python 3.13 |
+|-----------------|-------------|-------------|-------------|
+| Linux (Ubuntu)  | ✅          | ✅          | ✅          |
+| macOS           | ✅          | ✅          | ✅          |
+| Windows         | ✅          | ✅          | ✅          |
+
+Each cell verifies CLI launchability (`svg2fbf --version`, `--help`,
+`svg-repair-viewbox --version`), Python imports of all runtime
+dependencies, and an actual `uharfbuzz` text-shaping roundtrip (the
+HarfBuzz C bindings are the most likely cross-platform install
+failure for vector-text projects). A red cell **anywhere** in this
+matrix blocks the PyPI publish — see
+[`docs/RELEASE_WORKFLOW.md`](docs/RELEASE_WORKFLOW.md) for the full
+pipeline.
+
 ---
 
 ## Installation

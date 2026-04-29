@@ -123,7 +123,7 @@ jobs:
           path: dist
 
       - name: Set up Python ${{ matrix.python }}
-        uses: actions/setup-python@0b93645e9fea7cf281ed7bcb5d8e29b80c532b8a  # v5.3.0
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: ${{ matrix.python }}
 
@@ -131,14 +131,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Find the wheel — must be exactly one in dist/*.whl
-          wheel_count=$(ls dist/*.whl 2>&1 | wc -l | tr -d ' ')
-          if [[ "$wheel_count" != "1" ]]; then
-            echo "::error::Expected exactly 1 wheel in dist/, found $wheel_count"
-            ls -la dist/
+          # Find the wheel — must be exactly one in dist/*.whl. Use
+          # `shopt -s nullglob` so an empty match yields an empty
+          # array instead of the literal string "dist/*.whl"
+          # (defensive on Windows Git Bash, where unset globs would
+          # otherwise wedge `set -u`).
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          if (( ${#wheels[@]} != 1 )); then
+            echo "::error::Expected exactly 1 wheel in dist/, found ${#wheels[@]}"
+            ls -la dist/ || true
             exit 1
           fi
-          whl=$(ls dist/*.whl | head -1)
+          whl="${wheels[0]}"
           echo "Installing: $whl"
 
           python -m pip install --upgrade pip
@@ -166,26 +171,23 @@ jobs:
 
           echo "  ✓ ${{ matrix.os }} py${{ matrix.python }} OK"
 
-      - name: Verify svg-text2path actually shapes glyphs (uharfbuzz path)
+      - name: Verify uharfbuzz C bindings load
         shell: bash
         run: |
           set -euo pipefail
-          # Tiny end-to-end check that uharfbuzz/HarfBuzz C lib is
-          # genuinely loadable and can shape a string. If the wheel
-          # for uharfbuzz on this platform was broken, this fails.
-          python <<'PY'
-          import svg_text2path  # noqa: F401
-          # uharfbuzz is the actual library doing the shaping work.
-          # If svg-text2path imported cleanly, uharfbuzz resolved too.
+          # Confirms the HarfBuzz native library
+          # (.so / .dylib / .dll) for uharfbuzz on this
+          # platform/Python combo loads cleanly. We avoid calling
+          # shape APIs that need a font — buffer construction and
+          # property guessing are enough to exercise the FFI layer
+          # without needing a font file installed in CI.
+          python -c "
           import uharfbuzz as hb
           buf = hb.Buffer()
-          buf.add_str("svg2fbf")
+          buf.add_str('svg2fbf')
           buf.guess_segment_properties()
-          # Don't need a font here — just confirming the buffer API
-          # roundtrips without an OSError on the underlying .so/.dylib/.dll.
-          assert len(buf.glyph_infos) >= 0
-          print("uharfbuzz shape pipeline reachable")
-          PY
+          print('uharfbuzz native lib loaded; buffer + segment properties OK')
+          "
 
   # Aggregate gate — auto-publish-stable's wait-for-cross-platform
   # job polls for the OVERALL Cross-Platform Verify run conclusion,
