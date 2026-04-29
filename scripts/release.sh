@@ -1193,8 +1193,33 @@ release_channel() {
       if [[ "$_pypi_status" == "200" ]]; then
         echo ""
         echo "✓ Tag ${_resume_tag} exists and PyPI already has svg2fbf ${current_version}."
-        echo "  Release is fully published. No-op exit."
+        echo "  Release is fully published — running master→main sync to make sure"
+        echo "  the mirror branch is current (in case a prior partial run skipped it),"
+        echo "  then exiting."
         echo
+        # IMPORTANT: do NOT return 0 here — fall through to the
+        # master → main sync block at the bottom of release_channel().
+        # Earlier I had `return 0` here, which caused main to drift
+        # behind master by exactly the consolidation refactor commit
+        # (the very commit that fixed the rest of the pipeline). Bug
+        # observed in run 25117279593 on 2026-04-29.
+        if [[ "$branch" == "master" ]]; then
+          echo "🔄 Syncing master → main (no-op recovery path)..."
+          if [[ "$from_ci" == "true" ]]; then
+            git fetch origin master main
+            if [[ "$(git rev-parse origin/master)" != "$(git rev-parse origin/main)" ]]; then
+              switch_to_branch main
+              git reset --hard master
+              git push origin main --force-with-lease
+              echo "✅ main synced to master."
+              switch_to_branch "$branch"
+            else
+              echo "  main already matches master ($(git rev-parse --short origin/master))."
+            fi
+          else
+            echo "  Skipping main-sync (not in --from-ci mode)."
+          fi
+        fi
         return 0
       fi
       echo ""
