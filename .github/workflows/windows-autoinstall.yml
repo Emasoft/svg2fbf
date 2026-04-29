@@ -40,6 +40,16 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Opt the JS-action runtime into Node 24 ahead of the GitHub default
+  # switch (June 2026). Without this, every step using
+  # actions/checkout@v4.2.2 or astral-sh/setup-uv@v5.2.2 (both pinned
+  # via SHA elsewhere in this repo) emits a "Node.js 20 is deprecated"
+  # warning. The actions themselves run fine on Node 24; the env flag
+  # just suppresses the deprecation noise and verifies forward
+  # compatibility before the upstream cutover.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   # ---------------------------------------------------------------------
   # Smoke job: just import the module and exercise the helpers that have

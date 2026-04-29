@@ -139,33 +139,43 @@ Proposed: enable a single GitHub Actions workflow on `testing` that
 runs `test_release_clean.sh --docker-only`. Keep host pytest CI
 disabled there (where the "expected to fail" rationale does apply).
 
-### 3.6 Replace `cmp` with a structured diff helper
+### 3.6 Replace `cmp` with a structured diff helper *(downgraded — keep duplicated)*
 
 The `cmp file1 file2 || diff … | head -10` pattern is duplicated three
 times in `test_release_clean.sh` (now four with the version-strip).
-Extract into a shell function `assert_byte_exact_with_strips file1 file2`
-that takes the file paths plus an optional list of regex patterns to
-strip before comparing. Single source of truth, easier to extend (e.g.
-strip the `fbf:generatedDate` line if `--skip-date` is ever forgotten).
+Originally proposed extracting into a shell helper, but
+`~/.claude/CLAUDE.md` ("Don't Over-Engineer") and the project's own
+"Three similar lines is better than a premature abstraction" guidance
+both argue against this. Each `bash -c '…'` block runs in its own
+process and can't share an in-memory function anyway, so the extraction
+would mean shipping a separate `_compare_byte_exact_stripped.sh` into
+the Docker image at COPY time — more file-management overhead than the
+duplication it removes. **Decision: keep the three copies.** Revisit
+only if the strip pattern needs to grow beyond the two lines it
+already covers.
 
-### 3.7 Single-source release configuration
+### 3.7 Single-source release configuration *(downgraded — keep duplicated)*
 
 `scripts/release.sh` and `scripts/test_release_clean.sh` both encode
 "the deps the wheel needs to bootstrap". Today they only mostly agree —
 the regen script `scripts/regen_text_frames_golden.sh` had to copy the
 relevant snippets. A small `scripts/lib/docker_image.sh` module that
 emits the Dockerfile fragment would let all three scripts use the
-same base.
+same base. Same trade-off as 3.6: the common base is ~5 lines, and a
+sourcable Bash helper that emits them adds an indirection (and a load-
+order dependency between scripts) that costs more than it saves.
+**Decision: keep the duplication.** Revisit only when a third or
+fourth consumer of the same fragment appears.
 
 ## 4. Priority order
 
 1. **3.1 (pin deps)** — directly fixes §2.3, biggest win for trust in the gate.
 2. **3.2 (cache base)** — biggest dev-loop win.
 3. **3.4 (promotion gate)** — catches regressions before they hit `release.sh`.
-4. **3.6 (helper extraction)** — cleanup, low risk.
-5. **3.5 (CI on testing)** — needs decision on workflow file ownership.
-6. **3.3 (selective tests)** — nice-to-have.
-7. **3.7 (single source)** — nice-to-have.
+4. **3.5 (CI on testing)** — needs decision on workflow file ownership.
+5. **3.3 (selective tests)** — nice-to-have.
+   *(3.6 and 3.7 were downgraded out of the priority list — see their
+   entries above for the rationale.)*
 
 ## 5. Open questions
 

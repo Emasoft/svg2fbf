@@ -234,9 +234,17 @@ def _install_portable_nodejs_windows(version: str = _PORTABLE_NODE_VERSION) -> t
 
     zip_path = runtime_root / f"node-v{version}-win-{arch}.zip"
     print(f"📥 Downloading portable Node.js {version} ({arch}) from nodejs.org...")
+    # Bare urllib.request.urlretrieve has no timeout — a stalled corporate
+    # proxy or a half-open TCP connection would hang the auto-installer
+    # forever. Stream via urlopen with an explicit timeout instead. 300 s
+    # is generous (the zip is ~30 MB; even a 100 KB/s link finishes in 5
+    # minutes) but bounded so a stuck transfer surfaces as an error.
     try:
-        urllib.request.urlretrieve(url, zip_path)
+        req = urllib.request.Request(url, headers={"User-Agent": "svg2fbf-auto-install"})
+        with urllib.request.urlopen(req, timeout=300) as response, open(zip_path, "wb") as out:
+            shutil.copyfileobj(response, out, length=64 * 1024)
     except Exception as e:
+        zip_path.unlink(missing_ok=True)
         return False, f"failed to download {url}: {e}"
 
     print(f"📦 Extracting to {extract_root}...")
