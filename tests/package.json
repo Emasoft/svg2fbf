@@ -4,7 +4,7 @@
   "description": "Node.js test dependencies for svg2fbf",
   "private": true,
   "dependencies": {
-    "puppeteer": "^22.0.0"
+    "puppeteer": "^24.36.1"
   },
   "engines": {
     "node": ">=18.0.0"
