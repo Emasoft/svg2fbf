@@ -84,6 +84,12 @@ GENERAL OPTIONS:
                       only, without running `uv publish`. This flag only affects stable
                       channel releases; alpha/beta/rc never publish to PyPI.
 
+  --from-ci           Run in non-interactive (CI) mode. Skips the stable-release approval
+                      prompt and the master→main sync confirmation. Intended for the
+                      auto-publish-stable.yml workflow which runs after an approved
+                      review→master merge — the human approval has already happened
+                      upstream, so re-prompting in CI would deadlock the run.
+
   -h, --help          Show this help text and exit.
 
 CHANGELOG EXPECTATIONS:
@@ -179,6 +185,14 @@ rc_branch=""
 # Initialize as false (empty) so stable releases publish to PyPI by default.
 # Set to true when the --no-pypi flag is present to skip PyPI publishing.
 no_pypi=""
+
+# Declare a flag to control non-interactive (CI) execution.
+# Initialize as false (empty) so by default the script keeps prompting
+# the operator at human-in-the-loop checkpoints (stable-release approval,
+# master→main sync confirmation). Set to true when --from-ci is passed
+# so the auto-publish-stable.yml workflow can drive the script without
+# stalling on a `read` that has no TTY attached.
+from_ci=""
 
 # Capture the current git branch at the beginning of the script execution.
 # Use this value to restore the original branch once all release steps are complete.
@@ -390,6 +404,15 @@ while [[ $# -gt 0 ]]; do
       # Shift the positional parameters left by one to consume the flag.
       # Continue parsing with the next argument in the list.
       # Make sure each --no-pypi flag is processed exactly once.
+      shift
+      ;;
+    # Handle the --from-ci flag for non-interactive (CI) execution.
+    # auto-publish-stable.yml passes this so the script does not block on
+    # the stable-release approval prompt or the main-sync confirmation —
+    # both of those human gates have already happened earlier in the
+    # pipeline (review approval + bot-only push enforcement on master).
+    --from-ci)
+      from_ci="true"
       shift
       ;;
     # Handle the -h and --help options that request usage documentation.
@@ -613,6 +636,16 @@ validate_promotion_criteria() {
         echo "  You are about to release a STABLE version."
         echo "  This will be published to PyPI and become the recommended version."
         echo ""
+        # In --from-ci mode we trust the upstream gate: a human (or
+        # allowlisted bot) already approved the PR review→master, and
+        # auto-publish-stable.yml verified the head commit was authored
+        # by github-actions[bot] before invoking us. Re-prompting here
+        # would deadlock the workflow on a `read` with no TTY.
+        if [[ "$from_ci" == "true" ]]; then
+          echo "  ✓ --from-ci: trusting upstream PR review approval (auto-promote-review-to-stable)"
+          echo "  ✓ Promotion criteria: User review passed (verified upstream)"
+          return 0
+        fi
         read -r -p "  Have you reviewed and approved this release? [y/N]: " confirm
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
           echo "  ❌ Release cancelled - user approval not given" >&2
@@ -1431,7 +1464,16 @@ release_channel() {
 
     # Confirm destructive operation before proceeding
     echo "  ⚠️  This will HARD RESET main to match master and FORCE PUSH"
-    read -r -p "  Proceed with syncing main to master? [y/N]: " sync_confirm
+    # Auto-confirm under --from-ci: auto-publish-stable.yml is the only
+    # caller that passes this flag, and its `id-token: write` /
+    # `contents: write` permissions are gated upstream — there is no
+    # human at the keyboard to answer the prompt.
+    if [[ "$from_ci" == "true" ]]; then
+      sync_confirm="y"
+      echo "  --from-ci: auto-confirming main→master sync"
+    else
+      read -r -p "  Proceed with syncing main to master? [y/N]: " sync_confirm
+    fi
     if [[ "$sync_confirm" != "y" && "$sync_confirm" != "Y" ]]; then
       echo "  Skipped main→master sync (user declined)" >&2
     else

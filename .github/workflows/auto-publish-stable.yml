@@ -1,0 +1,135 @@
+name: Auto-Publish Stable (master → PyPI + GitHub Release)
+
+# Why this workflow:
+#   Master is the publish branch — pushes to it are expected to come
+#   ONLY from `auto-promote-review-to-stable.yml`'s merge step (i.e.
+#   the github-actions[bot] account). When that happens, this workflow
+#   runs `scripts/release.sh --stable master --from-ci` to:
+#     - bump version (uv version --bump)
+#     - regenerate CHANGELOG via git-cliff
+#     - build wheel + sdist
+#     - tag, create GitHub release, upload artifacts
+#     - publish to PyPI via uv publish (trusted publisher / OIDC)
+#     - sync `main` to match `master` so the mirror branch never drifts
+#
+# Bot-only push enforcement:
+#   The first step verifies the HEAD commit author is the GitHub
+#   Actions bot. A direct human push to master (in a world where
+#   branch protection has been bypassed) would refuse to publish —
+#   defensive belt-and-suspenders against accidental escalation.
+#
+# Secrets / OIDC:
+#   PyPI publishing relies on either:
+#     - `PYPI_API_TOKEN` repository secret (legacy), OR
+#     - PyPI Trusted Publishing via OIDC (id-token: write).
+#   `release.sh` already uses whichever is configured for `uv publish`.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      no_pypi:
+        description: "Build the GitHub release but skip the PyPI publish step (use to dry-run the release flow)"
+        required: false
+        default: "false"
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  issues: write
+
+concurrency:
+  group: auto-publish-stable
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Run release.sh --stable master --from-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout master with full history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: master
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true
+
+      - name: Resolve master@HEAD SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify HEAD commit was authored by github-actions[bot]
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          # Inspect the HEAD commit's author + committer email.
+          # The promotion workflows use 41898282+github-actions[bot]@…
+          author_email=$(git log -1 --pretty='%ae')
+          committer_email=$(git log -1 --pretty='%ce')
+          author_name=$(git log -1 --pretty='%an')
+          echo "Author email:    $author_email"
+          echo "Committer email: $committer_email"
+          echo "Author name:     $author_name"
+
+          bot_email='41898282+github-actions[bot]@users.noreply.github.com'
+          bot_name='github-actions[bot]'
+
+          if [[ "$author_email" != "$bot_email" && "$committer_email" != "$bot_email" \
+             && "$author_name" != "$bot_name" ]]; then
+            echo "::error::HEAD commit on master was not authored by github-actions[bot]."
+            echo "::error::Direct human pushes to master are not authorized to publish."
+            echo "::error::Use the auto-promote-review-to-stable workflow with an approved PR."
+            exit 1
+          fi
+
+      - name: Configure git identity (github-actions[bot])
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Sync project (build + dev deps)
+        run: uv sync --all-extras --dev
+
+      - name: Run release.sh --stable master --from-ci
+        env:
+          # Standard token for gh CLI (creates GitHub release, uploads).
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          # PyPI publish token (legacy — used by uv publish if no OIDC).
+          # The script falls back to OIDC trusted publishing when this
+          # is unset and `id-token: write` is granted (which it is
+          # above), so this secret is *optional* in modern setups.
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event.inputs.no_pypi }}" == "true" ]]; then
+            ./scripts/release.sh --stable master --from-ci --no-pypi
+          else
+            ./scripts/release.sh --stable master --from-ci
+          fi
+
+  notify-failure:
+    name: Notify (sticky issue)
+    needs: publish
+    if: failure()
+    uses: ./.github/workflows/pipeline-failure-notifier.yml
+    permissions:
+      issues: write
+      contents: read
+    with:
+      stage: publish-stable
+      sha: ${{ needs.publish.outputs.sha || 'unknown' }}
+      summary: "auto-publish-stable failed — release.sh did not complete cleanly. Check the run log; PyPI publish may have partially succeeded (verify on pypi.org)."
+      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

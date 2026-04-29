@@ -30,6 +30,56 @@ main     (Mirror)   (Auto-synced with master for GitHub default branch)
 
 **Note:** The `main` branch is automatically synced with `master` after every stable release. This provides redundancy and keeps GitHub's default branch up to date.
 
+## Auto-Promotion Pipeline (TRDD-bbd4b1f0)
+
+**The developer is expected to interact with `dev` only.** The three
+downstream branches (`testing`, `review`, `master`) are advanced by
+GitHub Actions:
+
+| Hop | Workflow | Trigger | Gate |
+|---|---|---|---|
+| testing → review | `auto-promote-testing-to-review.yml` | every CI workflow on testing@HEAD completes (with a 15-min cron fallback for missed events / docs-only commits) | every completed run is `success` or `skipped` |
+| review → master | `auto-promote-review-to-stable.yml` | a `pull_request_review` is approved on the auto-opened `review → master` PR | reviewer login is in the `APPROVERS_ALLOWLIST` repository variable + CI is still green on the SHA |
+| master → PyPI + GitHub Release + main sync | `auto-publish-stable.yml` | push to `master` (must be authored by `github-actions[bot]`) | `release.sh --stable master --from-ci` succeeds |
+
+All three call `pipeline-failure-notifier.yml` on failure, which keeps a
+single sticky issue open ("Auto-Pipeline status: open issues") so failed
+promotions never get lost in notification noise.
+
+### One-time setup
+
+- **APPROVERS_ALLOWLIST**: comma-separated list of GitHub logins that
+  may approve `review → master`:
+  ```bash
+  gh variable set APPROVERS_ALLOWLIST -b 'Emasoft,claude[bot]'
+  ```
+  If unset, NO approver can pass the gate (fail-closed).
+
+- **PYPI_API_TOKEN** (or PyPI Trusted Publishing via OIDC):
+  required by `release.sh` for `uv publish`. The auto-publish-stable
+  workflow declares `id-token: write` so OIDC works out of the box.
+
+- **Branch protection** (per TRDD §3) is the responsibility of the repo
+  admin and is set up out-of-band:
+  - `master`, `main`, `review`: require PRs, require status checks,
+    restrict push to the github-actions[bot] account, require linear
+    history.
+  - `testing`: require status checks, allow direct push (so
+    `just promote-to-testing` from dev still works).
+  - `dev`: no protection.
+
+### Manual fallback (emergency only)
+
+The `just promote-to-…` recipes are kept as belt-and-suspenders for
+when the auto-pipeline itself is broken. They run the same CI-green
+gate as the workflows. To override the gate (only when the gate
+itself is the bug being fixed), prefix with `PROMOTE_FORCE=y`.
+
+```bash
+PROMOTE_FORCE=y just promote-to-review            # bypass CI gate
+PROMOTE_TO_STABLE_APPROVED=y just promote-to-stable  # bypass interactive prompt
+```
+
 ## Development Workflow
 
 ### 1. Development Phase (dev branch)
