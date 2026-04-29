@@ -1,0 +1,129 @@
+name: macOS Auto-Install
+
+# Why this workflow:
+#   The auto-install lane on macOS (`brew install node` + `npm install
+#   puppeteer`) is only validated today by the local-host smoke test
+#   inside `test_release_clean.sh`, which runs on the developer's own
+#   machine if and only if they invoke `release.sh`. macOS regressions
+#   in src/auto_install_deps.py therefore surface only at release time.
+#   This workflow exercises the brew branch on every push that touches
+#   the auto-install code.
+#
+# macos-latest is billed at 10× Linux minutes, so we keep this workflow
+# narrow: path-filtered to src/auto_install_deps.py only, two short
+# jobs, no full E2E.
+#
+# Mirrors windows-autoinstall.yml + linux-autoinstall.yml structurally
+# so the cross-platform coverage reads uniform.
+
+on:
+  # Triggers: testing (beta), review (rc), master (stable), main (mirror).
+  # `dev` is intentionally excluded — it's work-in-progress and is
+  # expected to fail; pre-release gates only fire once code has been
+  # promoted to beta.
+  push:
+    branches: [testing, review, master, main]
+    paths:
+      - 'src/auto_install_deps.py'
+      - 'pyproject.toml'
+      - '.github/workflows/macos-autoinstall.yml'
+  pull_request:
+    branches: [testing, review, master, main]
+    paths:
+      - 'src/auto_install_deps.py'
+      - 'pyproject.toml'
+      - '.github/workflows/macos-autoinstall.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  # -------------------------------------------------------------------
+  # Smoke job: import the module on macos-latest, confirm
+  # detect_package_manager picks 'brew' (the runner has Homebrew
+  # pre-installed), helpers don't crash.
+  # -------------------------------------------------------------------
+  macos-import-smoke:
+    name: import + helper smoke (brew)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Install svg2fbf into a venv
+        run: uv sync --no-dev
+
+      - name: Helper smoke
+        run: |
+          uv run python -c "
+          import sys
+          import auto_install_deps as m
+          assert sys.platform == 'darwin', f'expected darwin, got {sys.platform!r}'
+          # macos-latest ships brew pre-installed
+          pm = m.detect_package_manager()
+          print(f'detect_package_manager -> {pm!r}')
+          assert pm == 'brew', f'expected brew, got {pm!r}'
+          # _sudo_prefix is geteuid-driven on POSIX
+          import os
+          if os.geteuid() == 0:
+              assert m._sudo_prefix() == []
+          else:
+              assert m._sudo_prefix() == ['sudo']
+          # Windows-only helpers are no-ops on darwin
+          assert m._is_windows_admin() is True
+          ok, hint = m._check_long_paths_enabled_windows()
+          assert ok is True and hint == ''
+          m._refresh_path_from_registry_windows()
+          print('All macOS helpers OK.')
+          "
+
+  # -------------------------------------------------------------------
+  # Recognise pre-installed Node + actually install Puppeteer locally
+  # via npm. macos-latest ships Node + npm pre-installed via the
+  # toolcache, so setup_dependencies skips install_nodejs() and goes
+  # straight to install_puppeteer(). This exercises the npm path on
+  # darwin (a different shell + linker setup than Linux/Windows).
+  # -------------------------------------------------------------------
+  macos-autoinstall-puppeteer:
+    name: auto-install puppeteer (brew path)
+    runs-on: macos-latest
+    needs: macos-import-smoke
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Install svg2fbf into a venv
+        run: uv sync --no-dev
+
+      - name: setup_dependencies recognises pre-installed Node
+        run: |
+          uv run python -c "
+          from auto_install_deps import setup_dependencies, check_dependencies
+          ok = setup_dependencies(silent=False)
+          print(f'setup_dependencies returned {ok!r}')
+          assert ok, 'setup_dependencies failed on macos-latest'
+          ready, msg = check_dependencies()
+          print(f'check_dependencies: ready={ready!r}, msg={msg!r}')
+          assert ready, f'check_dependencies says not ready: {msg}'
+          "
