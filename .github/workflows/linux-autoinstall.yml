@@ -1,0 +1,160 @@
+name: Linux Auto-Install
+
+# Why this workflow:
+#   The auto-install lane on Linux (apt-get install nodejs npm + npm
+#   install puppeteer) is only validated today by `test_release_clean.sh`
+#   running in Docker on the developer's machine. Linux regressions in
+#   src/auto_install_deps.py therefore surface only at release time —
+#   too late. This workflow exercises the apt branch on every push that
+#   touches the auto-install code, in a clean container that mirrors a
+#   real end-user's first-run environment (no pre-installed Node).
+#
+# Mirrors windows-autoinstall.yml structurally so the cross-platform
+# coverage is uniform: same three-job split (smoke → recognise existing
+# → fresh state).
+#
+# Triggers: testing (beta), review (rc), master (stable), main (mirror).
+# `dev` is intentionally excluded — releases cut from master, so
+# pre-release gates only need to fire once code has been promoted to
+# beta. Iterating on auto_install_deps.py on dev doesn't burn CI
+# minutes here.
+
+on:
+  push:
+    branches: [testing, review, master, main]
+    paths:
+      - 'src/auto_install_deps.py'
+      - 'pyproject.toml'
+      - '.github/workflows/linux-autoinstall.yml'
+  pull_request:
+    branches: [testing, review, master, main]
+    paths:
+      - 'src/auto_install_deps.py'
+      - 'pyproject.toml'
+      - '.github/workflows/linux-autoinstall.yml'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  # -------------------------------------------------------------------
+  # Smoke job: import the module on a clean Debian container, exercise
+  # the helpers, confirm detect_package_manager picks 'apt' on a
+  # python:3.12-slim image where Node.js is NOT yet installed.
+  # -------------------------------------------------------------------
+  linux-import-smoke:
+    name: import + helper smoke (debian)
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    steps:
+      - name: Apt prerequisites for the auto-installer + checkout
+        run: |
+          set -eux
+          apt-get update
+          # `git` is needed by actions/checkout; ca-certificates by
+          # any HTTPS clone. Don't install nodejs here — the test must
+          # observe a Node-free environment.
+          apt-get install -y --no-install-recommends git ca-certificates curl
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install svg2fbf (PYTHONPATH-style, no venv)
+        # Container is already python:3.12-slim; just put src/ on PYTHONPATH
+        # so `import auto_install_deps` resolves to the working tree under test.
+        run: |
+          echo "PYTHONPATH=${{ github.workspace }}/src" >> "$GITHUB_ENV"
+
+      - name: Helper smoke
+        run: |
+          python -c "
+          import sys, shutil
+          import auto_install_deps as m
+          assert sys.platform.startswith('linux')
+          # apt should be detected on python:3.12-slim
+          pm = m.detect_package_manager()
+          print(f'detect_package_manager -> {pm!r}')
+          assert pm == 'apt', f'expected apt, got {pm!r}'
+          # Container runs as root, so _sudo_prefix returns []
+          assert m._sudo_prefix() == [], f'expected [], got {m._sudo_prefix()!r}'
+          # _is_windows_admin always True on non-Windows
+          assert m._is_windows_admin() is True
+          # _check_long_paths_enabled_windows is a no-op (returns True, '') off-Windows
+          ok, hint = m._check_long_paths_enabled_windows()
+          assert ok is True and hint == ''
+          # PATH refresh from registry is a no-op off-Windows
+          m._refresh_path_from_registry_windows()
+          print('All Linux helpers OK.')
+          "
+
+  # -------------------------------------------------------------------
+  # Fresh-install scenario: setup_dependencies must apt-install Node.js
+  # and npm-install Puppeteer on a clean python:3.12-slim container.
+  # This is the actual end-user first-run path. Slowest job (~3-5 min
+  # for the Chromium download) but the highest-value gate.
+  # -------------------------------------------------------------------
+  linux-autoinstall-fresh:
+    name: auto-install from a fresh state (apt path)
+    runs-on: ubuntu-latest
+    needs: linux-import-smoke
+    timeout-minutes: 20
+    container:
+      image: python:3.12-slim
+    steps:
+      - name: Apt prerequisites + checkout
+        run: |
+          set -eux
+          apt-get update
+          # libnss3 etc. are pulled in transitively by puppeteer's chromium,
+          # but we only need git for checkout here — the auto-installer
+          # is responsible for the rest.
+          apt-get install -y --no-install-recommends git ca-certificates curl
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: PYTHONPATH
+        run: |
+          echo "PYTHONPATH=${{ github.workspace }}/src" >> "$GITHUB_ENV"
+
+      - name: Verify Node is NOT yet installed (precondition)
+        run: |
+          if command -v node >/dev/null 2>&1; then
+            echo "FAIL: container has node pre-installed; this job won't exercise the fresh-install path." >&2
+            command -v node
+            exit 1
+          fi
+          if command -v npm >/dev/null 2>&1; then
+            echo "FAIL: container has npm pre-installed." >&2
+            exit 1
+          fi
+          echo "Precondition OK: no Node, no npm."
+
+      - name: setup_dependencies on a fresh container
+        run: |
+          python -c "
+          from auto_install_deps import setup_dependencies, check_dependencies
+          ok = setup_dependencies(silent=False)
+          print(f'setup_dependencies returned {ok!r}')
+          assert ok, 'setup_dependencies failed on a clean python:3.12-slim container'
+          ready, msg = check_dependencies()
+          print(f'check_dependencies: ready={ready!r}, msg={msg!r}')
+          assert ready, f'check_dependencies says not ready: {msg}'
+          "
+
+      - name: Verify node + npm ended up on PATH
+        run: |
+          set -eux
+          command -v node
+          node --version
+          command -v npm
+          npm --version

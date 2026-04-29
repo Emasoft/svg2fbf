@@ -42,7 +42,9 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@ef50f123a3a9be95b60040d042717517407c7256  # v1.0.110 (2026-04-29) — bumped from db388438 (2.1.36) which had a bundled-SDK execution error
+        # Anthropic-published action: floating `v1` tag is acceptable.
+        # See claude-code-review.yml for the full rationale.
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
