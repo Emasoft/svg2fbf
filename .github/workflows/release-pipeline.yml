@@ -121,10 +121,19 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Checkout (full history)
+      - name: Checkout (full history) via deploy key
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
+          # Use the RELEASE_PIPELINE_DEPLOY_KEY so the merge/push
+          # operations run as the deploy key actor — which IS in the
+          # ruleset bypass list. github-actions[bot] (App ID 15368)
+          # is NOT addable as a bypass actor on a personal repo
+          # (GitHub design constraint), so the default ${{ github.token }}
+          # gets "GH013: Repository rule violations ... push declined"
+          # on protected branches. Deploy keys with write access bypass
+          # rulesets via the existing `actor_type=DeployKey` entry.
+          ssh-key: ${{ secrets.RELEASE_PIPELINE_DEPLOY_KEY }}
           persist-credentials: true
 
       - name: Configure git identity (bot)
@@ -188,10 +197,19 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Checkout (full history)
+      - name: Checkout (full history) via deploy key
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
+          # Use the RELEASE_PIPELINE_DEPLOY_KEY so the merge/push
+          # operations run as the deploy key actor — which IS in the
+          # ruleset bypass list. github-actions[bot] (App ID 15368)
+          # is NOT addable as a bypass actor on a personal repo
+          # (GitHub design constraint), so the default ${{ github.token }}
+          # gets "GH013: Repository rule violations ... push declined"
+          # on protected branches. Deploy keys with write access bypass
+          # rulesets via the existing `actor_type=DeployKey` entry.
+          ssh-key: ${{ secrets.RELEASE_PIPELINE_DEPLOY_KEY }}
           persist-credentials: true
 
       - name: Configure git identity (bot)
@@ -279,10 +297,19 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Checkout (full history)
+      - name: Checkout (full history) via deploy key
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
+          # Use the RELEASE_PIPELINE_DEPLOY_KEY so the merge/push
+          # operations run as the deploy key actor — which IS in the
+          # ruleset bypass list. github-actions[bot] (App ID 15368)
+          # is NOT addable as a bypass actor on a personal repo
+          # (GitHub design constraint), so the default ${{ github.token }}
+          # gets "GH013: Repository rule violations ... push declined"
+          # on protected branches. Deploy keys with write access bypass
+          # rulesets via the existing `actor_type=DeployKey` entry.
+          ssh-key: ${{ secrets.RELEASE_PIPELINE_DEPLOY_KEY }}
           persist-credentials: true
 
       - name: Configure git identity (bot)
@@ -336,12 +363,17 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Checkout master (full history + tags)
+      - name: Checkout master (full history + tags) via deploy key
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           ref: master
           fetch-depth: 0
           fetch-tags: true
+          # Same rationale as the merge jobs above: release.sh inside
+          # this job pushes the version-bump + tag back to origin/master,
+          # and force-syncs main := master at the end. Both pushes
+          # need to bypass the ruleset, which requires the deploy key.
+          ssh-key: ${{ secrets.RELEASE_PIPELINE_DEPLOY_KEY }}
           persist-credentials: true
 
       - name: Resolve master@HEAD SHA
@@ -388,10 +420,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout (full history)
+      - name: Checkout (full history) via deploy key
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 0
+          # Use the RELEASE_PIPELINE_DEPLOY_KEY so the merge/push
+          # operations run as the deploy key actor — which IS in the
+          # ruleset bypass list. github-actions[bot] (App ID 15368)
+          # is NOT addable as a bypass actor on a personal repo
+          # (GitHub design constraint), so the default ${{ github.token }}
+          # gets "GH013: Repository rule violations ... push declined"
+          # on protected branches. Deploy keys with write access bypass
+          # rulesets via the existing `actor_type=DeployKey` entry.
+          ssh-key: ${{ secrets.RELEASE_PIPELINE_DEPLOY_KEY }}
           persist-credentials: true
 
       - name: Configure git identity (bot)
