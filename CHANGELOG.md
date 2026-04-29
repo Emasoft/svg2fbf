@@ -5,6 +5,142 @@ All notable changes to svg2fbf will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-04-29
+
+### Added
+
+- HARD pre-publish gate — never release without Docker install verification
+- Add byte-exact E2E regression test for svg2fbf output
+- Add --skip-date and --auto-repair-viewbox CLI flags + E2E install path test
+- Scripts/release_all.sh — single-command release orchestrator
+- Pre-flight checks docker daemon is reachable, shows context
+- **justfile:** CI-green + approval gates on promote recipes
+- **justfile:** CI-green + approval gates on promote recipes
+- Fully automated promotion pipeline (TRDD-bbd4b1f0)
+- **ci:** Cross-platform wheel-install gate before PyPI publish
+
+### Fixed
+
+- Promote svg-text2path from optional to required runtime dependency
+- Release_all.sh pre-flight ignores gitignored runtime state
+- Docker tests must always match host CPU arch via --platform
+- Hard memory limits + watchdog to prevent host swap blow-up
+- Address security + correctness audit findings in src/
+- Harden release + validation scripts per audit findings
+- **auto-install:** Six Windows-specific bugs + Windows CI workflow
+- **auto-install,ci:** Windows UTF-8 stdout + tolerant uninstall step
+- **ci-windows:** Pre-extract shutil.which('node') to avoid pwsh escape mangle
+- **ci:** Install system chromium on amd64 for Puppeteer 22+
+- **auto-install:** Six Windows-specific bugs + Windows CI workflow
+- **auto-install,ci:** Windows UTF-8 stdout + tolerant uninstall step
+- **ci-windows:** Pre-extract shutil.which('node') to avoid pwsh escape mangle
+- **ci:** Install system chromium on amd64 for Puppeteer 22+
+- **review:** Restore testing's pyproject.toml + uv.lock, keep rc1 version
+- **cli:** Reconfigure stdout/stderr to UTF-8 on entry to cli()
+- **tests:** Force UTF-8 decoding in test_text2path_integration subprocess calls
+- **tests:** Force UTF-8 in Path.read_text() for windows compat
+- **master:** Forward svg-text2path-required pyproject + lock from review (keep 0.1.20)
+- **ci:** Add .venv/bin to PATH so release.sh can find git-cliff
+- **workflows:** Exclude self from in-flight CI count + add force input
+
+### Other
+
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Zip-slip defense + stale docstring + workflow policy note
+- Opt-in Node 24 runtime + bounded portable-Node download + reconcile TRDD
+- Add pyright to dev deps for in-CI release-dry-run
+- Zip-slip defense + stale docstring + workflow policy note
+- Opt-in Node 24 runtime + bounded portable-Node download + reconcile TRDD
+- Merge dev into testing - feature complete, ready for testing
+
+Resolves conflict in .github/workflows/windows-autoinstall.yml by
+taking testing's version (excludes dev from CI triggers, per TRDD
+"no CI on dev" policy). The dev side carried an older comment block
+arguing for Windows-only CI on dev pushes; that argument was
+superseded by the broader CI-on-dev-is-noise policy that landed on
+testing in commit ca33aa5 (2026-04-29). Net behavior: windows-autoinstall
+fires on testing/review/master/main as expected, never on dev.
+- Merge testing into review - bugs fixed, ready for RC
+
+Forwards all of testing's recent work (auto-promotion pipeline,
+CODEOWNERS, Windows/Linux/macOS auto-install, Docker E2E suite,
+text→path tests, etc.) into review.
+
+Conflicts resolved by keeping review's version artifacts:
+- pyproject.toml: keep version=0.1.20rc1 (review's rc > testing's b3)
+- CHANGELOG.md: keep review's rc1 changelog entries
+- uv.lock: keep review's lockfile (matches rc1's pinned deps)
+
+This preserves the version progression rule: a single version can
+only exist in ONE stage at a time, and stage on review must be ≥
+stage on testing. The next bump (review → master = stable) will
+take this rc1 to 0.1.20 stable.
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Merge testing into review - bugs fixed, ready for release candidate
+- Merge dev into testing - feature complete, ready for testing
+- Merge testing into review - bugs fixed, ready for release candidate
+- Merge dev into testing - feature complete, ready for testing
+- Merge testing into review - bugs fixed, ready for release candidate
+- Review → master (bootstrap of TRDD-bbd4b1f0 auto-promotion pipeline; approved by Emasoft)
+- Merge dev into testing - feature complete, ready for testing
+- Merge dev into testing - feature complete, ready for testing
+- Testing → review (all CI green at 2f44f7c858fd5683a2fdcbb3bb4193a0b7e50394)
+- **npm:** Bump puppeteer in /tests in the npm-all group ([#10](https://github.com/Emasoft/svg2fbf/issues/10))
+- Merge dev into testing - feature complete, ready for testing
+- Testing → review (all CI green at aeb8f2eda476650134dd0b7d362c280c0734ce3b)
+- Review → master (bootstrap; one-off manual merge to deploy workflow self-counting fix)
+
+### Testing
+
+- Wire T13 text→path Docker E2E harness + fixtures (TRDD-c2a3199d)
+- Add pin_fbf_frame_to_png calibration utility (TRDD-c2a3199d)
+- Regen e2e goldens for testing branch (v0.1.20b3 version pin)
+- Restore docker-flavored text_frames golden, only patch version (TRDD-c2a3199d)
+- Version-strip byte-exact tests + add Docker-bound regen for text golden (TRDD-c2a3199d)
+- Regen text_frames golden (CI amd64 environment) + HOST_ARCH override
+- Convert T12 from byte-exact to per-frame visual diff (<3%)
+
+### Documentation
+
+- Add TRDD-eb937ddf — adapt release.sh to PR-based promotion flow
+- Add TRDD-c2a3199d — text→path Docker E2E test plan
+- Annotate T13 + text→path E2E tooling across guides (TRDD-c2a3199d)
+- Add TRDD-ad386cb7 — CI/release pipeline review proposal
+- Add TRDD-bbd4b1f0 — fully-automated promotion pipeline
+- Add TRDD-bbd4b1f0 — fully-automated promotion pipeline
+- Cross-platform gate documentation + workflow fixes
+
+### Miscellaneous
+
+- Gitignore /reports/ and /reports_dev/ per agent-reports rule
+- Add CODEOWNERS — make Emasoft the code owner of everything
+
+### CI/CD
+
+- Add Linux + macOS auto-install workflows + release dry-run gate
+
+## [0.1.20b3] - 2026-04-27
+
+### Other
+
+- Release beta 0.1.20b3
+
+### Miscellaneous
+
+- Update uv.lock for beta 0.1.20b3
+
+## [0.1.20rc1] - 2026-04-27
+
+### Other
+
+- Release rc 0.1.20rc1
+
+### Miscellaneous
+
+- Update uv.lock for rc 0.1.20rc1
+
 ## [0.1.20] - 2026-04-27
 
 ### Fixed
@@ -16,6 +152,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Forward tomli-w dev dep to testing
 - Forward tomli-w dev dep to review
 - Forward tomli-w dev dep to master
+- Release stable 0.1.20
+
+### Miscellaneous
+
+- Update uv.lock for stable 0.1.20
 
 ## [0.1.20b2] - 2026-04-27
 
