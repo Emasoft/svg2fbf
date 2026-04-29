@@ -46,9 +46,13 @@ def _sudo_prefix() -> list[str]:
     typically not installed and the install fails with "No such file or
     directory: 'sudo'" — the exact bug end users hit on container hosts.
 
-    Use os.geteuid() to detect root. On Windows os.geteuid is not
-    available, so we just return [] (the choco/winget paths don't need
-    elevation here anyway — Windows handles UAC separately).
+    Windows-only note: this helper is ONLY used by the apt/dnf/yum/pacman/
+    zypper branches in install_nodejs(). Windows package managers
+    (choco/winget/scoop) handle their own elevation via UAC and don't
+    accept a `sudo` prefix, so they never call this. ``os.geteuid`` is
+    also unavailable on Windows; the early return ensures a no-op there.
+    Admin-detection for the choco-vs-winget preference is handled by
+    ``_is_windows_admin()``, not this helper.
     """
     if not hasattr(os, "geteuid"):
         return []
@@ -238,10 +242,24 @@ def _install_portable_nodejs_windows(version: str = _PORTABLE_NODE_VERSION) -> t
     print(f"📦 Extracting to {extract_root}...")
     try:
         with zipfile.ZipFile(zip_path) as z:
+            # Defend against zip-slip: validate that every member resolves
+            # inside extract_root before writing anything to disk. The
+            # nodejs.org zip is trusted (HTTPS-pinned download), but a
+            # bare extractall() with `..`-bearing names would still be a
+            # latent vulnerability if the upstream supply chain is ever
+            # compromised. Cheap and worth doing.
+            extract_root_abs = extract_root.resolve()
+            for member in z.namelist():
+                # Reject absolute paths and ".."-traversal members.
+                target = (extract_root_abs / member).resolve()
+                try:
+                    target.relative_to(extract_root_abs)
+                except ValueError as e:
+                    raise zipfile.BadZipFile(f"unsafe path in zip: {member!r}") from e
             z.extractall(extract_root)
     except zipfile.BadZipFile as e:
         zip_path.unlink(missing_ok=True)
-        return False, f"downloaded zip is invalid: {e}"
+        return False, f"downloaded zip is invalid or unsafe: {e}"
     finally:
         zip_path.unlink(missing_ok=True)
 

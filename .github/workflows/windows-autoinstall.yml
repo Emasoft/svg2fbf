@@ -7,6 +7,16 @@ name: Windows Auto-Install
 #   docker e2e never touches. This workflow exercises each of those
 #   on a real windows-latest runner so regressions surface in CI
 #   instead of in user issue reports.
+#
+# Deliberate deviation from docs/RELEASE_WORKFLOW.md ("CI disabled on
+# dev/testing"): this workflow IS triggered on dev and testing because
+#   (a) it is path-filtered to src/auto_install_deps.py — it does not
+#       fire on unrelated dev/testing churn; and
+#   (b) Windows regressions are slow to surface (no host coverage on
+#       macOS / Linux dev machines), so catching them at the dev push
+#       saves a full alpha→beta promotion when it breaks.
+# The general "expected breakage on dev/testing" rationale that gates
+# the broad CI workflows does not apply to a single targeted file.
 
 on:
   push:
