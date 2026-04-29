@@ -48,16 +48,16 @@ name: Cross-Platform Verify
 #        without cross-platform green.
 
 on:
-  push:
-    branches: [testing, review, master, main]
+  # NOTE: push triggers for testing/review/master/main were removed
+  # to avoid concurrency conflicts with the consolidated
+  # `release-pipeline.yml`, which now owns those branches and calls
+  # this workflow via `workflow_call`. The push and the
+  # workflow_call ran would otherwise share the same concurrency
+  # group `${{ github.workflow }}-${{ github.ref }}` and cancel
+  # each other.
   pull_request:
     branches: [testing, review, master, main]
   workflow_dispatch: {}
-  # Allow embedding as a reusable workflow inside `release-pipeline.yml`,
-  # so the consolidated pipeline can call this matrix as a job and
-  # depend on its result via `needs:` rather than polling for a
-  # separate `gh run list --commit` (which was the source of the
-  # GITHUB_TOKEN-doesn't-trigger-downstream wedge under the old design).
   workflow_call:
     inputs:
       ref:
@@ -70,7 +70,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Hardcoded workflow-name prefix (NOT ${{ github.workflow }}) so
+  # when called via workflow_call from release-pipeline.yml, this
+  # reusable workflow does NOT share a concurrency group with sibling
+  # workflow_call invocations (release-dry-run.yml etc.) — they would
+  # all otherwise get github.workflow="Release Pipeline".
+  #
+  # `inputs.ref || github.ref` so each workflow_call invocation
+  # within the same pipeline run (ci-testing-cross-platform,
+  # ci-review-cross-platform, ci-master-cross-platform) gets a
+  # distinct group keyed by the SHA being checked, rather than all
+  # three sharing the caller's `github.ref` (refs/heads/dev) and
+  # cancelling each other.
+  group: cross-platform-verify-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 env:

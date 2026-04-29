@@ -22,8 +22,9 @@ name: Release Dry-Run (Docker E2E)
 #     - workflow_dispatch (manual override for ad-hoc runs)
 
 on:
-  push:
-    branches: [testing, review, master, main]
+  # push triggers for testing/review/master/main were removed —
+  # see cross-platform-verify.yml for the same rationale (concurrency
+  # group collision with `release-pipeline.yml`'s workflow_call).
   pull_request:
     branches: [testing, review, master, main]
     paths:
@@ -39,7 +40,6 @@ on:
       - 'uv.lock'
       - '.github/workflows/release-dry-run.yml'
   workflow_dispatch: {}
-  # Embeddable as a reusable workflow inside `release-pipeline.yml`.
   workflow_call:
     inputs:
       ref:
@@ -49,7 +49,9 @@ on:
         default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Hardcoded workflow-name prefix + per-invocation ref — see
+  # cross-platform-verify.yml for the full rationale.
+  group: release-dry-run-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
