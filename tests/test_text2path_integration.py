@@ -151,7 +151,7 @@ class TestText2PathConversion:
         assert output_file.exists(), "Output FBF file should be created"
 
         # Verify no <text> elements remain in output
-        content = output_file.read_text()
+        content = output_file.read_text(encoding="utf-8")
         assert "<text" not in content.lower(), "Text elements should be converted to paths"
 
     def test_text2path_precision_flag(self, svg_with_text: Path, tmp_path: Path) -> None:
@@ -226,8 +226,8 @@ class TestText2PathConversion:
         assert low_output.exists(), "Low precision output should exist"
 
         # Both should have path elements (text converted to paths)
-        default_content = default_output.read_text()
-        low_content = low_output.read_text()
+        default_content = default_output.read_text(encoding="utf-8")
+        low_content = low_output.read_text(encoding="utf-8")
         assert "<path" in default_content.lower() or "d=" in default_content, "Default output should contain paths"
         assert "<path" in low_content.lower() or "d=" in low_content, "Low precision output should contain paths"
 
@@ -271,7 +271,7 @@ class TestText2PathConversion:
         assert output_file.exists(), "Output FBF file should be created"
 
         # Verify text was converted to paths
-        content = output_file.read_text()
+        content = output_file.read_text(encoding="utf-8")
         assert "<text" not in content.lower(), "Text elements should be converted to paths"
 
 
