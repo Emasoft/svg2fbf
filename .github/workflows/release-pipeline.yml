@@ -1,0 +1,437 @@
+name: Release Pipeline
+
+# CONSOLIDATED dev → testing → review → master → PyPI pipeline.
+#
+# Replaces (will eventually replace) the four separate workflows that
+# previously chained together via `workflow_run` / `push` triggers:
+#   - auto-promote-testing-to-review.yml
+#   - auto-promote-review-to-stable.yml
+#   - auto-publish-stable.yml
+#   - pipeline-failure-notifier.yml (still used as a reusable
+#     workflow for failure notification — reused below)
+#
+# WHY THE REWRITE
+#   The legacy chain hit one structural failure mode repeatedly: when
+#   one workflow pushed to a branch via `${{ github.token }}`, the
+#   next workflow that should have fired (CI on the new HEAD,
+#   ensure-open-pr, pull_request:synchronize) silently did NOT
+#   trigger. This is a documented GitHub safety rule (anti-recursion
+#   on GITHUB_TOKEN-driven pushes) — no flaw in the actions, just a
+#   constraint we wrote against without realising. Each handoff was
+#   then a separate wedge that needed a manual `workflow_dispatch
+#   --force=true` or an empty bot commit to unblock.
+#
+#   THE CONSOLIDATED DESIGN: every stage is a `job` in this single
+#   workflow run, sequenced via `needs:`. There is no cross-workflow
+#   handoff at all — the trigger problem cannot manifest. CI on
+#   testing/review/master is run as embedded `workflow_call`
+#   reusable workflows (cross-platform-verify.yml,
+#   release-dry-run.yml) instead of being polled via gh run list.
+#   The human-approval gate uses GitHub Environments + required
+#   reviewers (`environment: stable-release`) — the canonical
+#   GitHub mechanism, replaces pull_request_review.
+#
+#   The CI-green gate is now workflow-name-implicit: only the
+#   workflows we explicitly call as jobs gate the chain. Flaky
+#   third-party actions (e.g. claude-code-action upstream
+#   regressions) cannot block publish.
+#
+# ONE-TIME SETUP
+#   1. Create the `stable-release` GitHub Environment with required
+#      reviewer = Emasoft (or any account in APPROVERS_ALLOWLIST).
+#      Use `scripts/setup_release_environment.sh` to do this from
+#      the CLI, or do it via the GitHub UI:
+#        Settings → Environments → New environment → "stable-release"
+#        → Required reviewers → add Emasoft.
+#   2. Ensure the `PYPI_API_TOKEN` repo secret is set (needed by
+#      release.sh's `uv publish` step). Already done in this repo.
+#
+# ENTRY POINTS
+#   This workflow is `workflow_dispatch`-only by design (manual
+#   start). The legacy push/workflow_run-driven entry points still
+#   exist on the four old workflow files; once this consolidated
+#   pipeline is verified working, those triggers will be disabled
+#   in a follow-up commit.
+#
+#   Inputs let you choose where to enter the chain (useful when
+#   resuming after a partial failure or skipping ahead because some
+#   stages already advanced manually):
+#
+#     start_from = testing  → run dev → testing → CI → review → CI →
+#                              approve → master → publish → main-sync
+#                              (full chain — the normal release flow)
+#     start_from = review   → start from CI on review (testing/review
+#                              already advanced manually)
+#     start_from = master   → start from CI on master + publish + sync
+#     start_from = publish  → only publish (assumes master is ready
+#                              and CI was green); useful for retrying
+#                              a partial-publish that release.sh's
+#                              recovery block didn't catch
+#
+# IDEMPOTENCY
+#   Each merge step uses `git merge-base --is-ancestor` to detect
+#   "already merged" and skips cleanly. release.sh has its own
+#   partial-publish recovery block (line ~1160 in release_channel())
+#   that detects "tag exists but PyPI missing" and resumes from
+#   `uv publish` only. Re-running this workflow on a fully-published
+#   release is a series of clean no-ops + a final no-op publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_from:
+        description: "Stage to start from"
+        required: true
+        type: choice
+        options:
+          - "testing"
+          - "review"
+          - "master"
+          - "publish"
+        default: "testing"
+      no_pypi:
+        description: "Skip the PyPI publish step (dry-run the release flow)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
+
+env:
+  BOT_NAME: 'github-actions[bot]'
+  BOT_EMAIL: '41898282+github-actions[bot]@users.noreply.github.com'
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1) Merge dev → testing
+  # ------------------------------------------------------------------
+  merge-testing:
+    name: Merge dev → testing
+    if: inputs.start_from == 'testing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git identity (bot)
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+
+      - name: Merge dev into testing (idempotent)
+        id: merge
+        run: |
+          set -euo pipefail
+          git fetch origin dev testing
+          git checkout testing
+          git pull --ff-only origin testing
+          DEV_SHA=$(git rev-parse origin/dev)
+          if git merge-base --is-ancestor "$DEV_SHA" HEAD; then
+            echo "::notice::testing already contains dev@$DEV_SHA — no-op."
+          else
+            git merge --no-ff origin/dev -m "Merge dev into testing - feature complete, ready for testing"
+            git push origin testing
+            echo "::notice::Merged dev → testing."
+          fi
+
+      - name: Resolve testing@HEAD SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------
+  # 2) CI on testing — embedded reusable workflow_calls
+  # ------------------------------------------------------------------
+  ci-testing-cross-platform:
+    name: CI testing — cross-platform
+    needs: merge-testing
+    if: always() && needs.merge-testing.result == 'success'
+    uses: ./.github/workflows/cross-platform-verify.yml
+    with:
+      ref: ${{ needs.merge-testing.outputs.sha }}
+
+  ci-testing-docker-e2e:
+    name: CI testing — docker e2e (T1-T13)
+    needs: merge-testing
+    if: always() && needs.merge-testing.result == 'success'
+    uses: ./.github/workflows/release-dry-run.yml
+    with:
+      ref: ${{ needs.merge-testing.outputs.sha }}
+
+  # ------------------------------------------------------------------
+  # 3) Merge testing → review (after testing CI is fully green)
+  # ------------------------------------------------------------------
+  merge-review:
+    name: Merge testing → review
+    needs: [merge-testing, ci-testing-cross-platform, ci-testing-docker-e2e]
+    if: |
+      always() &&
+      (inputs.start_from == 'review' ||
+        (inputs.start_from == 'testing' &&
+         needs.ci-testing-cross-platform.result == 'success' &&
+         needs.ci-testing-docker-e2e.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git identity (bot)
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+
+      - name: Merge testing into review (idempotent)
+        run: |
+          set -euo pipefail
+          git fetch origin testing review
+          git checkout review
+          git pull --ff-only origin review
+          TESTING_SHA=$(git rev-parse origin/testing)
+          if git merge-base --is-ancestor "$TESTING_SHA" HEAD; then
+            echo "::notice::review already contains testing@$TESTING_SHA — no-op."
+          else
+            git merge --no-ff origin/testing -m "Merge testing into review - bugs fixed, ready for release candidate"
+            git push origin review
+            echo "::notice::Merged testing → review."
+          fi
+
+      - name: Resolve review@HEAD SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------
+  # 4) CI on review — defense in depth, same matrix as testing
+  # ------------------------------------------------------------------
+  ci-review-cross-platform:
+    name: CI review — cross-platform
+    needs: merge-review
+    if: always() && needs.merge-review.result == 'success'
+    uses: ./.github/workflows/cross-platform-verify.yml
+    with:
+      ref: ${{ needs.merge-review.outputs.sha }}
+
+  ci-review-docker-e2e:
+    name: CI review — docker e2e (T1-T13)
+    needs: merge-review
+    if: always() && needs.merge-review.result == 'success'
+    uses: ./.github/workflows/release-dry-run.yml
+    with:
+      ref: ${{ needs.merge-review.outputs.sha }}
+
+  # ------------------------------------------------------------------
+  # 5) Human-approval gate via GitHub Environment
+  # ------------------------------------------------------------------
+  await-approval:
+    name: Await human approval (stable-release env)
+    needs: [merge-review, ci-review-cross-platform, ci-review-docker-e2e]
+    if: |
+      always() &&
+      needs.merge-review.result == 'success' &&
+      needs.ci-review-cross-platform.result == 'success' &&
+      needs.ci-review-docker-e2e.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1440  # 24h timeout — human has time to review
+    # GitHub blocks this job from starting until a required reviewer
+    # of the `stable-release` environment approves. Set this up via
+    # `scripts/setup_release_environment.sh` (one-time).
+    environment:
+      name: stable-release
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Approval received
+        id: sha
+        run: |
+          echo "::notice::Approval received — proceeding to master + PyPI."
+          echo "sha=${{ needs.merge-review.outputs.sha }}" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------
+  # 6) Merge review → master
+  # ------------------------------------------------------------------
+  merge-master:
+    name: Merge review → master
+    needs: await-approval
+    if: |
+      always() &&
+      (inputs.start_from == 'master' ||
+       needs.await-approval.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git identity (bot)
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+
+      - name: Merge review into master (idempotent)
+        run: |
+          set -euo pipefail
+          git fetch origin review master
+          git checkout master
+          git pull --ff-only origin master
+          REVIEW_SHA=$(git rev-parse origin/review)
+          if git merge-base --is-ancestor "$REVIEW_SHA" HEAD; then
+            echo "::notice::master already contains review@$REVIEW_SHA — no-op."
+          else
+            git merge --no-ff origin/review -m "auto: review → master (approved via stable-release environment)"
+            git push origin master
+            echo "::notice::Merged review → master."
+          fi
+
+      - name: Resolve master@HEAD SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ------------------------------------------------------------------
+  # 7) CI on master (defense-in-depth, last-mile gate before PyPI)
+  # ------------------------------------------------------------------
+  ci-master-cross-platform:
+    name: CI master — cross-platform
+    needs: merge-master
+    if: always() && needs.merge-master.result == 'success'
+    uses: ./.github/workflows/cross-platform-verify.yml
+    with:
+      ref: ${{ needs.merge-master.outputs.sha }}
+
+  # ------------------------------------------------------------------
+  # 8) Publish to PyPI + GitHub Release
+  # ------------------------------------------------------------------
+  publish:
+    name: Publish (release.sh --stable master --from-ci)
+    needs: [merge-master, ci-master-cross-platform]
+    if: |
+      always() &&
+      (inputs.start_from == 'publish' ||
+        (needs.merge-master.result == 'success' &&
+         needs.ci-master-cross-platform.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Checkout master (full history + tags)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          ref: master
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true
+
+      - name: Resolve master@HEAD SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git identity (bot)
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb  # v5.2.2
+
+      - name: Install Python via uv
+        run: uv python install 3.12
+
+      - name: Sync project (build + dev deps)
+        run: uv sync --all-extras --dev
+
+      - name: Add venv bin to PATH (so release.sh's `git cliff` resolves)
+        run: echo "${{ github.workspace }}/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Run release.sh --stable master --from-ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.no_pypi }}" == "true" ]]; then
+            ./scripts/release.sh --stable master --from-ci --no-pypi
+          else
+            ./scripts/release.sh --stable master --from-ci
+          fi
+
+  # ------------------------------------------------------------------
+  # 9) Sync main := master (mirror branch invariant)
+  # ------------------------------------------------------------------
+  sync-main:
+    name: Sync main := master
+    needs: publish
+    if: always() && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git identity (bot)
+        run: |
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_EMAIL"
+
+      - name: Sync main to master (force-with-lease)
+        run: |
+          set -euo pipefail
+          git fetch origin master main
+          MAIN_SHA=$(git rev-parse origin/main)
+          MASTER_SHA=$(git rev-parse origin/master)
+          if [[ "$MAIN_SHA" == "$MASTER_SHA" ]]; then
+            echo "::notice::main already at master ($MASTER_SHA) — no-op."
+            exit 0
+          fi
+          git checkout main
+          git reset --hard origin/master
+          # --force-with-lease so we don't clobber an unrelated push
+          # that arrived between our fetch and our push.
+          git push origin main --force-with-lease=main:"$MAIN_SHA"
+          echo "::notice::Synced main := master ($MASTER_SHA)."
+
+  # ------------------------------------------------------------------
+  # 10) Failure notifier (sticky issue) — only when something failed
+  # ------------------------------------------------------------------
+  notify-failure:
+    name: Notify (sticky issue)
+    needs: [merge-testing, ci-testing-cross-platform, ci-testing-docker-e2e,
+            merge-review, ci-review-cross-platform, ci-review-docker-e2e,
+            await-approval, merge-master, ci-master-cross-platform,
+            publish, sync-main]
+    if: failure()
+    uses: ./.github/workflows/pipeline-failure-notifier.yml
+    permissions:
+      issues: write
+      contents: read
+    with:
+      stage: release-pipeline
+      sha: "${{ needs.publish.outputs.sha || needs.merge-master.outputs.sha || needs.merge-review.outputs.sha || needs.merge-testing.outputs.sha || 'unknown' }}"
+      summary: "release-pipeline failed at one of: merge-testing, ci-testing, merge-review, ci-review, await-approval, merge-master, ci-master, publish, or sync-main. Check the run log."
+      run_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

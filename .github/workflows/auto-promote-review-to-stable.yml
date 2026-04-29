@@ -33,10 +33,9 @@ name: Auto-Promote review → master
 #   before merging — same gate as auto-promote-testing-to-review.
 
 on:
-  push:
-    branches: [review]
-  pull_request_review:
-    types: [submitted]
+  # SUPERSEDED by `release-pipeline.yml`. Auto-fire triggers (push,
+  # pull_request_review) removed so the two pipelines do not race.
+  # Kept as a workflow_dispatch-only escape hatch.
   workflow_dispatch:
     inputs:
       approved_sha:

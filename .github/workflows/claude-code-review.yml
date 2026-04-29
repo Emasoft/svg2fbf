@@ -42,7 +42,16 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@db388438c199401cf36c143bb877ba3c3e6a9be5  # v1
+        # Anthropic-published action: floating `v1` tag is acceptable
+        # because the supply-chain trust assumption is the same as
+        # using anthropic.com (we trust Anthropic itself). Pinning
+        # to a stale SHA caused an outage on 2026-04-29 when the
+        # bundled SDK (Claude Code 2.1.36, 2 months old) errored
+        # against the current API contract. Floating to `v1` lets
+        # Anthropic's own release cadence keep us current. For
+        # third-party actions where this trust assumption does not
+        # hold, keep SHA pinning.
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
