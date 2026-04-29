@@ -182,12 +182,17 @@ jobs:
 
       - name: setup_dependencies on a fresh runner
         shell: pwsh
+        # Pre-extract shutil.which('node') into a variable so the inline
+        # Python doesn't need any escaped double quotes inside the f-string —
+        # pwsh interprets `\"` as a stray backslash followed by an unescaped
+        # closing `"`, which silently truncates the inline script and turns
+        # any embedded f-string into a SyntaxError.
         run: |
           uv run python -c "
           import shutil
-          # Verify the precondition for the test.
-          if shutil.which('node') is not None:
-              print(f'WARN: node still resolvable at {shutil.which(\"node\")}; this job may not exercise the fresh-install path')
+          node_path = shutil.which('node')
+          if node_path is not None:
+              print(f'WARN: node still resolvable at {node_path}; this job may not exercise the fresh-install path')
           from auto_install_deps import setup_dependencies, check_dependencies
           ok = setup_dependencies(silent=False)
           print(f'setup_dependencies returned {ok!r}')
