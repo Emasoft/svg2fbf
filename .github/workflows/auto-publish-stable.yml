@@ -178,6 +178,14 @@ jobs:
       - name: Sync project (build + dev deps)
         run: uv sync --all-extras --dev
 
+      - name: Add venv bin to PATH so release.sh's `git cliff` resolves
+        # release.sh invokes `git cliff` to regenerate CHANGELOG.md.
+        # `git cliff` works as a git subcommand only if the
+        # `git-cliff` binary is on PATH. `uv sync --dev` puts it
+        # under .venv/bin/, so we prepend that to PATH for the rest
+        # of the job.
+        run: echo "${{ github.workspace }}/.venv/bin" >> "$GITHUB_PATH"
+
       - name: Run release.sh --stable master --from-ci
         env:
           # Standard token for gh CLI (creates GitHub release, uploads).

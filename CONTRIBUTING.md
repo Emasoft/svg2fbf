@@ -148,13 +148,21 @@ fonts and exercises every release-blocking path:
 ```
 
 It runs T1–T10 (Node/Puppeteer auto-install), T_setup/T11 (svg-bbox
-harness + `--text2path` end-to-end), T12 (byte-exact FBF compare against
-the golden) and T13 (per-frame visual diff of the FBF against the input
-fixtures, budget < 3 % `diffPercentage`).
+harness + `--text2path` end-to-end), T12 (per-frame visual diff of the
+freshly-produced FBF against the committed golden FBF, budget < 3 %
+`diffPercentage` per frame) and T13 (per-frame visual diff of the FBF
+against the input fixture SVGs, budget < 3 % `diffPercentage`).
+
+T12 used to be a byte-exact compare, but the system DejaVu glyph table
+drifts by sub-pixel amounts across fresh `apt-get install fonts-dejavu`
+runs even on the same architecture, making byte-exact comparison
+non-deterministic. A pixel-level visual invariant ("the FBF still
+LOOKS like the golden") is the right invariant for this lane.
 
 Relevant scripts and fixtures:
 
 - `tests/fixtures/e2e/text_frames/` — 5 deterministic text fixture SVGs (DejaVu Sans/Serif + Liberation Mono only) and the golden `expected.fbf.svg`. The `*.fbf.svg` ignore rule has an explicit exception for this golden in `tests/.gitignore`; if you regenerate the golden, the exception is what keeps it tracked.
+- `scripts/visual_diff_fbf_vs_golden.py` — T12 harness (extracts each frame from BOTH the produced FBF and the golden FBF, then runs `sbb-compare --json` per pair).
 - `scripts/visual_diff_text_frames.py` — T13 harness (cwd-stages inputs and runs `sbb-compare --json`).
 - `scripts/extract_fbf_frame.py` — XML-level extraction of one frame from an FBF.
 - `scripts/pin_fbf_frame_to_png.py` — calibration utility: pins PROSKENION to frame N and renders the full FBF wrapper to PNG via `sbb-svg2png`. Useful when calibrating the T13 thresholds.
